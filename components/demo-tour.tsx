@@ -127,19 +127,22 @@ export default function DemoTour({ open, onGoto, onOpenWrapped, onEnd }: Props) 
 
   return (
     <div role="dialog" aria-modal="true" aria-label="Demo tour" className="fixed inset-0 z-[75]">
-      {/* Dims the whole screen; has no click handler of its own, so tapping the app underneath does nothing */}
-      <div className="absolute inset-0 bg-black/55 transition-opacity" aria-hidden />
+      {/* No selector for this step (the intro/closing cards): just dim the whole screen */}
+      {!rect && <div className="absolute inset-0 bg-black/55 transition-opacity" aria-hidden />}
 
+      {/* The spotlighted element itself stays untouched and fully bright — the darkening is everywhere else, via a
+          box-shadow spread from this transparent "hole" positioned exactly over it. Has no click handler, so
+          tapping the app underneath (inside or outside the hole) does nothing. */}
       {rect && (
         <div
           aria-hidden
-          className="absolute rounded-2xl ring-2 ring-white/90 pointer-events-none transition-[top,left,width,height] duration-300 ease-out"
+          className="absolute rounded-2xl pointer-events-none transition-[top,left,width,height] duration-300 ease-out"
           style={{
             top: rect.top - pad,
             left: rect.left - pad,
             width: rect.width + pad * 2,
             height: rect.height + pad * 2,
-            boxShadow: "0 0 0 9999px rgba(0,0,0,0.55)",
+            boxShadow: "0 0 0 3px rgba(255,255,255,0.9), 0 0 0 9999px rgba(0,0,0,0.6)",
           }}
         />
       )}
