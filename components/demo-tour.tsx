@@ -57,6 +57,9 @@ const STEPS: Step[] = [
   },
 ]
 
+/** Class toggled directly on the real target element — see the `.demo-tour-spot` rule in globals.css */
+const SPOT_CLASS = "demo-tour-spot"
+
 interface Props {
   open: boolean
   onGoto: (page: string) => void
@@ -65,20 +68,27 @@ interface Props {
 }
 
 /**
- * A guided, forced walkthrough over the demo data: it drives the tabs itself and spotlights one real part of the
- * screen per step, so the tour is a tour of the actual app, not a set of screenshots. The backdrop is inert —
- * only the caption's own controls move it along — so it reads as a tour, not just a highlight on a page you can
- * still wander off from.
+ * A guided, forced walkthrough over the demo data: it drives the tabs itself and highlights one real part of the
+ * screen per step, so the tour is a tour of the actual app, not a set of screenshots. The highlight is a class put
+ * directly on that element (an outline plus a brightness lift), not a floating box guessing its position — so it
+ * always lines up exactly, at any window size or scroll position, instead of drifting out of sync. A separate,
+ * invisible full-screen layer blocks taps on the app underneath; only the caption's own controls move it along.
  */
 export default function DemoTour({ open, onGoto, onOpenWrapped, onEnd }: Props) {
   const [i, setI] = useState(0)
-  const [rect, setRect] = useState<DOMRect | null>(null)
+  const target = useRef<HTMLElement | null>(null)
   const frames = useRef<number[]>([])
 
   useScrollLock(open)
 
+  const unspot = () => {
+    target.current?.classList.remove(SPOT_CLASS)
+    target.current = null
+  }
+
   useEffect(() => {
     if (open) setI(0)
+    else unspot()
   }, [open])
 
   const step = STEPS[i]
@@ -86,30 +96,26 @@ export default function DemoTour({ open, onGoto, onOpenWrapped, onEnd }: Props) 
   useEffect(() => {
     if (!open) return
     onGoto(step.page)
+    unspot()
     frames.current.forEach(cancelAnimationFrame)
     frames.current = []
 
-    const measure = () => {
-      const el = step.selector ? document.querySelector<HTMLElement>(`[data-tour="${step.selector}"]`) : null
-      if (!el) return setRect(null)
-      el.scrollIntoView({ block: "center", behavior: "auto" })
-      const a = requestAnimationFrame(() => {
-        const b = requestAnimationFrame(() => setRect(el.getBoundingClientRect()))
-        frames.current.push(b)
-      })
-      frames.current.push(a)
-    }
-    // Two frames give the page-switch above time to render before anything is measured
+    // Two frames give the page-switch above time to render before anything is spotlighted
     const a = requestAnimationFrame(() => {
-      const b = requestAnimationFrame(measure)
+      const b = requestAnimationFrame(() => {
+        const el = step.selector ? document.querySelector<HTMLElement>(`[data-tour="${step.selector}"]`) : null
+        if (!el) return
+        el.scrollIntoView({ block: "center", behavior: "auto" })
+        el.classList.add(SPOT_CLASS)
+        target.current = el
+      })
       frames.current.push(b)
     })
     frames.current.push(a)
 
-    window.addEventListener("resize", measure)
     return () => {
       frames.current.forEach(cancelAnimationFrame)
-      window.removeEventListener("resize", measure)
+      unspot()
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, i])
@@ -123,29 +129,11 @@ export default function DemoTour({ open, onGoto, onOpenWrapped, onEnd }: Props) 
 
   if (!open) return null
   const last = i === STEPS.length - 1
-  const pad = 10
 
   return (
-    <div role="dialog" aria-modal="true" aria-label="Demo tour" className="fixed inset-0 z-[75]">
-      {/* No selector for this step (the intro/closing cards): just dim the whole screen */}
-      {!rect && <div className="absolute inset-0 bg-black/55 transition-opacity" aria-hidden />}
-
-      {/* The spotlighted element itself stays untouched and fully bright — the darkening is everywhere else, via a
-          box-shadow spread from this transparent "hole" positioned exactly over it. Has no click handler, so
-          tapping the app underneath (inside or outside the hole) does nothing. */}
-      {rect && (
-        <div
-          aria-hidden
-          className="absolute rounded-2xl pointer-events-none transition-[top,left,width,height] duration-300 ease-out"
-          style={{
-            top: rect.top - pad,
-            left: rect.left - pad,
-            width: rect.width + pad * 2,
-            height: rect.height + pad * 2,
-            boxShadow: "0 0 0 3px rgba(255,255,255,0.9), 0 0 0 9999px rgba(0,0,0,0.6)",
-          }}
-        />
-      )}
+    <div role="dialog" aria-modal="true" aria-label="Demo tour" className="fixed inset-0 z-[75]" aria-hidden="false">
+      {/* Invisible — the real app is inert underneath, but nothing is visually dimmed or covered */}
+      <div className="absolute inset-0" aria-hidden />
 
       <div className="absolute inset-x-0 bottom-0 px-4 pb-[calc(env(safe-area-inset-bottom)+16px)]">
         <div className="mx-auto max-w-md rounded-[28px] bg-paper p-5 shadow-2xl">
