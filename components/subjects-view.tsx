@@ -244,6 +244,7 @@ export default function SubjectsView({ subjects, onOpen, onAdd, onImport }: Subj
           ))}
       </div>
 
+      <div data-tour="subjects-list">
       {visible.length === 0 ? (
         <p className="text-mute py-16 text-center text-[15px]">No subjects match.</p>
       ) : view === "cards" ? (
@@ -320,6 +321,7 @@ export default function SubjectsView({ subjects, onOpen, onAdd, onImport }: Subj
           )}
         </div>
       )}
+      </div>
 
       <button onClick={onImport} className="block mx-auto mt-6 text-[15px] font-medium text-mute">
         Import timetable

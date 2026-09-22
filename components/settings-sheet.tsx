@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { ArrowsClockwise, BellRinging, Bell, CalendarPlus, CaretRight, CircleHalf, FloppyDisk, Tag, Trash } from "@phosphor-icons/react"
+import { ArrowsClockwise, BellRinging, Bell, CalendarPlus, CaretRight, CircleHalf, FloppyDisk, Sparkle, Tag, Trash } from "@phosphor-icons/react"
 import Sheet, { Segmented, tintButton } from "./sheet"
 import { RemindersList, ReminderEditor } from "./settings-reminders"
 import ScanPanel from "./settings-scan"
@@ -64,6 +64,12 @@ interface SettingsSheetProps {
   onPreviewScan: () => void
   /** Keeps data in step across browsers through a signed-in account */
   sync: CloudSync
+  /** True while demo data is on screen instead of the real thing */
+  demoActive: boolean
+  /** Loads a full sample term and opens the guided tour */
+  onTryDemo: () => void
+  /** Puts your own data back */
+  onExitDemo: () => void
 }
 
 function Row({
@@ -204,6 +210,23 @@ export default function SettingsSheet(p: SettingsSheetProps) {
     <Sheet open={p.isOpen} onClose={close} title={TITLES[panel]} onBack={back}>
       {panel === "home" && (
         <div className="space-y-6">
+          <section>
+            <div className="rounded-2xl bg-secondary p-3.5 flex items-center gap-3.5">
+              <span className="w-10 h-10 rounded-xl bg-card text-ink grid place-items-center flex-shrink-0">
+                <Sparkle weight="duotone" className={icon} />
+              </span>
+              <span className="min-w-0 flex-1">
+                <span className="block text-[16px] font-semibold leading-snug">{p.demoActive ? "Viewing demo data" : "Try a demo"}</span>
+                <span className="block text-[13px] text-mute leading-snug">
+                  {p.demoActive ? "Get your own data back any time." : "See the app filled in with a full sample term, with a guided tour."}
+                </span>
+              </span>
+              <button onClick={then(p.demoActive ? p.onExitDemo : p.onTryDemo)} className={`${tintButton} flex-shrink-0`}>
+                {p.demoActive ? "Exit" : "Start"}
+              </button>
+            </div>
+          </section>
+
           <section>
             <h3 className={label}>Appearance</h3>
             <div className="rounded-2xl bg-secondary p-3.5">

@@ -301,7 +301,7 @@ function TodayContent({
 
         {/* Day strip: the whole timetable at a glance */}
         {timed.length > 0 && !allDone && (
-          <section aria-label="Today's timetable">
+          <section aria-label="Today's timetable" data-tour="today-strip">
             <div className="flex gap-2 overflow-x-auto -mx-4 px-4 lg:mx-0 lg:px-0 no-scrollbar">
               {timed.map((c) => {
                 const st = stateOf(c)
@@ -344,7 +344,7 @@ function TodayContent({
 
         {/* Carousel */}
         {!allDone && (
-        <section>
+        <section data-tour="today-carousel">
           <SectionHeader
             action={live.length > 0 ? <span className="text-[13px] text-mute">{live.length} to mark</span> : undefined}
           >

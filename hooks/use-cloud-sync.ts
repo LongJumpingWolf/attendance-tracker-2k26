@@ -51,8 +51,15 @@ const withTimeout = <T,>(p: Promise<T>, ms: number) =>
  * moment after they happen; other browsers' changes are pulled when the app opens and when it comes back to the
  * foreground. If two browsers changed things at once, the newer stored copy wins.
  */
-export function useCloudSync(opts: { loaded: boolean; data: Data; apply: (d: FullBackupData) => void; notify: (message: string) => void }) {
-  const { loaded, data, apply, notify } = opts
+export function useCloudSync(opts: {
+  loaded: boolean
+  data: Data
+  apply: (d: FullBackupData) => void
+  notify: (message: string) => void
+  /** While true, nothing is pushed or pulled — used while demo data is on screen, so it never reaches the real account */
+  paused?: boolean
+}) {
+  const { loaded, data, apply, notify, paused = false } = opts
   const [account, setAccount] = useState<Account | null>(null)
   const [authReady, setAuthReady] = useState(false)
   const [ready, setReady] = useState(false)
@@ -169,6 +176,13 @@ export function useCloudSync(opts: { loaded: boolean; data: Data; apply: (d: Ful
       return
     }
 
+    // Demo data must never be read as "what's really in this browser" or pushed anywhere; wait it out and catch up
+    // for real once it ends (paused re-running this effect is what makes that happen)
+    if (paused) {
+      done()
+      return
+    }
+
     const at = read(AT_KEY)
     setLastAt(at ? Number(at) : null)
 
@@ -215,26 +229,26 @@ export function useCloudSync(opts: { loaded: boolean; data: Data; apply: (d: Ful
       cancelled = true
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [loaded, authReady, accountId])
+  }, [loaded, authReady, accountId, paused])
 
   // Push shortly after a change
   const changed = fingerprint(data)
   useEffect(() => {
-    if (!ready || !accountId || choice || ownerRef.current !== accountId) return
+    if (!ready || !accountId || choice || paused || ownerRef.current !== accountId) return
     const t = setTimeout(() => void push(), PUSH_DELAY)
     return () => clearTimeout(t)
-  }, [changed, ready, accountId, choice, status, push])
+  }, [changed, ready, accountId, choice, paused, status, push])
 
   // Catch up when the app comes back to the front
   useEffect(() => {
     if (!ready || !accountId) return
     const onVisible = async () => {
-      if (document.visibilityState !== "visible" || ownerRef.current !== accountId) return
+      if (document.visibilityState !== "visible" || paused || ownerRef.current !== accountId) return
       if ((await pull()) === "updated") notifyRef.current("Updated from your other browser")
     }
     document.addEventListener("visibilitychange", onVisible)
     return () => document.removeEventListener("visibilitychange", onVisible)
-  }, [ready, accountId, pull])
+  }, [ready, accountId, paused, pull])
 
   /** Returns an error message, or null. In development without Firebase keys, pass an email for the test account. */
   const signIn = async (devEmail?: string): Promise<string | null> => {

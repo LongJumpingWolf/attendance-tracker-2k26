@@ -456,7 +456,7 @@ export default function MatesView({ mates, social, subjects, addOpen, onCloseAdd
       )}
 
       {/* Month-end */}
-      <div className="rounded-2xl bg-card p-4">
+      <div className="rounded-2xl bg-card p-4" data-tour="mates-wrapped">
         <p className="text-[13px] text-mute">
           Month ends in {daysLeft} {daysLeft === 1 ? "day" : "days"}
         </p>
@@ -478,7 +478,7 @@ export default function MatesView({ mates, social, subjects, addOpen, onCloseAdd
       </div>
 
       {/* Leaderboard */}
-      <section>
+      <section data-tour="mates-leaderboard">
         <SectionHeader>Leaderboard</SectionHeader>
         {mates.length === 0 ? (
           <div className={`${card} p-5`}>

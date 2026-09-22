@@ -178,7 +178,7 @@ export default function CalendarView({ tasks, subjects, onAdd, onEdit, onToggleD
       </section>
 
       {/* The picked day */}
-      <section>
+      <section data-tour="calendar-day">
         <div className="flex items-end justify-between mb-2.5 px-1">
           <div>
             <h2 className="text-[22px] font-bold tracking-tight leading-tight">{relative(selected) ?? pickedDate.toLocaleDateString("en-US", { weekday: "long" })}</h2>

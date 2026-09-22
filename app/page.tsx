@@ -42,6 +42,8 @@ import TimetableImportSheet from "@/components/timetable-import-sheet"
 import Onboarding from "@/components/onboarding"
 import ScanCheckIn, { type ScanState } from "@/components/scan-check-in"
 import ScanGate from "@/components/scan-gate"
+import DemoTour from "@/components/demo-tour"
+import { buildDemoData } from "@/lib/demo-data"
 import { isInAppBrowser, safariUrl, chromeIntentUrl } from "@/lib/in-app"
 import { pickScanTarget } from "@/lib/scan"
 import { buildTestSubjects, isTestSubject } from "@/lib/scan-test"
@@ -82,6 +84,9 @@ export default function Home() {
   const [isImportOpen, setIsImportOpen] = useState(false)
   const [scan, setScan] = useState<ScanState | null>(null)
   const scanBefore = useRef<Subject | null>(null) // the subject as it was before a scan marked it, for Undo
+  const [demoActive, setDemoActive] = useState(false)
+  const [demoTourOpen, setDemoTourOpen] = useState(false)
+  const demoSnapshot = useRef<{ subjects: Subject[]; tasks: Task[]; tags: string[]; mates: Mate[] } | null>(null)
   const scanHandled = useRef(false)
   const [scanGate, setScanGate] = useState(false) // a scan opened inside a scanner app's temporary browser
   const scanMarks = useRef<{ id: string; date: string; t: string; k?: string }[]>([]) // marks made by scanning this visit
@@ -370,6 +375,7 @@ export default function Home() {
   const sync = useCloudSync({
     loaded,
     data: { subjects, tasks, tags: allTags, mates },
+    paused: demoActive, // demo data must never overwrite, or be overwritten by, the real synced copy
     apply: (d) => {
       // A scan does not wait for sync. If the synced copy arrives afterwards without that mark, put it back.
       const kept = scanMarks.current.length
@@ -491,6 +497,9 @@ export default function Home() {
     setAllTags([])
     setMates([])
     setSeenPings([])
+    demoSnapshot.current = null
+    setDemoActive(false)
+    setDemoTourOpen(false)
     void sync.signOut() // a reset must not wipe the copy your other browsers rely on
     // Everything this device keeps: data, reminders, ping records, seen-bubbles and the first-run flag (the theme stays)
     for (const key of [
@@ -730,6 +739,36 @@ export default function Home() {
     setDetailId(null)
     window.scrollTo({ top: 0 })
   }
+
+  /** Settings > "Try a demo": swaps in a full sample term so every screen has something worth looking at. Your own
+   *  data is snapshotted first and put back exactly as it was on Exit demo; nothing here ever reaches sync. */
+  const startDemo = () => {
+    demoSnapshot.current = { subjects, tasks, tags: allTags, mates }
+    const demo = buildDemoData(new Date())
+    setSubjects(demo.subjects)
+    setTasks(demo.tasks)
+    setAllTags(demo.tags)
+    setMates(demo.mates)
+    setDetailId(null)
+    setDemoActive(true)
+    setCurrentPage("today")
+    setIsSettingsOpen(false)
+    setDemoTourOpen(true)
+  }
+
+  const exitDemo = () => {
+    const snap = demoSnapshot.current
+    if (snap) {
+      setSubjects(snap.subjects)
+      setTasks(snap.tasks)
+      setAllTags(snap.tags)
+      setMates(snap.mates)
+    }
+    demoSnapshot.current = null
+    setDemoActive(false)
+    setDemoTourOpen(false)
+    showToast("Demo ended. Your own data is back.")
+  }
   const openSubject = (id: string) => {
     setCurrentPage("subjects")
     setDetailId(id)
@@ -781,8 +820,19 @@ export default function Home() {
 
   return (
     <div className="min-h-dvh text-foreground lg:pl-[88px]">
+      {/* Stays up while demo data is on screen, so it's never mistaken for the real thing and Exit is always one tap away */}
+      {demoActive && (
+        <div className="fixed top-0 inset-x-0 z-[76] bg-ink text-paper pt-[env(safe-area-inset-top)] lg:left-[88px]">
+          <div className="max-w-3xl mx-auto lg:max-w-[1280px] 2xl:max-w-[1440px] px-4 lg:px-10 h-10 flex items-center justify-between gap-3">
+            <span className="text-[13px] font-semibold truncate">Viewing demo data</span>
+            <button onClick={exitDemo} className="text-[13px] font-semibold underline underline-offset-2 flex-shrink-0">
+              Exit demo
+            </button>
+          </div>
+        </div>
+      )}
       {/* One comfortable column up to 1024px; from there the content gets the room: side rail, wider frame, two columns */}
-      <div className="w-full max-w-3xl mx-auto pl-[max(1rem,env(safe-area-inset-left))] pr-[max(1rem,env(safe-area-inset-right))] sm:pl-[max(1.5rem,env(safe-area-inset-left))] sm:pr-[max(1.5rem,env(safe-area-inset-right))] lg:max-w-[1280px] lg:px-10 2xl:max-w-[1440px]">
+      <div className={`w-full max-w-3xl mx-auto pl-[max(1rem,env(safe-area-inset-left))] pr-[max(1rem,env(safe-area-inset-right))] sm:pl-[max(1.5rem,env(safe-area-inset-left))] sm:pr-[max(1.5rem,env(safe-area-inset-right))] lg:max-w-[1280px] lg:px-10 2xl:max-w-[1440px] ${demoActive ? "pt-10" : ""}`}>
         {!detailSubject && (
           <header className={`pt-[calc(env(safe-area-inset-top)+16px)] ${currentPage === "today" ? "pb-5" : "pb-6"} flex items-center justify-between gap-3`}>
             <div className="min-w-0">
@@ -920,6 +970,9 @@ export default function Home() {
         onSimulateScan={runScan}
         onPreviewScan={previewScan}
         sync={sync}
+        demoActive={demoActive}
+        onTryDemo={startDemo}
+        onExitDemo={exitDemo}
       />
 
       <Onboarding
@@ -951,6 +1004,7 @@ export default function Home() {
         onClose={() => setScan(null)}
       />
       <ScanGate open={scanGate} link={typeof window === "undefined" ? "" : `${window.location.origin}/scan`} onContinue={() => setScanGate(false)} />
+      <DemoTour open={demoTourOpen} onGoto={goto} onOpenWrapped={openWrapped} onEnd={() => setDemoTourOpen(false)} />
       <WrappedStory open={isWrappedOpen} onClose={() => setIsWrappedOpen(false)} subjects={subjects} mates={mates} onRepay={repayQuiet} />
 
       <SubjectSheet
