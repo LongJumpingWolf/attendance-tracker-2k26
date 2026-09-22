@@ -1,0 +1,597 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+
+@custom-variant dark (&:is(.dark *));
+
+/*
+  iOS-style light theme.
+  Grouped background (#f2f2f7), white cards, black text, grey metadata.
+  Colour is reserved for meaning: green = present / safe, red = missed / at risk.
+
+  Screens use the tokens in the @theme block (paper, ink, mute...). Tailwind's own white/black/gray are untouched.
+*/
+:root {
+  color-scheme: light;
+
+  --background: #f2f2f7;
+  --foreground: #000000;
+  --card: #ffffff;
+  --card-foreground: #000000;
+  --popover: #ffffff;
+  --popover-foreground: #000000;
+  --primary: #000000;
+  --primary-foreground: #ffffff;
+  --secondary: #e9e9ee;
+  --secondary-foreground: #000000;
+  --muted: #e9e9ee;
+  --muted-foreground: #5f5f64;
+  --accent: #e9e9ee;
+  --accent-foreground: #000000;
+  --destructive: #c4001a;
+  --destructive-foreground: #ffffff;
+  --border: #d9d9de;
+  --input: #d9d9de;
+  --ring: #8e8e93;
+  --chart-1: #007aff;
+  --chart-2: #248a3d;
+  --chart-3: #b25000;
+  --chart-4: #d70015;
+  --chart-5: #8e8e93;
+  --radius: 1rem;
+  --sidebar: #f2f2f7;
+  --sidebar-foreground: #000000;
+  --sidebar-primary: #000000;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #e9e9ee;
+  --sidebar-accent-foreground: #000000;
+  --sidebar-border: #d9d9de;
+  --sidebar-ring: #8e8e93;
+
+}
+
+/*
+  Dark theme: the iOS dark palette. Applied by adding the "dark" class to <html> (see lib/theme.ts).
+  The @theme tokens (paper, ink, mute...) are overridden here too, so every utility that uses them flips:
+  "ink" becomes white text and "paper" becomes the black page, so a "bg-ink text-paper" button inverts cleanly.
+*/
+.dark {
+  color-scheme: dark;
+
+  --background: #000000;
+  --foreground: #ffffff;
+  --card: #1c1c1e;
+  --card-foreground: #ffffff;
+  --popover: #1c1c1e;
+  --popover-foreground: #ffffff;
+  --primary: #ffffff;
+  --primary-foreground: #000000;
+  --secondary: #2c2c2e;
+  --secondary-foreground: #ffffff;
+  --muted: #2c2c2e;
+  --muted-foreground: #a1a1a6;
+  --accent: #2c2c2e;
+  --accent-foreground: #ffffff;
+  --destructive: #ff453a;
+  --destructive-foreground: #000000;
+  --border: #38383a;
+  --input: #38383a;
+  --ring: #8e8e93;
+  --chart-1: #0a84ff;
+  --chart-2: #30d158;
+  --chart-3: #ff9f0a;
+  --chart-4: #ff453a;
+  --chart-5: #8e8e93;
+  --sidebar: #000000;
+  --sidebar-foreground: #ffffff;
+  --sidebar-primary: #ffffff;
+  --sidebar-primary-foreground: #000000;
+  --sidebar-accent: #2c2c2e;
+  --sidebar-accent-foreground: #ffffff;
+  --sidebar-border: #38383a;
+  --sidebar-ring: #8e8e93;
+
+  --color-paper: #000000;
+  --color-ink: #ffffff;
+  --color-mute: #a1a1a6;
+  --color-faint: #6e6e73;
+  --color-good: #30d158;
+  --color-bad: #ff453a;
+  --color-warn: #ff9f0a;
+  --color-info: #0a84ff;
+
+}
+
+@layer base {
+  .dark * {
+    scrollbar-color: #48484a transparent;
+  }
+}
+
+.dark ::selection {
+  background: rgba(10, 132, 255, 0.4);
+}
+
+@theme {
+  --color-paper: #f2f2f7;
+  --color-ink: #000000;
+  --color-mute: #5f5f64;
+  --color-faint: #a1a1a6;
+  --color-good: #187030;
+  --color-bad: #c4001a;
+  --color-warn: #8a3d00;
+  --color-info: #0060d0;
+}
+
+@theme inline {
+  --font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", var(--nf-inter), "Segoe UI", system-ui, sans-serif;
+  --font-display: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", var(--nf-inter), "Segoe UI", system-ui, sans-serif;
+  --font-mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply text-foreground font-sans;
+  }
+}
+
+html,
+body {
+  -webkit-tap-highlight-color: transparent;
+  -webkit-text-size-adjust: 100%; /* phones on their side don't inflate the text */
+  text-size-adjust: 100%;
+}
+
+/*
+  No double-tap zoom. Pinch-zoom still works.
+  "touch-action" only counts up to the nearest scrolling ancestor, so setting it on <body> is not enough:
+  inside a sheet or a carousel the browser stops looking there. It has to be on every element.
+  (The class-card carousel keeps its own touch-pan-y.)
+*/
+*:not(.touch-pan-y) {
+  touch-action: manipulation;
+}
+
+/*
+  No zoom when a field is focused. iOS zooms the page in on any input, select or textarea whose text is
+  smaller than 16px, so on touch screens every form control is at least that.
+*/
+@media (pointer: coarse) {
+  input,
+  select,
+  textarea {
+    font-size: 16px;
+  }
+}
+
+body {
+  min-height: 100vh;
+  min-height: 100dvh; /* the visible height, not the height behind a mobile browser's toolbars */
+  background-color: var(--background);
+}
+
+::selection {
+  background: rgba(0, 122, 255, 0.25);
+}
+
+input,
+textarea,
+select {
+  color-scheme: inherit;
+}
+
+/* Short landscape screens (a phone on its side): the tab bar must not take a quarter of the height */
+@media (max-height: 500px) and (orientation: landscape) and (max-width: 1023px) {
+  .nav-item {
+    height: 44px;
+    flex-direction: row;
+    gap: 8px;
+  }
+}
+
+/* Keyboard users can see where they are (mouse and touch users don't get the outline) */
+@layer base {
+  button:focus-visible,
+  [role="tab"]:focus-visible,
+  summary:focus-visible {
+    outline: 2px solid var(--color-ink);
+    outline-offset: 2px;
+  }
+}
+
+/* Thin scrollbars by default */
+@layer base {
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: #c7c7cc transparent;
+  }
+}
+
+/* Rows that scroll sideways (chips, carousels) hide their bar. A plain class rather than a utility, because the
+   global "*" default above would otherwise win over it. */
+.no-scrollbar {
+  scrollbar-width: none;
+}
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+button {
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+button:active:not(:disabled) {
+  opacity: 0.7;
+}
+
+/* Numbers use the interface font with tabular figures so columns line up */
+.num {
+  font-variant-numeric: tabular-nums;
+}
+
+@keyframes pulse-glow {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.4;
+  }
+}
+
+@keyframes sheet-up {
+  from {
+    transform: translateY(24px);
+    opacity: 0;
+  }
+  to {
+    transform: none;
+    opacity: 1;
+  }
+}
+
+/* "Someone covered for you" speech bubble above the Mates tab */
+@keyframes cover-pop {
+  from {
+    opacity: 0;
+    transform: scale(0);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes cover-out {
+  to {
+    opacity: 0;
+    transform: scale(0.3) translateY(14px);
+  }
+}
+
+@keyframes cover-wiggle {
+  0%,
+  100% {
+    transform: none;
+  }
+  20% {
+    transform: rotate(-16deg);
+  }
+  45% {
+    transform: rotate(13deg);
+  }
+  70% {
+    transform: rotate(-7deg);
+  }
+}
+
+/* Month-end "wrapped" story */
+@keyframes wrap-rise {
+  from {
+    opacity: 0;
+    transform: translateY(32px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes wrap-pop {
+  from {
+    opacity: 0;
+    transform: scale(0.5) rotate(-6deg);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes wrap-bar {
+  from {
+    width: 0;
+  }
+  to {
+    width: 100%;
+  }
+}
+
+@keyframes wrap-float {
+  0%,
+  100% {
+    transform: translate(0, 0) scale(1);
+  }
+  50% {
+    transform: translate(24px, -30px) scale(1.12);
+  }
+}
+
+@keyframes wrap-fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+/* Today widgets: the first-time invitation */
+@keyframes widget-ripple {
+  0% {
+    transform: scale(1);
+    opacity: 0.45;
+  }
+  100% {
+    transform: scale(2);
+    opacity: 0;
+  }
+}
+
+@keyframes widget-shine {
+  0%,
+  60% {
+    transform: translateX(-120%);
+  }
+  100% {
+    transform: translateX(120%);
+  }
+}
+
+@layer utilities {
+  .widget-plus::before,
+  .widget-plus::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: 9999px;
+    border: 2px solid var(--color-ink);
+    opacity: 0;
+    animation: widget-ripple 2.6s ease-out infinite;
+  }
+  .widget-plus::after {
+    animation-delay: 1.3s;
+  }
+  .widget-cta {
+    position: relative;
+    overflow: hidden;
+  }
+  .widget-cta::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(110deg, transparent 30%, color-mix(in srgb, var(--color-paper) 45%, transparent) 50%, transparent 70%);
+    transform: translateX(-120%);
+    animation: widget-shine 3.2s ease-in-out infinite;
+  }
+}
+
+/* Ping sheet: radar rings, drawn check, waiting dot */
+@keyframes ping-ring {
+  0% {
+    transform: scale(0.9);
+    opacity: 0.55;
+  }
+  100% {
+    transform: scale(1.45);
+    opacity: 0;
+  }
+}
+
+@keyframes ping-draw {
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+@keyframes ping-wait {
+  0%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.35;
+    transform: scale(0.75);
+  }
+}
+
+@layer utilities {
+  .ping-ring {
+    animation: ping-ring 2.6s ease-out infinite;
+  }
+  .ping-ring-2 {
+    animation-delay: 1.3s;
+  }
+  .ping-draw {
+    stroke-dasharray: 30;
+    stroke-dashoffset: 30;
+    animation: ping-draw 0.5s ease 0.35s forwards;
+  }
+  .ping-wait {
+    animation: ping-wait 1.4s ease-in-out infinite;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .ping-ring,
+    .ping-wait {
+      animation: none;
+    }
+    .ping-draw {
+      animation-duration: 0.01s;
+      animation-delay: 0s;
+    }
+  }
+  .wrap-rise {
+    opacity: 0;
+    animation: wrap-rise 0.7s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  }
+  .wrap-pop {
+    opacity: 0;
+    animation: wrap-pop 0.7s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+  }
+  .wrap-fade {
+    opacity: 0;
+    animation: wrap-fade 0.6s ease both;
+  }
+  .wrap-blob {
+    animation: wrap-float 9s ease-in-out infinite;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .wrap-rise,
+    .wrap-pop,
+    .wrap-fade {
+      animation-duration: 0.01s;
+      animation-delay: 0s !important;
+    }
+    .wrap-blob {
+      animation: none;
+    }
+  }
+  .cover-bubble {
+    transform-origin: 50% 100%;
+    animation:
+      cover-pop 0.55s cubic-bezier(0.34, 1.56, 0.64, 1) 0.5s both,
+      cover-out 0.4s ease-in 4s forwards;
+  }
+  .cover-wiggle {
+    animation: cover-wiggle 0.6s ease-in-out 0.45s both;
+  }
+  @media (min-width: 1024px) {
+    .cover-bubble {
+      transform-origin: 0% 50%;
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .cover-bubble {
+      animation:
+        cover-pop 0.01s 0s both,
+        cover-out 0.2s ease-in 4s forwards;
+    }
+    .cover-wiggle {
+      animation: none;
+    }
+  }
+  .animate-pulse-glow {
+    animation: pulse-glow 1.5s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+  }
+  .animate-sheet {
+    animation: sheet-up 0.22s cubic-bezier(0.2, 0.8, 0.2, 1);
+  }
+  /* Display type: bold and tightly tracked, like iOS large titles */
+  .font-display {
+    font-weight: 700;
+    letter-spacing: -0.035em;
+  }
+  .bg-aurora {
+    background-color: #000000;
+  }
+  .text-aurora {
+    color: inherit;
+  }
+  .glass {
+    background-color: var(--card);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    transition: none !important;
+    animation: none !important;
+  }
+}
+
+
+
+
+
+
+/* Scan check-in: the celebration only a scanned code or tapped tag plays */
+.scan-wash { animation: scan-fade 0.7s ease-out both; }
+.scan-disc { animation: scan-pop 0.55s cubic-bezier(0.2, 1.4, 0.4, 1) both; }
+.scan-tick { stroke-dasharray: 46; stroke-dashoffset: 46; animation: scan-draw 0.45s 0.3s ease-out forwards; }
+.scan-ring { border-width: 3px; border-style: solid; opacity: 0; animation: scan-ripple 1.2s 0.15s ease-out both; }
+.scan-ring-late { animation-delay: 0.45s; }
+.scan-dot { opacity: 0; animation: scan-burst 0.9s 0.25s cubic-bezier(0.1, 0.7, 0.3, 1) both; }
+.scan-rise { animation: scan-up 0.5s 0.35s ease-out both; }
+.scan-rise-2 { animation-delay: 0.45s; }
+.scan-rise-3 { animation-delay: 0.6s; }
+@keyframes scan-fade { from { opacity: 0 } to { opacity: 1 } }
+@keyframes scan-pop { from { transform: scale(0.3); opacity: 0 } to { transform: scale(1); opacity: 1 } }
+@keyframes scan-draw { to { stroke-dashoffset: 0 } }
+@keyframes scan-ripple { 0% { transform: scale(0.75); opacity: 0.7 } 100% { transform: scale(1.7); opacity: 0 } }
+@keyframes scan-burst {
+  0% { transform: translate(-50%, -50%) rotate(var(--a)) translateY(0) scale(1); opacity: 1 }
+  100% { transform: translate(-50%, -50%) rotate(var(--a)) translateY(calc(var(--d) * -1)) scale(0.3); opacity: 0 }
+}
+@keyframes scan-up { from { transform: translateY(14px); opacity: 0 } to { transform: none; opacity: 1 } }
+@media (prefers-reduced-motion: reduce) {
+  .scan-ring, .scan-dot, .scan-wash { animation: none; opacity: 0; }
+  .scan-disc, .scan-rise { animation: scan-fade 0.3s both; }
+  .scan-tick { animation: none; stroke-dashoffset: 0; }
+}
+
+/* Desktop density. Everything is sized in CSS pixels, and a laptop with Windows display scaling gives Chrome only
+   ~1536 of them, so the app looked oversized and edge-to-edge there while a zoomed-out tab looked compact and
+   centred. On desktop-sized windows the whole interface is drawn at 80%, so every screen gets the same look. */
+@media (min-width: 1280px) {
+  html { zoom: 0.8 }
+}

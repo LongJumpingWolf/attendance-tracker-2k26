@@ -1,0 +1,530 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>All done: home concepts</title>
+<style>
+  :root {
+    --paper: #f2f2f7; --card: #ffffff; --sec: #e9e9ee; --ink: #000000; --mute: #5f5f64; --line: rgba(0,0,0,.08);
+    --good: #34c759; --good-text: #187030; --bad: #ff3b30; --bad-text: #c4001a; --warn: #ff9f0a; --blue: #0a84ff;
+    --frame: #1b1b1f;
+  }
+  :root[data-theme="dark"] {
+    --paper: #000000; --card: #1c1c1e; --sec: #2c2c2e; --ink: #ffffff; --mute: #a1a1a6; --line: rgba(255,255,255,.1);
+    --good-text: #30d158; --bad-text: #ff453a;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: #d9dae3; color: var(--ink); font: 16px/1.4 -apple-system, BlinkMacSystemFont, "SF Pro Text", Inter, "Segoe UI", system-ui, sans-serif; -webkit-font-smoothing: antialiased; min-height: 100vh; }
+  button { font: inherit; color: inherit; border: 0; background: none; cursor: pointer; }
+  .studio { max-width: 980px; margin: 0 auto; padding: 28px 20px 60px; display: grid; grid-template-columns: 1fr 420px; gap: 34px; align-items: start; }
+  .intro h1 { font-size: 40px; letter-spacing: -.04em; line-height: 1.05; }
+  .intro p { color: #55565f; margin-top: 10px; max-width: 460px; }
+  .picker { display: grid; gap: 10px; margin-top: 26px; }
+  .pick { text-align: left; background: rgba(255,255,255,.7); border-radius: 18px; padding: 14px 16px; transition: background .2s, transform .12s; }
+  .pick:active { transform: scale(.985); }
+  .pick.on { background: #fff; box-shadow: 0 10px 30px rgba(20,22,40,.12); }
+  .pick .n { font-size: 11px; font-weight: 800; letter-spacing: .1em; color: #6b6c76; }
+  .pick b { display: block; font-size: 19px; letter-spacing: -.02em; margin: 2px 0; }
+  .pick span.d { display: block; color: #55565f; font-size: 14px; line-height: 1.35; }
+  .tools { display: flex; gap: 8px; margin-top: 18px; flex-wrap: wrap; }
+  .tool { background: #111; color: #fff; border-radius: 12px; padding: 10px 14px; font-weight: 700; font-size: 14px; }
+  .tool.ghost { background: rgba(255,255,255,.75); color: #111; }
+
+  /* ---- phone ---- */
+  .phone { position: relative; width: 390px; height: 800px; margin: 0 auto; border-radius: 48px; background: var(--paper); border: 9px solid var(--frame); box-shadow: 0 30px 60px rgba(20,22,40,.28); overflow: hidden; transition: background .3s; }
+  .scroll { height: 100%; overflow-y: auto; padding: 22px 18px 110px; scrollbar-width: none; }
+  .scroll::-webkit-scrollbar { display: none; }
+  .head { display: flex; justify-content: space-between; align-items: center; padding-top: 8px; }
+  .head .date { color: var(--mute); font-size: 15px; }
+  .gear { width: 40px; height: 40px; border-radius: 50%; background: var(--card); display: grid; place-items: center; }
+  .gear svg { width: 22px; height: 22px; }
+  h2.title { font-size: 34px; letter-spacing: -.04em; line-height: 1.1; margin-top: 14px; }
+  .sub { color: var(--mute); font-size: 16px; margin-top: 4px; }
+  .nav { position: absolute; left: 0; right: 0; bottom: 0; display: grid; grid-template-columns: repeat(4, 1fr); padding: 8px 12px 20px; background: color-mix(in srgb, var(--paper) 88%, transparent); backdrop-filter: blur(16px); border-top: 1px solid var(--line); }
+  .nav div { display: grid; justify-items: center; gap: 3px; color: var(--mute); font-size: 11px; font-weight: 600; padding-top: 4px; }
+  .nav div.on { color: var(--ink); }
+  .nav svg { width: 24px; height: 24px; }
+  .card { background: var(--card); border-radius: 22px; padding: 16px; }
+  .label { font-size: 12px; font-weight: 700; letter-spacing: .09em; text-transform: uppercase; color: var(--mute); margin: 22px 4px 9px; }
+  .risk { display: flex; align-items: center; gap: 12px; background: color-mix(in srgb, var(--bad) 14%, var(--card)); color: var(--bad-text); border-radius: 18px; padding: 14px 16px; font-weight: 700; font-size: 15px; margin-top: 16px; }
+  .risk i { width: 24px; height: 24px; border-radius: 50%; background: var(--bad); color: #fff; display: grid; place-items: center; font-style: normal; font-size: 14px; flex: none; }
+  .risk .go { margin-left: auto; opacity: .7; }
+  .v { display: none; }
+  .v.on { display: block; }
+  .rise { opacity: 0; transform: translateY(14px); }
+  .play .rise { animation: rise .6s cubic-bezier(.2,.8,.2,1) both; animation-delay: var(--d, 0s); }
+  @keyframes rise { to { opacity: 1; transform: none; } }
+  .pop { opacity: 0; transform: scale(.4); }
+  .play .pop { animation: pop .5s cubic-bezier(.34,1.56,.64,1) both; animation-delay: var(--d, 0s); }
+  @keyframes pop { to { opacity: 1; transform: none; } }
+  .chip { display: inline-flex; align-items: center; gap: 6px; background: var(--card); border-radius: 999px; padding: 7px 12px; font-size: 13px; font-weight: 700; }
+  .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 12px; }
+  .stat { background: var(--card); border-radius: 20px; padding: 14px 16px; }
+  .stat b { display: block; font-size: 28px; letter-spacing: -.03em; line-height: 1.1; }
+  .stat small { color: var(--mute); font-size: 13px; font-weight: 600; }
+  .flame { color: var(--warn); }
+
+  /* ---- A · ring ---- */
+  .ring-wrap { position: relative; width: 232px; height: 232px; margin: 22px auto 6px; }
+  .ring-wrap svg { width: 100%; height: 100%; transform: rotate(-90deg); }
+  .ring-wrap .seg { fill: none; stroke-width: 15; stroke-linecap: round; transform-origin: 116px 116px; stroke-dashoffset: var(--len); }
+  .ring-wrap .track { fill: none; stroke: var(--sec); stroke-width: 15; }
+  .play .ring-wrap .seg { animation: draw .7s cubic-bezier(.4,0,.2,1) both; animation-delay: var(--d); }
+  @keyframes draw { from { stroke-dashoffset: var(--len); } to { stroke-dashoffset: 0; } }
+  .ring-c { position: absolute; inset: 0; display: grid; place-content: center; text-align: center; }
+  .ring-c b { font-size: 60px; letter-spacing: -.05em; line-height: 1; }
+  .ring-c small { color: var(--mute); font-weight: 700; font-size: 14px; }
+  .legend { display: flex; justify-content: center; gap: 8px; margin-top: 4px; }
+  .dot { width: 9px; height: 9px; border-radius: 50%; display: inline-block; }
+  .next { display: flex; align-items: center; gap: 14px; }
+  .next .t { font-variant-numeric: tabular-nums; font-size: 26px; font-weight: 800; letter-spacing: -.03em; }
+  .next small { color: var(--mute); display: block; font-size: 13px; font-weight: 600; }
+  .next .ico { width: 44px; height: 44px; border-radius: 14px; background: var(--sec); display: grid; place-items: center; flex: none; }
+
+  /* ---- B · tomorrow ---- */
+  .hero-count { margin-top: 16px; background: linear-gradient(135deg, #1d2a6b, #4b2a8f); color: #fff; border-radius: 26px; padding: 20px; position: relative; overflow: hidden; }
+  .hero-count small { opacity: .8; font-weight: 700; font-size: 13px; letter-spacing: .06em; text-transform: uppercase; }
+  .hero-count .big { font-size: 46px; font-weight: 800; letter-spacing: -.04em; font-variant-numeric: tabular-nums; margin-top: 4px; line-height: 1.05; }
+  .hero-count p { opacity: .85; margin-top: 4px; font-size: 15px; }
+  .hero-count::after { content: ""; position: absolute; right: -40px; top: -40px; width: 170px; height: 170px; border-radius: 50%; background: radial-gradient(circle, rgba(255,255,255,.28), transparent 70%); }
+  .tl { position: relative; padding-left: 26px; }
+  .tl::before { content: ""; position: absolute; left: 8px; top: 10px; bottom: 10px; width: 2px; background: var(--line); }
+  .tl .it { position: relative; background: var(--card); border-radius: 18px; padding: 13px 14px; margin-bottom: 10px; }
+  .tl .it::before { content: ""; position: absolute; left: -24px; top: 20px; width: 12px; height: 12px; border-radius: 50%; background: var(--card); border: 3px solid var(--blue); }
+  .tl .it.skip::before { border-color: var(--bad); }
+  .it .top { display: flex; justify-content: space-between; align-items: baseline; }
+  .it b { font-size: 17px; letter-spacing: -.02em; }
+  .it .tm { color: var(--mute); font-size: 13px; font-weight: 600; font-variant-numeric: tabular-nums; }
+  .it .fx { color: var(--mute); font-size: 13px; margin-top: 3px; min-height: 18px; }
+  .it .fx em { font-style: normal; font-weight: 700; }
+  .seg2 { display: flex; background: var(--sec); border-radius: 10px; padding: 2px; margin-top: 10px; }
+  .seg2 button { flex: 1; height: 30px; border-radius: 8px; font-size: 13px; font-weight: 700; color: var(--mute); transition: background .2s, color .2s; }
+  .seg2 button.on { background: var(--card); color: var(--ink); box-shadow: 0 1px 3px rgba(0,0,0,.12); }
+  .acc { width: 100%; text-align: left; display: flex; align-items: center; gap: 10px; background: var(--card); border-radius: 18px; padding: 13px 14px; font-weight: 700; }
+  .acc .ok { width: 26px; height: 26px; border-radius: 50%; background: color-mix(in srgb, var(--good) 20%, transparent); color: var(--good-text); display: grid; place-items: center; }
+  .acc .car { margin-left: auto; transition: transform .25s; color: var(--mute); }
+  .acc.open .car { transform: rotate(180deg); }
+  .acc-body { display: none; background: var(--card); border-radius: 0 0 18px 18px; margin-top: -8px; padding: 14px 14px 6px; }
+  .acc-body.open { display: block; }
+  .mini { display: flex; align-items: center; gap: 10px; padding: 7px 0; font-size: 15px; }
+  .mini .tm { margin-left: auto; color: var(--mute); font-size: 13px; }
+
+  /* ---- C · ticket ---- */
+  .ticket { position: relative; margin-top: 18px; background: #fdf6e3; color: #2a2418; border-radius: 22px; padding: 20px 20px 18px; transform-origin: 50% 0; box-shadow: 0 18px 34px rgba(60,40,0,.18);
+    -webkit-mask: radial-gradient(circle 13px at 0 96px, #0000 98%, #000) left / 51% 100% no-repeat, radial-gradient(circle 13px at 100% 96px, #0000 98%, #000) right / 51% 100% no-repeat; mask: radial-gradient(circle 13px at 0 96px, #0000 98%, #000) left / 51% 100% no-repeat, radial-gradient(circle 13px at 100% 96px, #0000 98%, #000) right / 51% 100% no-repeat; }
+  :root[data-theme="dark"] .ticket { background: #f3e9cc; }
+  .play .ticket { animation: drop .8s cubic-bezier(.2,.9,.3,1.15) both; }
+  @keyframes drop { from { opacity: 0; transform: translateY(-120px) rotate(-6deg); } to { opacity: 1; transform: rotate(-1.2deg); } }
+  .ticket .hd { display: flex; justify-content: space-between; align-items: baseline; }
+  .ticket .hd b { font-size: 13px; letter-spacing: .16em; }
+  .ticket .hd span { font-size: 12px; letter-spacing: .08em; opacity: .7; }
+  .ticket h3 { font-size: 30px; letter-spacing: -.03em; margin: 4px 0 0; font-family: Georgia, "Times New Roman", serif; }
+  .perf { border-top: 2px dashed rgba(42,36,24,.35); margin: 26px -20px 12px; }
+  .tk { display: flex; align-items: center; gap: 12px; padding: 8px 0; border-bottom: 1px solid rgba(42,36,24,.12); }
+  .tk:last-of-type { border-bottom: 0; }
+  .tk .nm { font-weight: 700; font-size: 16px; }
+  .tk .tm { font-size: 12px; opacity: .65; font-variant-numeric: tabular-nums; }
+  .stamp { margin-left: auto; width: 62px; height: 62px; border-radius: 50%; border: 3px solid; display: grid; place-items: center; font-weight: 900; letter-spacing: 0; font-size: 10.5px; transform: rotate(var(--r, -12deg)); opacity: .9; }
+  .stamp.p { color: #1a7a3a; border-color: #1a7a3a; }
+  .stamp.a { color: #b3261e; border-color: #b3261e; }
+  .play .stamp { animation: thud .45s cubic-bezier(.2,1.6,.4,1) both; animation-delay: var(--d); }
+  @keyframes thud { from { opacity: 0; transform: scale(2.6) rotate(var(--r)); } to { opacity: .9; transform: scale(1) rotate(var(--r)); } }
+  .barcode { height: 40px; margin-top: 14px; background: repeating-linear-gradient(90deg, #2a2418 0 2px, transparent 2px 4px, #2a2418 4px 5px, transparent 5px 8px, #2a2418 8px 11px, transparent 11px 13px); opacity: .8; border-radius: 2px; }
+  .ticket .ft { display: flex; justify-content: space-between; font-size: 11px; letter-spacing: .12em; opacity: .65; margin-top: 8px; }
+
+  /* ---- D · skip budget ---- */
+  .bank { margin-top: 16px; background: var(--card); border-radius: 26px; padding: 20px; display: flex; align-items: center; gap: 16px; }
+  .bank .num { font-size: 64px; font-weight: 800; letter-spacing: -.06em; line-height: 1; }
+  .bank p { color: var(--mute); font-size: 14px; line-height: 1.3; }
+  .bank p b { color: var(--ink); }
+  .sj { background: var(--card); border-radius: 20px; padding: 14px 16px; margin-bottom: 10px; width: 100%; text-align: left; display: block; }
+  .sj .top { display: flex; justify-content: space-between; align-items: baseline; }
+  .sj b { font-size: 17px; letter-spacing: -.02em; }
+  .sj .pc { font-weight: 800; font-variant-numeric: tabular-nums; }
+  .pips { display: flex; gap: 5px; margin-top: 10px; align-items: center; }
+  .pip { width: 100%; max-width: 30px; height: 9px; border-radius: 5px; background: var(--sec); }
+  .pip.f { background: var(--good); }
+  .pip.r { background: var(--bad); }
+  .sj .say { color: var(--mute); font-size: 13px; font-weight: 600; margin-top: 8px; }
+  .sj.bad .say { color: var(--bad-text); }
+  .sj .more { display: none; margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--line); font-size: 13px; color: var(--mute); }
+  .sj.open .more { display: block; }
+  .sj .more span { display: inline-block; background: var(--sec); border-radius: 8px; padding: 4px 8px; margin: 3px 4px 0 0; font-weight: 700; color: var(--ink); }
+  .play .pip { animation: grow .5s ease both; animation-delay: var(--d); transform-origin: left; }
+  @keyframes grow { from { transform: scaleX(0); opacity: 0; } to { transform: none; opacity: 1; } }
+
+  .week { display: flex; justify-content: space-between; margin-top: 12px; background: var(--card); border-radius: 22px; padding: 14px 16px; }
+  .wd { display: grid; justify-items: center; gap: 7px; font-size: 12px; font-weight: 700; color: var(--mute); }
+  .wd i { width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center; background: var(--sec); font-style: normal; font-size: 13px; color: var(--mute); }
+  .wd i.p { background: var(--good); color: #fff; }
+  .wd i.a { background: var(--bad); color: #fff; }
+  .wd.today i { box-shadow: 0 0 0 3px var(--paper), 0 0 0 5px var(--ink); }
+  .mate { display: flex; align-items: center; gap: 12px; margin-top: 12px; }
+  .mate .av { width: 42px; height: 42px; border-radius: 50%; background: var(--sec); display: grid; place-items: center; font-weight: 800; flex: none; }
+  .mate p { font-size: 14px; color: var(--mute); line-height: 1.3; }
+  .mate p b { color: var(--ink); }
+
+
+  /* ---- E · your widget ---- */
+  .hero { position: relative; height: 330px; margin-top: 16px; border-radius: 30px; overflow: hidden; padding: 20px; color: #fff; display: flex; flex-direction: column; }
+  .hero.light { background: var(--card); color: var(--ink); }
+  .hero .k { font-size: 12px; font-weight: 800; letter-spacing: .09em; text-transform: uppercase; opacity: .8; }
+  .hero .big { font-weight: 800; letter-spacing: -.05em; line-height: 1; }
+  .hero .mut { opacity: .78; font-size: 14px; }
+  .light .mut { color: var(--mute); opacity: 1; }
+  .pill { display: inline-flex; align-items: center; gap: 5px; border-radius: 999px; padding: 5px 10px; font-size: 12px; font-weight: 800; }
+  .bar { height: 8px; border-radius: 4px; background: rgba(255,255,255,.22); overflow: hidden; margin-top: 8px; }
+  .bar u { display: block; height: 100%; border-radius: 4px; background: #fff; }
+  .play .bar u { animation: barin 1s .4s cubic-bezier(.2,.8,.2,1) both; transform-origin: left; }
+  @keyframes barin { from { transform: scaleX(0); } }
+  /* can I skip tomorrow */
+  .hero.fc { background: linear-gradient(160deg, #0f4c5c, #16787f 60%, #1fa37a); }
+  .fcRow { display: flex; align-items: center; gap: 10px; background: rgba(255,255,255,.14); border-radius: 16px; padding: 11px 12px; margin-top: 9px; }
+  .fcRow b { font-size: 16px; letter-spacing: -.02em; }
+  .fcRow small { display: block; font-size: 12px; opacity: .8; font-weight: 600; }
+  .fcRow .pill { margin-left: auto; }
+  .pill.ok { background: #d9f7e4; color: #0d5a2c; }
+  .pill.no { background: #ffe0dd; color: #a4160c; }
+  .fcNote { font-size: 14px; font-weight: 600; margin-top: auto; opacity: .95; }
+  /* where you stand */
+  .rings { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 10px; margin-top: 12px; flex: 1; }
+  .rg { background: var(--sec); border-radius: 20px; padding: 10px; display: grid; grid-template-columns: 50px minmax(0, 1fr); gap: 9px; align-items: center; min-width: 0; }
+  .rg svg { width: 50px; height: 50px; transform: rotate(-90deg); }
+  .rg circle { fill: none; stroke-width: 7; stroke-linecap: round; }
+  .rg .tr { stroke: var(--line); }
+  .play .rg .fg { animation: rgin 1s .3s cubic-bezier(.4,0,.2,1) both; }
+  @keyframes rgin { from { stroke-dasharray: 0 200; } }
+  .rg b { font-size: 19px; letter-spacing: -.03em; display: block; line-height: 1.1; }
+  .rg small { color: var(--mute); font-size: 12px; font-weight: 700; display: block; line-height: 1.25; }
+  .rg .nm { font-size: 13px; font-weight: 700; color: var(--ink); margin-bottom: 1px; }
+  /* deadline */
+  .hero.dl { background: linear-gradient(160deg, #3b1c6b, #6a2fa0 55%, #a44bb8); }
+  .dl .big { font-size: 96px; margin-top: 4px; }
+  .dl .big small { font-size: 26px; letter-spacing: -.02em; font-weight: 700; opacity: .85; margin-left: 6px; }
+  .dl h4 { font-size: 22px; letter-spacing: -.03em; margin-top: 6px; }
+  .dl2 { margin-top: auto; background: rgba(255,255,255,.14); border-radius: 16px; padding: 11px 14px; display: flex; justify-content: space-between; align-items: center; font-weight: 700; font-size: 14px; }
+  .dl2 span { opacity: .8; font-weight: 600; }
+  /* the empty first-time state */
+  .empty { margin-top: 16px; height: 330px; border-radius: 30px; border: 2px dashed color-mix(in srgb, var(--ink) 22%, transparent); background: color-mix(in srgb, var(--card) 70%, transparent); display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 22px; position: relative; overflow: hidden; }
+  .empty .new { position: absolute; top: 16px; right: 16px; background: var(--ink); color: var(--paper); font-size: 11px; font-weight: 800; letter-spacing: .1em; padding: 5px 9px; border-radius: 999px; }
+  .plus { position: relative; width: 64px; height: 64px; border-radius: 50%; background: var(--ink); color: var(--paper); display: grid; place-items: center; }
+  .plus::before, .plus::after { content: ""; position: absolute; inset: 0; border-radius: 50%; border: 2px solid var(--ink); opacity: 0; animation: ripple 2.6s ease-out infinite; }
+  .plus::after { animation-delay: 1.3s; }
+  @keyframes ripple { 0% { transform: scale(1); opacity: .45; } 100% { transform: scale(2); opacity: 0; } }
+  .empty h3 { font-size: 26px; letter-spacing: -.04em; margin-top: 16px; line-height: 1.1; }
+  .empty p { color: var(--mute); font-size: 15px; margin-top: 6px; max-width: 270px; line-height: 1.35; }
+  .cta { margin-top: 16px; height: 46px; padding: 0 22px; border-radius: 999px; background: var(--ink); color: var(--paper); font-weight: 800; font-size: 15px; position: relative; overflow: hidden; }
+  .cta::after { content: ""; position: absolute; inset: 0; background: linear-gradient(110deg, transparent 30%, rgba(255,255,255,.35) 50%, transparent 70%); transform: translateX(-120%); animation: shine 3.2s ease-in-out infinite; }
+  :root[data-theme="dark"] .cta::after { background: linear-gradient(110deg, transparent 30%, rgba(0,0,0,.18) 50%, transparent 70%); }
+  @keyframes shine { 0%, 60% { transform: translateX(-120%); } 100% { transform: translateX(120%); } }
+  .peek { display: flex; gap: 6px; margin-top: 14px; flex-wrap: wrap; justify-content: center; }
+  .peek span { background: var(--sec); color: var(--mute); border-radius: 999px; padding: 5px 10px; font-size: 12px; font-weight: 700; }
+  /* chosen widget wrapper + edit button */
+  .wwrap { position: relative; }
+  .wwrap.popin .hero { animation: wpop .6s cubic-bezier(.34,1.4,.5,1) both; }
+  @keyframes wpop { from { opacity: 0; transform: scale(.9) translateY(12px); } }
+  .wedit { position: absolute; top: 14px; right: 14px; width: 38px; height: 38px; border-radius: 50%; background: rgba(0,0,0,.28); color: #fff; display: grid; place-items: center; backdrop-filter: blur(8px); z-index: 2; }
+  .wwrap .light + .wedit, .wwrap:has(.light) .wedit { background: var(--sec); color: var(--ink); }
+  /* the picker sheet lives inside the phone */
+  .wsheet { position: absolute; inset: 0; z-index: 30; visibility: hidden; pointer-events: none; }
+  .wsheet.open { visibility: visible; pointer-events: auto; }
+  .wback { position: absolute; inset: 0; background: rgba(0,0,0,.45); opacity: 0; transition: opacity .3s; }
+  .wsheet.open .wback { opacity: 1; }
+  .wpanel { position: absolute; left: 0; right: 0; bottom: 0; max-height: 86%; overflow-y: auto; background: var(--card); border-radius: 30px 30px 0 0; padding: 10px 18px 28px; transform: translateY(102%); transition: transform .38s cubic-bezier(.2,.9,.25,1); scrollbar-width: none; }
+  .wpanel::-webkit-scrollbar { display: none; }
+  .wsheet.open .wpanel { transform: none; }
+  .grab { width: 38px; height: 5px; border-radius: 3px; background: var(--line); margin: 0 auto 14px; }
+  .wpanel h3 { font-size: 24px; letter-spacing: -.04em; }
+  .wpanel > p { color: var(--mute); font-size: 14px; margin: 4px 0 14px; line-height: 1.35; }
+  .wopt { width: 100%; display: flex; gap: 12px; align-items: center; text-align: left; background: var(--sec); border-radius: 20px; padding: 10px; margin-bottom: 10px; border: 2px solid transparent; transition: border-color .2s, transform .12s; }
+  .wopt:active { transform: scale(.985); }
+  .wopt.sel { border-color: var(--ink); }
+  .thumb { width: 118px; height: 115px; border-radius: 14px; overflow: hidden; flex: none; position: relative; background: var(--card); }
+  .thumb .inner { width: 340px; transform: scale(.347); transform-origin: top left; pointer-events: none; }
+  .thumb .hero { margin-top: 0; }
+  .wopt .txt b { display: block; font-size: 16px; letter-spacing: -.02em; }
+  .wopt .txt small { display: block; color: var(--mute); font-size: 12.5px; line-height: 1.3; margin-top: 3px; }
+  .wopt .tick { margin-left: auto; width: 24px; height: 24px; border-radius: 50%; background: var(--ink); color: var(--paper); display: none; place-items: center; flex: none; font-size: 13px; }
+  .wopt.sel .tick { display: grid; }
+  .wnone { display: block; margin: 6px auto 0; color: var(--mute); font-weight: 700; font-size: 14px; padding: 8px 12px; }
+  .wtoast { position: absolute; left: 50%; bottom: 96px; transform: translate(-50%, 20px); background: var(--ink); color: var(--paper); border-radius: 999px; padding: 10px 16px; font-size: 13px; font-weight: 700; opacity: 0; pointer-events: none; z-index: 40; white-space: nowrap; transition: opacity .3s, transform .3s; }
+  .wtoast.on { opacity: 1; transform: translate(-50%, 0); }
+  @media (max-width: 900px) { .studio { grid-template-columns: 1fr; } .phone { order: -1; } }
+  @media (max-width: 440px) { .studio { padding: 0; } .intro { padding: 22px 18px 0; } .phone { width: 100%; height: 100vh; border: 0; border-radius: 0; } }
+  @media (prefers-reduced-motion: reduce) { * { animation-duration: .01s !important; animation-delay: 0s !important; } }
+</style>
+</head>
+<body>
+<div class="studio">
+  <div class="intro">
+    <h1>After everything is marked.</h1>
+    <p>The Today tab, once every class has an answer. Right now it says “All done” and lists what you already know. Five different ideas for what it could show instead, on the same data. The last one leaves the big card up to you.</p>
+    <div class="picker" id="picker"></div>
+    <div class="tools">
+      <button class="tool" id="replay">Replay animation</button>
+      <button class="tool ghost" id="theme">Dark mode</button>
+      <button class="tool ghost" id="firstTime">Replay first-time state</button>
+    </div>
+  </div>
+
+  <div class="phone" id="phone">
+    <div class="scroll" id="scroll">
+      <div class="head"><span class="date">Monday, September 21</span><span class="gear"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3.2"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.9.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.9 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.9l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.9.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.9-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.9V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg></span></div>
+
+      <!-- A · Day ring -->
+      <section class="v" id="vA">
+        <h2 class="title rise" style="--d:0s">Day complete</h2>
+        <p class="sub rise" style="--d:.05s">4 of 4 classes marked</p>
+        <div class="ring-wrap" id="ringA"></div>
+        <div class="legend rise" style="--d:1.1s"><span class="chip"><i class="dot" style="background:var(--good)"></i>3 present</span><span class="chip"><i class="dot" style="background:var(--bad)"></i>1 absent</span></div>
+        <div class="row2 rise" style="--d:1.2s">
+          <div class="stat"><b><svg class="flame" width="24" height="24" viewBox="0 0 24 24" fill="currentColor" style="vertical-align:-3px"><path d="M12.6 2.5c.4 3.2-1.4 4.6-2.9 6.3C8 10.7 7 12.2 7 14.3 7 17.4 9.2 20 12 20s5-2.3 5-5.4c0-2-1-3.3-1.9-4.4-.2 1.2-.9 2-1.7 2.2.4-2.9-.1-6.5-.8-9.9z"/></svg> 6</b><small>day streak</small></div>
+          <div class="stat"><b>92%</b><small>this week</small></div>
+        </div>
+        <div class="label rise" style="--d:1.3s">Up next</div>
+        <div class="card next rise" style="--d:1.35s"><span class="ico"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg></span><div><small>Tomorrow 8:30 AM · Physiology</small><span class="t" id="cdA">--:--:--</span></div></div>
+        <div class="risk rise" style="--d:1.45s"><i>!</i>2 subjects are below the attendance requirement<span class="go">&#8250;</span></div>
+      </section>
+
+      <!-- B · Tomorrow first -->
+      <section class="v" id="vB">
+        <h2 class="title rise" style="--d:0s">Tomorrow</h2>
+        <p class="sub rise" style="--d:.05s">Tuesday, September 22 · 3 classes</p>
+        <div class="hero-count rise" style="--d:.1s"><small>First class in</small><div class="big" id="cdB">--h --m</div><p>Physiology at 8:30 AM</p></div>
+        <div class="label rise" style="--d:.2s">Plan it: tap to skip</div>
+        <div class="tl" id="tlB"></div>
+        <div class="rise" style="--d:.5s"><button class="acc" id="accB"><span class="ok">&#10003;</span>Today · 4 classes marked<span class="car">&#9662;</span></button><div class="acc-body" id="accBody"></div></div>
+      </section>
+
+      <!-- C · Ticket -->
+      <section class="v" id="vC">
+        <h2 class="title rise" style="--d:0s">Today's pass</h2>
+        <p class="sub rise" style="--d:.05s">Stamped and filed.</p>
+        <div class="ticket" id="tkC">
+          <div class="hd"><b>ATTENDANCE PASS</b><span>Nº 0921</span></div>
+          <h3>Mon 21 Sep</h3>
+          <div class="perf"></div>
+          <div id="tkRows"></div>
+          <div class="barcode"></div>
+          <div class="ft"><span>COLLEGE TRACKER</span><span>VALID TODAY</span></div>
+        </div>
+        <div class="row2 rise" style="--d:1.6s">
+          <div class="stat"><b>6</b><small>day streak</small></div>
+          <div class="stat"><b>3 / 4</b><small>present today</small></div>
+        </div>
+        <div class="risk rise" style="--d:1.7s"><i>!</i>2 subjects are below the attendance requirement<span class="go">&#8250;</span></div>
+      </section>
+
+      <!-- D · Skip budget -->
+      <section class="v" id="vD">
+        <h2 class="title rise" style="--d:0s">Your skip budget</h2>
+        <p class="sub rise" style="--d:.05s">What you can afford from here.</p>
+        <div class="bank rise" style="--d:.1s"><span class="num" id="bankN">5</span><p><b>skips banked</b> across your subjects.<br>2 subjects need attention first.</p></div>
+        <div class="label rise" style="--d:.2s">Tap a subject</div>
+        <div id="sjD"></div>
+      </section>
+
+      <!-- E · Your widget -->
+      <section class="v" id="vE">
+        <h2 class="title rise" style="--d:0s">You're all caught up</h2>
+        <p class="sub rise" style="--d:.05s">Every class today is marked.</p>
+        <div id="wSlot"></div>
+        <div class="label rise" style="--d:.15s">Last 7 days</div>
+        <div class="week rise" style="--d:.2s" id="weekE"></div>
+        <div class="card mate rise" style="--d:.3s"><span class="av">Z</span><p><b>Zoe covered you 2 times this week.</b><br>You owe her 2 favours. A treat, maybe?</p></div>
+        <div class="risk rise" style="--d:.4s"><i>!</i>2 subjects are below the attendance requirement<span class="go">&#8250;</span></div>
+      </section>
+    </div>
+
+    <div class="wsheet" id="wSheet" aria-hidden="true">
+      <div class="wback" id="wBack"></div>
+      <div class="wpanel" role="dialog" aria-label="Choose a widget">
+        <div class="grab"></div>
+        <h3>Choose a widget</h3>
+        <p>What should this space show once your day is done? You can change it any time.</p>
+        <div id="wOpts"></div>
+        <button class="wnone" id="wNone">Leave it empty</button>
+      </div>
+    </div>
+    <div class="wtoast" id="wToast">Saved. Change it any time with the pencil.</div>
+
+    <div class="nav">
+      <div class="on"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 3 3 10.5V21h6v-6h6v6h6V10.5z"/></svg>Today</div>
+      <div><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="4" y="4" width="7" height="7" rx="1.5"/><rect x="13" y="4" width="7" height="7" rx="1.5"/><rect x="4" y="13" width="7" height="7" rx="1.5"/><rect x="13" y="13" width="7" height="7" rx="1.5"/></svg>Subjects</div>
+      <div><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="4" y="5" width="16" height="15" rx="2"/><path d="M4 10h16M9 3v4M15 3v4"/></svg>Calendar</div>
+      <div><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="9" cy="9" r="3"/><circle cx="17" cy="10" r="2.4"/><path d="M3.5 19c.6-3 2.7-4.6 5.5-4.6s4.9 1.6 5.5 4.6M15 15c2.6-.4 4.7.9 5.5 3.6"/></svg>Mates</div>
+    </div>
+  </div>
+</div>
+
+<script>
+  // ---------- shared sample data (matches the real app's shape) ----------
+  const today = [
+    { name: "Anatomy", time: "9:00 AM", s: "P" },
+    { name: "Biochemistry", time: "11:00 AM", s: "P" },
+    { name: "Physiology", time: "2:00 PM", s: "P" },
+    { name: "Pathology", time: "4:00 PM", s: "A" },
+  ];
+  const subjects = [
+    { name: "Pathology", att: 17, tot: 25, req: 75, color: "#ff375f" },
+    { name: "Physiology", att: 22, tot: 31, req: 75, color: "#0a84ff" },
+    { name: "Biochemistry", att: 19, tot: 25, req: 75, color: "#bf5af2" },
+    { name: "Anatomy", att: 28, tot: 34, req: 75, color: "#30d158" },
+  ];
+  const tomorrow = [
+    { name: "Physiology", time: "8:30 AM", at: 8.5 },
+    { name: "Anatomy", time: "10:00 AM", at: 10 },
+    { name: "Pathology", time: "1:00 PM", at: 13 },
+  ];
+  const info = (s) => {
+    const pct = Math.round((s.att / s.tot) * 100), r = s.req / 100;
+    if (pct < s.req) return { pct, skips: 0, need: Math.max(1, Math.ceil((r * s.tot - s.att) / (1 - r) - 1e-9)) };
+    return { pct, skips: Math.max(0, Math.floor((s.att - r * s.tot) / r + 1e-9)), need: 0 };
+  };
+  const $ = (id) => document.getElementById(id);
+
+  // ---------- picker ----------
+  const variants = [
+    { id: "vA", n: "IDEA A", t: "Day ring", d: "The day as one completed ring, one segment per class. Then a live countdown to tomorrow's first class." },
+    { id: "vB", n: "IDEA B", t: "Tomorrow first", d: "Today is done, so the screen turns to tomorrow: a countdown, a timeline, and a quick plan-to-skip that shows what each choice does to your %." },
+    { id: "vC", n: "IDEA C", t: "Attendance pass", d: "Today as a paper ticket with a rubber stamp per class. Tactile, a little nostalgic, and it drops in like it was just printed." },
+    { id: "vD", n: "IDEA D", t: "Skip budget", d: "The useful thing to know once you're done: how many skips you can afford per subject, and what it takes to recover the risky ones." },
+    { id: "vE", n: "IDEA E", t: "Your widget", d: "You choose. The first time the day is done this space is empty and invites you to pick a widget: can I skip tomorrow, where you stand, or your next deadline. Your choice is remembered." },
+  ];
+  $("picker").innerHTML = variants.map((v, i) => `<button class="pick" data-i="${i}"><span class="n">${v.n}</span><b>${v.t}</b><span class="d">${v.d}</span></button>`).join("");
+
+  // ---------- A ----------
+  const arc = (i, n, color, delay) => {
+    const r = 100, C = 2 * Math.PI * r, gapDeg = 9, arcDeg = 360 / n - gapDeg, len = (arcDeg / 360) * C, start = i * (360 / n) + gapDeg / 2;
+    return `<circle class="seg" cx="116" cy="116" r="${r}" stroke="${color}" stroke-dasharray="${len} ${C}" style="--len:${len};--d:${delay}s;transform:rotate(${start}deg)" />`;
+  };
+  $("ringA").innerHTML = `<svg viewBox="0 0 232 232"><circle class="track" cx="116" cy="116" r="100"/>${today.map((c, i) => arc(i, today.length, c.s === "P" ? "var(--good)" : "var(--bad)", 0.15 + i * 0.22)).join("")}</svg><div class="ring-c"><b>4<span style="color:var(--mute);font-size:34px">/4</span></b><small>classes marked</small></div>`;
+
+  // ---------- B ----------
+  const plan = {};
+  const renderTL = () => {
+    $("tlB").innerHTML = tomorrow.map((c, i) => {
+      const s = subjects.find((x) => x.name === c.name), before = info(s), skip = plan[i];
+      const after = Math.round(((s.att + (skip ? 0 : 1)) / (s.tot + 1)) * 100);
+      const cls = after >= s.req ? "var(--good-text)" : "var(--bad-text)";
+      return `<div class="it ${skip ? "skip" : ""}"><div class="top"><b>${c.name}</b><span class="tm">${c.time}</span></div><div class="fx">${before.pct}% <em>&rarr;</em> <em style="color:${cls}">${after}%</em> ${skip ? (after < s.req ? "· below " + s.req + "%" : "· still safe") : "if you attend"}</div><div class="seg2"><button data-i="${i}" data-v="0" class="${skip ? "" : "on"}">Attend</button><button data-i="${i}" data-v="1" class="${skip ? "on" : ""}">Skip</button></div></div>`;
+    }).join("");
+  };
+  $("tlB").addEventListener("click", (e) => { const b = e.target.closest("button"); if (!b) return; plan[b.dataset.i] = b.dataset.v === "1"; renderTL(); });
+  renderTL();
+  $("accBody").innerHTML = today.map((c) => `<div class="mini"><span class="dot" style="background:${c.s === "P" ? "var(--good)" : "var(--bad)"}"></span>${c.name}<span class="tm">${c.time} · ${c.s === "P" ? "Present" : "Absent"}</span></div>`).join("");
+  $("accB").addEventListener("click", () => { $("accB").classList.toggle("open"); $("accBody").classList.toggle("open"); });
+
+  // ---------- C ----------
+  const rot = [-14, 9, -8, 12];
+  $("tkRows").innerHTML = today.map((c, i) => `<div class="tk"><div><div class="nm">${c.name}</div><div class="tm">${c.time}</div></div><span class="stamp ${c.s === "P" ? "p" : "a"}" style="--r:${rot[i]}deg;--d:${0.9 + i * 0.3}s">${c.s === "P" ? "PRESENT" : "ABSENT"}</span></div>`).join("");
+
+  // ---------- D ----------
+  $("sjD").innerHTML = subjects.map((s, i) => {
+    const f = info(s), bad = f.need > 0, pips = bad ? Math.min(f.need, 6) : Math.min(f.skips, 6), total = 6;
+    const say = bad ? `Attend the next ${f.need} classes to recover` : f.skips === 0 ? "No skips left. Don't miss the next one." : `${f.skips} ${f.skips === 1 ? "skip" : "skips"} available`;
+    const nextDays = ["Tue 8:30", "Thu 8:30", "Fri 8:30", "Mon 8:30", "Tue 8:30", "Thu 8:30"].slice(0, bad ? f.need : 0);
+    return `<button class="sj ${bad ? "bad" : ""}"><div class="top"><b>${s.name}</b><span class="pc" style="color:${bad ? "var(--bad-text)" : "var(--ink)"}">${f.pct}%</span></div><div class="pips">${Array.from({ length: total }, (_, k) => `<span class="pip ${k < pips ? (bad ? "r" : "f") : ""}" style="--d:${0.25 + i * 0.1 + k * 0.05}s"></span>`).join("")}</div><div class="say">${say}</div><div class="more">${bad ? "Your next classes:" + nextDays.map((d) => `<span>${d}</span>`).join("") : "Comfortable. Each skip costs about " + Math.round(100 / (s.tot + 1)) + "% of the buffer."}</div></button>`;
+  }).join("");
+  $("sjD").addEventListener("click", (e) => e.target.closest(".sj")?.classList.toggle("open"));
+  $("bankN").textContent = subjects.reduce((n, s) => n + info(s).skips, 0);
+
+  // ---------- E · your widget ----------
+  const dn = ["S", "M", "T", "W", "T", "F", "S"], st = ["p", "p", "a", "p", "off", "off", "p"];
+  $("weekE").innerHTML = st.map((s2, k) => { const d = new Date(); d.setDate(d.getDate() - (6 - k)); return `<div class="wd ${k === 6 ? "today" : ""}"><i class="${s2 === "off" ? "" : s2}">${s2 === "p" ? "&#10003;" : s2 === "a" ? "&#10005;" : "&middot;"}</i>${dn[d.getDay()]}</div>`; }).join("");
+
+  const widgets = [
+    { id: "fc", t: "Can I skip tomorrow?", d: "A verdict for each of tomorrow's classes, and what skipping would do to your percentage." },
+    { id: "rings", t: "Where you stand", d: "One ring per subject: your percentage, skips left, or how many classes to attend to recover." },
+    { id: "dl", t: "Deadline", d: "Your next exam or assignment as a big countdown, with the one after it." },
+  ];
+  const widgetHTML = {
+    fc() {
+      const rows = tomorrow.map((c) => {
+        const s = subjects.find((x) => x.name === c.name), f = info(s), after = Math.round((s.att / (s.tot + 1)) * 100);
+        const safe = f.skips > 0 && after >= s.req;
+        return `<div class="fcRow"><div><b>${c.name}</b><small>${c.time} · now ${f.pct}%</small></div><span class="pill ${safe ? "ok" : "no"}">${safe ? "Safe to skip" : "Must attend"}</span></div>`;
+      }).join("");
+      const safeOne = tomorrow.map((c) => subjects.find((x) => x.name === c.name)).find((s) => info(s).skips > 0 && Math.round((s.att / (s.tot + 1)) * 100) >= s.req);
+      const note = safeOne ? `Skip ${safeOne.name} and you're still at ${Math.round((safeOne.att / (safeOne.tot + 1)) * 100)}%. The other two need you.` : "Every class tomorrow needs you. No skips to spare.";
+      return `<div class="hero fc"><div class="k">Tomorrow · 3 classes</div><h3 style="font-size:30px;letter-spacing:-.04em;margin-top:4px;line-height:1.05">Can I skip?</h3>${rows}<p class="fcNote">${note}</p></div>`;
+    },
+    rings() {
+      const C = 2 * Math.PI * 26;
+      const cell = (s) => { const f = info(s), bad = f.need > 0, col = bad ? "#ff3b30" : f.skips === 0 ? "#ff9f0a" : "#34c759"; return `<div class="rg"><svg viewBox="0 0 64 64"><circle class="tr" cx="32" cy="32" r="26"/><circle class="fg" cx="32" cy="32" r="26" stroke="${col}" stroke-dasharray="${(f.pct / 100) * C} ${C}"/></svg><div><small class="nm">${s.name}</small><b>${f.pct}%</b><small style="color:${bad ? "var(--bad-text)" : "var(--mute)"}">${bad ? "Attend next " + f.need : f.skips === 0 ? "No skips left" : f.skips + " skips left"}</small></div></div>`; };
+      return `<div class="hero light" style="padding:18px"><div class="k" style="color:var(--mute)">Where you stand</div><div style="font-size:26px;font-weight:800;letter-spacing:-.04em;margin-top:3px">Four subjects, one glance</div><div class="rings">${subjects.map(cell).join("")}</div></div>`;
+    },
+    dl() {
+      return `<div class="hero dl"><div class="k">Next deadline</div><div class="big">3<small>days</small></div><h4>Anatomy assignment</h4><div class="bar" style="margin-top:12px"><u style="width:72%"></u></div><div class="mut" style="font-size:12px;margin-top:6px">Set 7 days ago · due Thu 24 Sep</div><div class="dl2">Pathology internal <span>in 9 days</span></div></div>`;
+    },
+  };
+  const PENCIL = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20h4L19 9a2.8 2.8 0 0 0-4-4L4 16z"/></svg>';
+  const store = {
+    get() { try { return localStorage.getItem("alldone.widget"); } catch (e) { return null; } },
+    set(v) { try { v ? localStorage.setItem("alldone.widget", v) : localStorage.removeItem("alldone.widget"); } catch (e) {} },
+  };
+  let choice = store.get();
+  if (!widgets.some((w) => w.id === choice)) choice = null;
+
+  const emptyHTML = `<div class="empty rise" style="--d:.1s"><span class="new">NEW</span><button class="plus" data-open aria-label="Choose a widget"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></button><h3>Make this space yours</h3><p>You're all caught up. Choose what you'd like to see here when the day is done.</p><button class="cta" data-open>Choose a widget</button><div class="peek"><span>Can I skip tomorrow?</span><span>Where you stand</span><span>Deadline</span></div></div>`;
+
+  function renderSlot(animate) {
+    const slot = $("wSlot");
+    if (!choice) slot.innerHTML = emptyHTML;
+    else slot.innerHTML = `<div class="wwrap ${animate ? "popin" : ""}">${widgetHTML[choice]()}<button class="wedit" aria-label="Change widget">${PENCIL}</button></div>`;
+    slot.querySelectorAll("[data-open], .wedit").forEach((b) => b.addEventListener("click", openSheet));
+    replay();
+  }
+  function openSheet() {
+    $("wOpts").innerHTML = widgets.map((w) => `<button class="wopt ${w.id === choice ? "sel" : ""}" data-id="${w.id}"><span class="thumb"><span class="inner" style="display:block">${widgetHTML[w.id]()}</span></span><span class="txt"><b>${w.t}</b><small>${w.d}</small></span><span class="tick">&#10003;</span></button>`).join("");
+    $("wNone").style.display = choice ? "block" : "none";
+    $("wSheet").classList.add("open"); $("wSheet").setAttribute("aria-hidden", "false");
+    replay();
+  }
+  function closeSheet() { $("wSheet").classList.remove("open"); $("wSheet").setAttribute("aria-hidden", "true"); }
+  let toastT;
+  function toast(msg) { $("wToast").textContent = msg; $("wToast").classList.add("on"); clearTimeout(toastT); toastT = setTimeout(() => $("wToast").classList.remove("on"), 2600); }
+  $("wOpts").addEventListener("click", (e) => {
+    const b = e.target.closest(".wopt"); if (!b) return;
+    choice = b.dataset.id; store.set(choice); closeSheet(); renderSlot(true); toast("Saved. Change it any time with the pencil.");
+  });
+  $("wNone").addEventListener("click", () => { choice = null; store.set(null); closeSheet(); renderSlot(false); toast("Widget removed."); });
+  $("wBack").addEventListener("click", closeSheet);
+  $("firstTime").addEventListener("click", () => { choice = null; store.set(null); closeSheet(); show(variants.findIndex((v) => v.id === "vE")); });
+
+  // ---------- switching, replay, theme ----------
+  const phone = $("phone");
+  let current = 0;
+  function show(i) {
+    current = i;
+    variants.forEach((v, k) => $(v.id).classList.toggle("on", k === i));
+    document.querySelectorAll(".pick").forEach((p, k) => p.classList.toggle("on", k === i));
+    $("scroll").scrollTop = 0;
+    closeSheet();
+    if (variants[i].id === "vE") renderSlot(false);
+    else replay();
+  }
+  function replay() {
+    phone.classList.remove("play"); void phone.offsetWidth; phone.classList.add("play");
+  }
+  document.querySelectorAll(".pick").forEach((p) => p.addEventListener("click", () => show(Number(p.dataset.i))));
+  $("replay").addEventListener("click", replay);
+  const root = document.documentElement;
+  const setTheme = (t) => { root.dataset.theme = t; $("theme").textContent = t === "dark" ? "Light mode" : "Dark mode"; };
+  $("theme").addEventListener("click", () => setTheme(root.dataset.theme === "dark" ? "light" : "dark"));
+  setTheme(matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+
+  // live countdowns to tomorrow 8:30
+  function tick() {
+    const now = new Date(), t = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1, 8, 30, 0), ms = Math.max(0, t - now);
+    const h = Math.floor(ms / 3600000), m = Math.floor((ms % 3600000) / 60000), s = Math.floor((ms % 60000) / 1000), p = (n) => String(n).padStart(2, "0");
+    $("cdA").textContent = `${p(h)}:${p(m)}:${p(s)}`;
+    $("cdB").textContent = `${h}h ${p(m)}m`;
+  }
+  tick(); setInterval(tick, 1000);
+  const start = Number(new URLSearchParams(location.search).get("v")) || 0;
+  show(start);
+</script>
+</body>
+</html>

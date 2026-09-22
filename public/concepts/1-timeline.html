@@ -1,0 +1,192 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<title>Concept 1 · Timeline</title>
+<style>
+  :root{
+    --bg:#f2f2f7; --card:#fff; --ink:#000; --mute:#5f5f64; --line:rgba(60,60,67,.14);
+    --good:#187030; --bad:#c4001a; --hour:78px; --gutter:58px;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%}
+  body{font:16px/1.4 -apple-system,BlinkMacSystemFont,"SF Pro Text",Inter,"Segoe UI",system-ui,sans-serif;background:var(--bg);color:var(--ink);-webkit-font-smoothing:antialiased;display:flex;justify-content:center;touch-action:pan-y}
+  button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
+  .app{width:100%;max-width:430px;height:100dvh;display:flex;flex-direction:column;position:relative}
+
+  /* header */
+  header{padding:calc(env(safe-area-inset-top) + 18px) 20px 10px}
+  .date{font-size:15px;color:var(--mute)}
+  h1{font-size:34px;line-height:1.1;font-weight:700;letter-spacing:-.035em;margin-top:2px}
+  .anytime{display:flex;gap:8px;overflow-x:auto;margin:14px -20px 0;padding:0 20px;scrollbar-width:none}
+  .anytime::-webkit-scrollbar{display:none}
+  .chip{flex:none;display:flex;align-items:center;gap:8px;background:var(--card);border-radius:14px;padding:6px 6px 6px 12px;font-size:14px;font-weight:600}
+  .chip small{font-weight:500;color:var(--mute);font-size:12px}
+  .mini{width:30px;height:30px;border-radius:50%;display:grid;place-items:center;font-size:15px;font-weight:700}
+  .mini.p{background:rgba(24,112,48,.12);color:var(--good)} .mini.a{background:rgba(196,0,26,.1);color:var(--bad)}
+  .mini.on.p{background:var(--good);color:#fff} .mini.on.a{background:var(--bad);color:#fff}
+
+  /* notice */
+  .notice{margin:12px 20px 0;padding:12px 14px;border-radius:14px;background:rgba(196,0,26,.09);color:var(--bad);font-weight:600;font-size:14.5px;display:flex;gap:10px;align-items:center;text-align:left;width:calc(100% - 40px)}
+  .notice[hidden]{display:none}
+
+  /* timeline */
+  .scroll{flex:1;overflow-y:auto;position:relative;margin-top:12px;-webkit-overflow-scrolling:touch}
+  .grid{position:relative;margin-right:16px}
+  .hour{position:absolute;left:0;right:0;height:0;border-top:1px solid var(--line)}
+  .hour span{position:absolute;left:20px;top:-9px;width:var(--gutter);font-size:12px;color:var(--mute);background:var(--bg);font-variant-numeric:tabular-nums}
+  .block{position:absolute;left:calc(var(--gutter) + 20px);right:0;border-radius:14px;padding:9px 12px 9px 14px;text-align:left;background:var(--tint);overflow:hidden;transition:transform .15s, opacity .2s}
+  .block::before{content:"";position:absolute;left:0;top:0;bottom:0;width:4px;background:var(--c)}
+  .block:active{transform:scale(.985)}
+  .block.sel{box-shadow:0 0 0 2px var(--ink)}
+  .block.done{opacity:.55}
+  .b-name{font-weight:650;font-size:15.5px;letter-spacing:-.01em;display:flex;gap:6px;align-items:center}
+  .b-meta{font-size:12.5px;color:var(--mute);margin-top:1px;font-variant-numeric:tabular-nums}
+  .tick{margin-left:auto;width:22px;height:22px;border-radius:50%;display:grid;place-items:center;font-size:13px;font-weight:800;color:#fff}
+  .tick.p{background:var(--good)} .tick.a{background:var(--bad)}
+  .now{position:absolute;left:calc(var(--gutter) + 8px);right:0;height:2px;background:var(--ink);z-index:5;pointer-events:none}
+  .now::before{content:"";position:absolute;left:-6px;top:-4px;width:10px;height:10px;border-radius:50%;background:var(--ink)}
+  .now span{position:absolute;left:-58px;top:-10px;background:var(--ink);color:#fff;font-size:11px;font-weight:700;padding:2px 6px;border-radius:6px;font-variant-numeric:tabular-nums}
+
+  /* dock */
+  .dock{background:var(--card);border-radius:26px 26px 0 0;padding:16px 20px calc(16px + env(safe-area-inset-bottom));box-shadow:0 -1px 0 var(--line)}
+  .d-top{display:flex;align-items:center;gap:10px}
+  .dot{width:12px;height:12px;border-radius:50%;flex:none}
+  .d-name{font-size:21px;font-weight:700;letter-spacing:-.025em;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .badge{font-size:10.5px;font-weight:800;letter-spacing:.06em;padding:3px 8px;border-radius:7px;background:rgba(60,60,67,.1);color:var(--mute)}
+  .badge.now{background:var(--ink);color:#fff} .badge.late{background:rgba(196,0,26,.1);color:var(--bad)}
+  .d-meta{color:var(--mute);font-size:14px;margin:4px 0 14px;font-variant-numeric:tabular-nums}
+  .d-meta b{color:var(--ink);font-weight:600}
+  .btns{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  .btn{height:52px;border-radius:16px;font-weight:650;font-size:17px;display:flex;align-items:center;justify-content:center;gap:8px}
+  .btn.p{background:var(--good);color:#fff} .btn.a{background:rgba(196,0,26,.1);color:var(--bad)}
+  .btn.s{background:rgba(60,60,67,.1)}
+  .btn:active{opacity:.7}
+  .empty{padding:6px 0 4px;color:var(--mute)}
+</style>
+</head>
+<body>
+<div class="app">
+  <header>
+    <div class="date" id="date"></div>
+    <h1>Today</h1>
+    <div class="anytime" id="anytime"></div>
+  </header>
+  <button class="notice" id="notice" hidden></button>
+  <div class="scroll" id="scroll"><div class="grid" id="grid"></div></div>
+  <div class="dock" id="dock"></div>
+</div>
+
+<script>
+/* ---------- mock data, built around the current time ---------- */
+const NOW0 = new Date();
+const M0 = NOW0.getHours()*60 + NOW0.getMinutes();
+const cl = v => Math.max(0, Math.min(1439, v));
+const SUBJECTS = [
+  {id:'ana', name:'Anatomy',            color:'#ff5a4d', att:20, mis:8, req:75, kind:'Practical', start:cl(M0-85),  end:cl(M0-25)},
+  {id:'pha', name:'Pharmacology',       color:'#2f7cf6', att:30, mis:3, req:75, kind:'Lecture',   start:cl(M0-20),  end:cl(M0+40)},
+  {id:'phy', name:'Physiology',         color:'#1fae6b', att:15, mis:5, req:75, kind:'Lecture',   start:cl(M0+75),  end:cl(M0+135)},
+  {id:'bio', name:'Biochemistry',       color:'#8b5cf6', att:26, mis:2, req:75, kind:'Tutorial',  start:cl(M0+190), end:cl(M0+250)},
+  {id:'com', name:'Community Medicine', color:'#f59e0b', att:6,  mis:0, req:75, kind:'Lecture',   start:null, end:null},
+];
+const marks = {};           // id -> 'P' | 'A'
+const undo = [];
+const $ = s => document.querySelector(s);
+const fmt = m => { const h=Math.floor(m/60), mm=String(m%60).padStart(2,'0'); return `${h%12||12}:${mm} ${h>=12?'PM':'AM'}`; };
+const dur = m => { m=Math.max(1,Math.round(m)); return m<60?`${m} min`:`${Math.floor(m/60)}h${m%60?` ${m%60}m`:''}`; };
+const tint = (hex,a=.13)=>{const n=parseInt(hex.slice(1),16);return `rgba(${n>>16},${(n>>8)&255},${n&255},${a})`};
+function stats(s){
+  const total=s.att+s.mis, pct=total?Math.round(s.att/total*100):0, r=s.req/100;
+  let text, status;
+  if(!total){text='Not started';status='new'}
+  else if(pct<s.req){const need=Math.max(1,Math.ceil((r*total-s.att)/(1-r)-1e-9));text=`Attend the next ${need} to recover`;status='risk'}
+  else{const k=Math.max(0,Math.floor((s.att-r*total)/r+1e-9));status=k?'safe':'edge';text=k?`${k} skip${k>1?'s':''} available`:'No skips left'}
+  return {pct,text,status};
+}
+function setMark(id,st){
+  const s=SUBJECTS.find(x=>x.id===id), prev=marks[id]||null;
+  if(prev===st) return;
+  undo.push({id,prev});
+  if(prev==='P') s.att--; if(prev==='A') s.mis--;
+  if(st==='P') s.att++; if(st==='A') s.mis++;
+  if(st) marks[id]=st; else delete marks[id];
+}
+function undoLast(){const u=undo.pop(); if(!u) return; const s=SUBJECTS.find(x=>x.id===u.id), cur=marks[u.id]||null;
+  if(cur==='P') s.att--; if(cur==='A') s.mis--; if(u.prev==='P') s.att++; if(u.prev==='A') s.mis++;
+  if(u.prev) marks[u.id]=u.prev; else delete marks[u.id]; }
+
+/* ---------- state ---------- */
+let selected = null;
+const timed = SUBJECTS.filter(s=>s.start!==null).sort((a,b)=>a.start-b.start);
+const untimed = SUBJECTS.filter(s=>s.start===null);
+const minutesNow = () => { const d=new Date(); return d.getHours()*60+d.getMinutes()+d.getSeconds()/60; };
+const T0 = Math.floor((Math.min(...timed.map(s=>s.start))-50)/60)*60;
+const T1 = Math.ceil((Math.max(...timed.map(s=>s.end))+50)/60)*60;
+const H = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--hour'));
+const y = m => (m-T0)/60*H;
+
+function phase(s){const n=minutesNow(); return n>=s.start&&n<s.end?'now':n>=s.end?'ended':'later'}
+function defaultSelection(){
+  const pend = timed.filter(s=>!marks[s.id]);
+  return (pend.find(s=>phase(s)==='now')||pend.find(s=>phase(s)==='later')||pend[0]||timed[timed.length-1]||untimed[0]).id;
+}
+
+/* ---------- render ---------- */
+function build(){
+  const g=$('#grid'); g.style.height=y(T1)+'px'; let html='';
+  for(let m=T0;m<=T1;m+=60) html+=`<div class="hour" style="top:${y(m)}px"><span>${fmt(m).replace(':00','')}</span></div>`;
+  timed.forEach(s=>{ const h=Math.max(54,y(s.end)-y(s.start)-4);
+    html+=`<button class="block" data-id="${s.id}" style="top:${y(s.start)+2}px;height:${h}px;--c:${s.color};--tint:${tint(s.color)}"></button>`; });
+  html+=`<div class="now" id="nowline"><span id="nowlabel"></span></div>`;
+  g.innerHTML=html;
+  g.querySelectorAll('.block').forEach(b=>b.onclick=()=>{selected=b.dataset.id;paint()});
+}
+function paint(){
+  const n=minutesNow();
+  $('#date').textContent = new Date().toLocaleDateString('en-US',{weekday:'long',day:'numeric',month:'long'});
+  // now line
+  const nl=$('#nowline'); nl.style.top=Math.max(0,Math.min(y(T1),y(n)))+'px'; $('#nowlabel').textContent=fmt(Math.floor(n)).replace(' ',' ');
+  // blocks
+  document.querySelectorAll('.block').forEach(b=>{
+    const s=SUBJECTS.find(x=>x.id===b.dataset.id), st=marks[s.id], i=stats(s);
+    b.classList.toggle('sel',selected===s.id); b.classList.toggle('done',!!st);
+    b.innerHTML=`<div class="b-name">${s.name}${st?`<span class="tick ${st==='P'?'p':'a'}">${st==='P'?'✓':'✕'}</span>`:''}</div>
+      <div class="b-meta">${fmt(s.start)} – ${fmt(s.end)} · ${s.kind} · ${i.pct}%</div>`;
+  });
+  // any-time chips
+  $('#anytime').innerHTML = untimed.map(s=>{const st=marks[s.id],i=stats(s);
+    return `<div class="chip"><div>${s.name}<br><small>${i.pct}% · ${i.text}</small></div>
+      <button class="mini p ${st==='P'?'on':''}" data-m="${s.id}:P" aria-label="Present">✓</button>
+      <button class="mini a ${st==='A'?'on':''}" data-m="${s.id}:A" aria-label="Absent">✕</button></div>`}).join('');
+  document.querySelectorAll('[data-m]').forEach(b=>b.onclick=()=>{const [id,st]=b.dataset.m.split(':'); setMark(id,marks[id]===st?null:st); paint();});
+  // notice: ended and unmarked
+  const late=timed.filter(s=>phase(s)==='ended'&&!marks[s.id]);
+  const nt=$('#notice');
+  if(late.length){nt.hidden=false; const s=late[0]; nt.innerHTML=`<span>⚠︎</span><span>${late.length>1?`${late.length} classes ended without a mark`:`${s.name} ended ${dur(n-s.end)} ago and isn’t marked`}</span>`; nt.onclick=()=>{selected=s.id;paint();scrollToSel()}}
+  else nt.hidden=true;
+  dock();
+}
+function dock(){
+  const s=SUBJECTS.find(x=>x.id===selected), st=marks[s.id], i=stats(s), n=minutesNow();
+  let badge='', when='';
+  if(s.start===null){badge='<span class="badge">ANY TIME</span>'; when='No fixed time'}
+  else{const p=phase(s);
+    badge=p==='now'?'<span class="badge now">NOW</span>':p==='ended'?'<span class="badge late">ENDED</span>':'<span class="badge">LATER</span>';
+    when=`${fmt(s.start)} – ${fmt(s.end)} · ${p==='now'?`ends in ${dur(s.end-n)}`:p==='ended'?`ended ${dur(n-s.end)} ago`:`starts in ${dur(s.start-n)}`}`}
+  $('#dock').innerHTML=`<div class="d-top"><span class="dot" style="background:${s.color}"></span><div class="d-name">${s.name}</div>${badge}</div>
+    <div class="d-meta">${when}<br><b>${i.pct}%</b> · ${i.text}</div>`+
+    (st? `<div class="btns"><button class="btn s" id="chg">Change to ${st==='P'?'absent':'present'}</button><button class="btn s" id="clr">Undo</button></div>`
+       : `<div class="btns"><button class="btn p" id="bp">✓ Present</button><button class="btn a" id="ba">✕ Absent</button></div>`);
+  const go=v=>{setMark(s.id,v);selected=defaultSelection();paint()};
+  if(st){$('#chg').onclick=()=>{setMark(s.id,st==='P'?'A':'P');paint()};$('#clr').onclick=()=>{setMark(s.id,null);paint()}}
+  else{$('#bp').onclick=()=>go('P');$('#ba').onclick=()=>go('A')}
+}
+function scrollToSel(){const b=document.querySelector(`.block[data-id="${selected}"]`); if(b){const sc=$('#scroll'); sc.scrollTo({top:b.offsetTop-sc.clientHeight*.3,behavior:'smooth'})}}
+
+build(); selected=defaultSelection(); paint();
+requestAnimationFrame(()=>{const sc=$('#scroll'); sc.scrollTop=y(minutesNow())-sc.clientHeight*.4});
+setInterval(paint,20000);
+</script>
+</body>
+</html>

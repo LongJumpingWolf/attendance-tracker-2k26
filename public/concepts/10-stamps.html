@@ -1,0 +1,150 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<title>Concept 10 · Stamp pad</title>
+<style>
+  :root{--bg:#e9e5da;--paper:#f8f4e8;--ink:#2a2620;--mute:#5c574b;--good:#187030;--bad:#c4001a;--pat:#cfc7b0}
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%}
+  body{font:16px/1.4 -apple-system,BlinkMacSystemFont,"SF Pro Text",Inter,system-ui,sans-serif;background:var(--bg);color:var(--ink);-webkit-font-smoothing:antialiased;display:flex;justify-content:center;touch-action:none;user-select:none;overflow:hidden}
+  button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
+  .app{width:100%;max-width:430px;height:100dvh;display:flex;flex-direction:column;padding:calc(env(safe-area-inset-top) + 14px) 18px calc(env(safe-area-inset-bottom) + 14px)}
+  .top{display:flex;justify-content:space-between;align-items:baseline}
+  .top .d{font-size:15px;color:var(--mute)} .top .n{font-size:15px;font-weight:700}
+  .notice{margin-top:8px;background:rgba(196,0,26,.045);color:#b00018;border-radius:14px;padding:10px 14px;font-weight:600;font-size:14px;text-align:left;width:100%}
+  .notice[hidden]{display:none}
+  .table{flex:1;position:relative;margin:12px 0 10px;min-height:0}
+  .page{position:absolute;inset:0;background:var(--paper);border-radius:18px;padding:22px 22px 18px;display:flex;flex-direction:column;box-shadow:0 1px 0 rgba(0,0,0,.05),0 18px 30px -18px rgba(60,40,10,.45);transition:transform .55s cubic-bezier(.5,0,.2,1),opacity .45s;overflow:hidden;
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='40' viewBox='0 0 120 40'%3E%3Cpath d='M0 20 Q15 0 30 20 T60 20 T90 20 T120 20' fill='none' stroke='%23e4dcc6' stroke-width='1'/%3E%3Cpath d='M0 26 Q15 6 30 26 T60 26 T90 26 T120 26' fill='none' stroke='%23e9e2cf' stroke-width='1'/%3E%3C/svg%3E")}
+  .page::before{content:"";position:absolute;inset:9px;border:1.5px solid rgba(60,50,30,.28);border-radius:12px;pointer-events:none}
+  .page.hot{outline:3px dashed rgba(42,38,32,.55);outline-offset:-6px}
+  .page.enter{animation:enter .5s cubic-bezier(.2,.9,.25,1)}
+  @keyframes enter{from{transform:translateY(36px) scale(.96);opacity:0}}
+  .page.leave{transform:translate(0,-110%) rotate(-4deg);opacity:0}
+  .under{transform:translateY(12px) scale(.965);opacity:.9;z-index:0} .under2{transform:translateY(24px) scale(.93);opacity:.75;z-index:-1}
+  .ph{display:flex;justify-content:space-between;font-size:10.5px;font-weight:800;letter-spacing:.16em;color:var(--mute)}
+  .ptitle{font-size:34px;line-height:1.02;font-weight:800;letter-spacing:-.045em;margin-top:14px;font-family:Georgia,"Times New Roman",serif;font-weight:700;letter-spacing:-.03em}
+  .prow{display:grid;grid-template-columns:1.1fr 1.6fr 1fr;gap:10px;margin-top:16px}
+  .prow small{display:block;font-size:9.5px;letter-spacing:.14em;font-weight:800;color:var(--mute)}
+  .prow b{font-size:14px;font-weight:700;font-variant-numeric:tabular-nums}
+  .pstat{margin-top:12px;font-size:14px;color:var(--mute);font-weight:600}
+  .ribbon{position:absolute;top:22px;right:-38px;transform:rotate(38deg);background:var(--bad);color:#fff;font-size:10px;font-weight:800;letter-spacing:.14em;padding:5px 44px}
+  .slot{flex:1;margin:16px 0 12px;border:2px dashed rgba(42,38,32,.28);border-radius:14px;display:grid;place-items:center;color:rgba(42,38,32,.68);font-size:12px;letter-spacing:.16em;font-weight:800;position:relative}
+  .mrz{font:600 11px/1.3 ui-monospace,Menlo,Consolas,monospace;color:rgba(42,38,32,.66);letter-spacing:.1em;word-break:break-all}
+  .mark{position:absolute;width:132px;height:132px;margin:-66px 0 0 -66px;pointer-events:none;transform:rotate(var(--r));animation:thunk .22s cubic-bezier(.2,1.6,.4,1) both}
+  @keyframes thunk{0%{transform:rotate(var(--r)) scale(1.7);opacity:0}60%{opacity:1}100%{transform:rotate(var(--r)) scale(1)}}
+  .pad{display:flex;justify-content:space-around;align-items:flex-end;padding-top:6px}
+  .stampbtn{width:112px;display:flex;flex-direction:column;align-items:center;gap:6px;touch-action:none;cursor:grab}
+  .stampbtn svg{width:104px;height:104px;filter:drop-shadow(0 8px 6px rgba(60,40,10,.22))}
+  .stampbtn span{font-size:12px;color:var(--mute);font-weight:650}
+  .ghost{position:fixed;left:0;top:0;width:112px;height:112px;margin:-62px 0 0 -56px;pointer-events:none;z-index:50;transform:scale(1.12) rotate(-6deg);filter:drop-shadow(0 18px 12px rgba(60,40,10,.3))}
+  .foot{display:flex;justify-content:space-between;align-items:center;margin-top:10px;font-size:13px;color:var(--mute)}
+  .foot button{font-weight:700;color:var(--ink);background:rgba(0,0,0,.06);height:34px;padding:0 14px;border-radius:99px}
+  .foot button:disabled{opacity:.35}
+  .strip{display:flex;gap:6px;align-items:center}
+  .strip i{width:22px;height:22px;border-radius:50%;display:grid;place-items:center;font-size:12px;font-weight:800;color:#fff;font-style:normal}
+  .done{display:flex;flex-direction:column;justify-content:center;align-items:center;text-align:center;flex:1;gap:8px}
+  .done h2{font:700 30px Georgia,serif;letter-spacing:-.03em}
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute"><defs><filter id="ink" x="-10%" y="-10%" width="120%" height="120%">
+  <feTurbulence type="fractalNoise" baseFrequency=".85" numOctaves="2" seed="4" result="n"/>
+  <feColorMatrix in="n" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 -2.1 1.55" result="m"/>
+  <feComposite in="SourceGraphic" in2="m" operator="in"/></filter></defs></svg>
+<div class="app">
+  <div class="top"><span class="d" id="date"></span><span class="n" id="left"></span></div>
+  <button class="notice" id="notice" hidden></button>
+  <div class="table" id="table"></div>
+  <div class="pad" id="pad"></div>
+  <div class="foot"><div class="strip" id="strip"></div><button id="undo" disabled>Undo last stamp</button></div>
+</div>
+
+<script>
+const NOW0=new Date(),M0=NOW0.getHours()*60+NOW0.getMinutes(),cl=v=>Math.max(0,Math.min(1439,v));
+const SUBJECTS=[
+  {id:'ana',name:'Anatomy',att:20,mis:8,req:75,kind:'Practical',start:cl(M0-85),end:cl(M0-25)},
+  {id:'pha',name:'Pharmacology',att:30,mis:3,req:75,kind:'Lecture',start:cl(M0-20),end:cl(M0+40)},
+  {id:'phy',name:'Physiology',att:15,mis:5,req:75,kind:'Lecture',start:cl(M0+75),end:cl(M0+135)},
+  {id:'bio',name:'Biochemistry',att:26,mis:2,req:75,kind:'Tutorial',start:cl(M0+190),end:cl(M0+250)},
+  {id:'com',name:'Community Medicine',att:6,mis:0,req:75,kind:'Lecture',start:null,end:null},
+];
+const $=s=>document.querySelector(s);
+const fmt=m=>{const h=Math.floor(m/60),mm=String(m%60).padStart(2,'0');return `${h%12||12}:${mm} ${h>=12?'PM':'AM'}`};
+const dur=m=>{m=Math.max(1,Math.round(m));return m<60?`${m} min`:`${Math.floor(m/60)}h ${m%60}m`};
+const minutesNow=()=>{const d=new Date();return d.getHours()*60+d.getMinutes()};
+const phase=s=>{if(s.start===null)return'any';const n=minutesNow();return n>=s.end?'ended':n>=s.start?'now':'later'};
+function stats(s){const total=s.att+s.mis,pct=total?Math.round(s.att/total*100):0,r=s.req/100;let text;
+  if(!total)text='Not started';else if(pct<s.req){const need=Math.max(1,Math.ceil((r*total-s.att)/(1-r)-1e-9));text=`Attend the next ${need} to recover`}
+  else{const k=Math.max(0,Math.floor((s.att-r*total)/r+1e-9));text=k?`${k} skip${k>1?'s':''} available`:'No skips left'}
+  return {pct,text}}
+const marks={},hist=[];
+const deck=[...SUBJECTS.filter(s=>s.start!==null).sort((a,b)=>a.start-b.start),...SUBJECTS.filter(s=>s.start===null)];
+const pending=()=>deck.filter(s=>!marks[s.id]);
+let seq=0;
+function stampSVG(kind){const P=kind==='P',c=P?'#187030':'#c4001a',u='r'+(seq++),word=P?'PRESENT':'ABSENT',ring=P?'ATTENDED  ·  ATTENDED  ·  ':'MISSED  ·  MISSED  ·  MISSED  ·  ';
+  return `<svg viewBox="0 0 120 120" aria-hidden="true"><defs><path id="${u}" d="M60,60 m-41,0 a41,41 0 1,1 82,0 a41,41 0 1,1 -82,0"/></defs>
+  <g filter="url(#ink)" fill="none" stroke="${c}"><circle cx="60" cy="60" r="56" stroke-width="3.6"/><circle cx="60" cy="60" r="50" stroke-width="1.4"/>
+  <text font-family="-apple-system,Inter,sans-serif" font-size="9.5" font-weight="800" letter-spacing="1.6" fill="${c}" stroke="none"><textPath href="#${u}" startOffset="0">${ring.repeat(1)}</textPath></text>
+  <rect x="22" y="47" width="76" height="26" rx="3" stroke-width="2.4"/>
+  <text x="60" y="66" text-anchor="middle" font-family="-apple-system,Inter,sans-serif" font-size="${P?17:16}" font-weight="900" letter-spacing="1.2" fill="${c}" stroke="none">${word}</text>
+  <path d="M60 32 l3 7 7.5.6-5.7 4.9 1.8 7.3L60 48.6l-6.6 3.2 1.8-7.3-5.7-4.9 7.5-.6z" fill="${c}" stroke="none" transform="translate(0,-6) scale(1)"/></g></svg>`}
+
+/* ---- pages ---- */
+function pageHTML(s){
+  const n=minutesNow(),i=stats(s),p=phase(s),num=String(417+deck.indexOf(s)).padStart(4,'0');
+  return `<div class="ph"><span>ATTENDANCE PASSPORT</span><span>N° ${num}</span></div>
+    <div class="ptitle">${s.name}</div>
+    <div class="prow"><div><small>DATE</small><b>${new Date().toLocaleDateString('en-US',{day:'numeric',month:'short'})}</b></div><div><small>TIME</small><b>${s.start===null?'ANY TIME':fmt(s.start).replace(' ','')+'–'+fmt(s.end).replace(' ','')}</b></div><div><small>TYPE</small><b>${s.kind}</b></div></div>
+    <div class="pstat">${i.pct}% · ${i.text}${p==='now'?` · ends in ${dur(s.end-n)}`:p==='later'?` · starts in ${dur(s.start-n)}`:''}</div>
+    <div class="slot" id="slot">DROP A STAMP HERE</div>
+    <div class="mrz">P&lt;${s.name.toUpperCase().replace(/[^A-Z]/g,'&lt;').slice(0,14)}&lt;&lt;${i.pct}&lt;${s.req}&lt;&lt;&lt;&lt;&lt;&lt;&lt;&lt;&lt;&lt;&lt;&lt;&lt;&lt;</div>
+    ${p==='ended'?`<div class="ribbon">ENDED</div>`:''}`;
+}
+function renderTable(entering){
+  const pend=pending(),t=$('#table');
+  if(!pend.length){t.innerHTML=`<div class="page"><div class="done"><h2>Passport complete</h2><p style="color:var(--mute)">Every class today is stamped.</p></div></div>`;$('#pad').style.visibility='hidden';return}
+  $('#pad').style.visibility='visible';
+  t.innerHTML=(pend[2]?'<div class="page under2"></div>':'')+(pend[1]?'<div class="page under"></div>':'')+`<div class="page top ${entering?'enter':''}" data-id="${pend[0].id}">${pageHTML(pend[0])}</div>`;
+}
+function renderPad(){$('#pad').innerHTML=['A','P'].map(k=>`<div class="stampbtn" data-k="${k}" role="button" tabindex="0" aria-label="${k==='P'?'Present':'Absent'} stamp">${stampSVG(k)}<span>${k==='P'?'Present':'Absent'}</span></div>`).join('')}
+
+/* ---- stamping ---- */
+let busy=false;
+function stampOn(page,kind,x,y){
+  const s=pending()[0];if(!s||busy)return;busy=true;
+  const m=document.createElement('div');m.className='mark';m.style.left=x+'px';m.style.top=y+'px';m.style.setProperty('--r',(Math.random()*24-12)+'deg');m.innerHTML=stampSVG(kind);page.appendChild(m);
+  if(navigator.vibrate)navigator.vibrate(18);
+  marks[s.id]=kind;hist.push(s.id);if(kind==='P')s.att++;else s.mis++;
+  setTimeout(()=>{page.classList.add('leave')},650);
+  setTimeout(()=>{busy=false;renderTable(true);paint()},1150);
+}
+let drag=null;
+function wire(){document.querySelectorAll('.stampbtn').forEach(b=>{
+  b.addEventListener('pointerdown',e=>{if(busy||!pending().length)return;e.preventDefault();const g=document.createElement('div');g.className='ghost';g.innerHTML=stampSVG(b.dataset.k);document.body.appendChild(g);
+    drag={k:b.dataset.k,g,x0:e.clientX,y0:e.clientY,moved:false,id:e.pointerId};g.style.transform=`translate(${e.clientX}px,${e.clientY}px) scale(1.12) rotate(-6deg)`;b.setPointerCapture(e.pointerId);b.style.opacity=.35});
+  b.addEventListener('pointermove',e=>{if(!drag)return;if(Math.hypot(e.clientX-drag.x0,e.clientY-drag.y0)>8)drag.moved=true;
+    drag.g.style.transform=`translate(${e.clientX}px,${e.clientY}px) scale(1.12) rotate(-6deg)`;
+    const pg=$('.page.top');if(pg){const r=pg.getBoundingClientRect();pg.classList.toggle('hot',e.clientX>r.left&&e.clientX<r.right&&e.clientY>r.top&&e.clientY<r.bottom)}});
+  const up=e=>{if(!drag)return;const d=drag;drag=null;d.g.remove();b.style.opacity=1;const pg=$('.page.top');if(!pg)return;pg.classList.remove('hot');const r=pg.getBoundingClientRect();
+    if(!d.moved){const sl=$('#slot').getBoundingClientRect();stampOn(pg,d.k,sl.left+sl.width/2-r.left,sl.top+sl.height/2-r.top);return}
+    if(e.clientX>r.left&&e.clientX<r.right&&e.clientY>r.top&&e.clientY<r.bottom)stampOn(pg,d.k,e.clientX-r.left,e.clientY-r.top)};
+  b.addEventListener('pointerup',up);b.addEventListener('pointercancel',()=>{if(drag){drag.g.remove();drag=null;b.style.opacity=1;const pg=$('.page.top');pg&&pg.classList.remove('hot')}});
+  b.addEventListener('keydown',e=>{if((e.key==='Enter'||e.key===' ')&&pending().length&&!busy){const pg=$('.page.top'),r=pg.getBoundingClientRect(),sl=$('#slot').getBoundingClientRect();stampOn(pg,b.dataset.k,sl.left+sl.width/2-r.left,sl.top+sl.height/2-r.top)}});
+})}
+$('#undo').onclick=()=>{if(busy)return;const id=hist.pop();if(!id)return;const s=SUBJECTS.find(x=>x.id===id),c=marks[id];if(c==='P')s.att--;else s.mis--;delete marks[id];renderTable(true);paint()};
+
+function paint(){
+  const n=minutesNow(),pend=pending();
+  $('#date').textContent=new Date().toLocaleDateString('en-US',{weekday:'long',day:'numeric',month:'long'});
+  $('#left').textContent=pend.length?`${pend.length} to stamp`:'All stamped';
+  $('#undo').disabled=!hist.length;
+  $('#strip').innerHTML=deck.map(s=>marks[s.id]?`<i style="background:${marks[s.id]==='P'?'#187030':'#c4001a'}" title="${s.name}">${marks[s.id]==='P'?'✓':'✕'}</i>`:`<i style="background:rgba(0,0,0,.14);color:transparent">·</i>`).join('');
+  const first=pend[0],nt=$('#notice');if(first&&phase(first)==='ended'){nt.hidden=false;nt.textContent=`${first.name} ended ${dur(n-first.end)} ago and isn’t stamped`}else nt.hidden=true;
+}
+renderPad();wire();renderTable(false);paint();setInterval(()=>{if(!busy&&!drag){const pg=$('.page.top');if(pg&&pg.dataset.id){renderTable(false)}paint()}},30000);
+</script>
+</body>
+</html>

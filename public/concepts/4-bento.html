@@ -1,0 +1,128 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<title>Concept 4 · Bento</title>
+<style>
+  :root{--bg:#f4f1fa;--ink:#17141f;--mute:#67627a;--good:#187030;--bad:#c4001a}
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font:16px/1.4 ui-rounded,"SF Pro Rounded",-apple-system,BlinkMacSystemFont,"SF Pro Text",Inter,system-ui,sans-serif;background:var(--bg);color:var(--ink);-webkit-font-smoothing:antialiased;display:flex;justify-content:center;touch-action:pan-y}
+  button{font:inherit;color:inherit;border:0;background:none;cursor:pointer;text-align:left}
+  .app{width:100%;max-width:430px;padding:calc(env(safe-area-inset-top) + 20px) 16px calc(env(safe-area-inset-bottom) + 30px)}
+  header{padding:0 4px 16px}
+  header .d{font-size:15px;color:var(--mute)}
+  header h1{font-size:36px;letter-spacing:-.04em;line-height:1.05;font-weight:800;margin-top:3px}
+  .bento{display:grid;grid-template-columns:1fr 1fr;grid-auto-rows:minmax(150px,auto);gap:12px}
+  .tile{border-radius:30px;padding:18px;position:relative;background:#fff;overflow:hidden;min-height:150px}
+  .span2{grid-column:span 2}
+
+  /* hero */
+  .hero{background:var(--c);min-height:236px;display:flex;flex-direction:column}
+  .hero .k{font-size:12px;font-weight:800;letter-spacing:.08em;opacity:.8;display:flex;justify-content:space-between}
+  .hero h2{font-size:40px;line-height:1;font-weight:800;letter-spacing:-.05em;margin-top:auto}
+  .hero .w{font-size:16px;font-weight:600;margin:10px 0 16px;font-variant-numeric:tabular-nums}
+  .hero .w small{display:block;font-weight:500;opacity:.7;font-size:14px;margin-top:2px}
+  .hbtns{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  .hb{height:50px;border-radius:18px;font-weight:800;font-size:16px;text-align:center}
+  .hb.p{background:var(--ink);color:#fff} .hb.a{background:rgba(255,255,255,.75)}
+  .hb:active{transform:scale(.97)}
+
+  /* flip tiles */
+  .flip{padding:0;background:none;perspective:900px;min-height:170px;overflow:visible}
+  .in{position:absolute;inset:0;transition:transform .55s cubic-bezier(.2,.8,.2,1);transform-style:preserve-3d}
+  .flip.f .in{transform:rotateY(180deg)}
+  .face{position:absolute;inset:0;border-radius:30px;padding:16px;backface-visibility:hidden;-webkit-backface-visibility:hidden;display:flex;flex-direction:column}
+  .front{background:var(--c)}
+  .back{background:#fff;transform:rotateY(180deg);justify-content:space-between}
+  .f-name{font-size:17px;font-weight:800;letter-spacing:-.025em;line-height:1.15}
+  .f-k{font-size:11px;font-weight:800;letter-spacing:.08em;opacity:.78;margin-bottom:4px}
+  .f-pct{margin-top:auto;font-size:34px;font-weight:800;letter-spacing:-.05em;line-height:1}
+  .f-pct small{font-size:16px;opacity:.78}
+  .f-note{font-size:12.5px;font-weight:600;opacity:.75;margin-top:3px}
+  .mk{position:absolute;top:12px;right:12px;width:28px;height:28px;border-radius:50%;display:grid;place-items:center;color:#fff;font-weight:800;font-size:14px}
+  .mk.p{background:var(--good)} .mk.a{background:var(--bad)}
+  .flip.done .front{filter:saturate(.55);opacity:.8}
+  .b-name{font-size:15px;font-weight:800;letter-spacing:-.02em}
+  .b-when{font-size:12.5px;color:var(--mute);font-variant-numeric:tabular-nums}
+  .bb{height:44px;border-radius:15px;font-weight:800;font-size:15px;text-align:center;width:100%}
+  .bb.p{background:var(--good);color:#fff} .bb.a{background:rgba(196,0,26,.1);color:var(--bad)} .bb.s{background:rgba(23,20,31,.07)}
+  .stack{display:grid;gap:8px}
+
+  /* info tiles */
+  .info{background:#fff}
+  .info h3{font-size:12px;letter-spacing:.08em;color:var(--mute);font-weight:800}
+  .info .big{font-size:30px;font-weight:800;letter-spacing:-.045em;margin-top:8px;line-height:1.05}
+  .info p{color:var(--mute);font-size:13.5px;margin-top:4px}
+  .list{list-style:none;margin-top:8px}
+  .list li{display:flex;justify-content:space-between;gap:8px;padding:7px 0;border-top:1px solid rgba(23,20,31,.08);font-size:14px;font-weight:600}
+  .list li span{color:var(--mute);font-weight:500;font-variant-numeric:tabular-nums}
+  .alert{background:#ffe4e0;color:var(--bad)}
+  .alert h3{color:var(--bad)}
+</style>
+</head>
+<body>
+<div class="app">
+  <header><div class="d" id="date"></div><h1 id="head">Today</h1></header>
+  <div class="bento" id="bento"></div>
+</div>
+
+<script>
+const NOW0=new Date(),M0=NOW0.getHours()*60+NOW0.getMinutes(),cl=v=>Math.max(0,Math.min(1439,v));
+const SUBJECTS=[
+  {id:'ana',name:'Anatomy',color:'#ffd6cf',att:20,mis:8,req:75,kind:'PRACTICAL',start:cl(M0-85),end:cl(M0-25)},
+  {id:'pha',name:'Pharmacology',color:'#cfe0ff',att:30,mis:3,req:75,kind:'LECTURE',start:cl(M0-20),end:cl(M0+40)},
+  {id:'phy',name:'Physiology',color:'#c9f0dc',att:15,mis:5,req:75,kind:'LECTURE',start:cl(M0+75),end:cl(M0+135)},
+  {id:'bio',name:'Biochemistry',color:'#e3d8ff',att:26,mis:2,req:75,kind:'TUTORIAL',start:cl(M0+190),end:cl(M0+250)},
+  {id:'com',name:'Community Medicine',color:'#ffe9bd',att:6,mis:0,req:75,kind:'LECTURE',start:null,end:null},
+];
+const MISSED=[['Anatomy','Sep 19'],['Physiology','Sep 17'],['Anatomy','Sep 15']];
+const $=s=>document.querySelector(s);
+const fmt=m=>{const h=Math.floor(m/60),mm=String(Math.floor(m)%60).padStart(2,'0');return `${h%12||12}:${mm} ${h>=12?'PM':'AM'}`};
+const dur=m=>{m=Math.max(1,Math.round(m));return m<60?`${m} min`:`${Math.floor(m/60)}h ${m%60}m`};
+function stats(s){const total=s.att+s.mis,pct=total?Math.round(s.att/total*100):0,r=s.req/100;let text,status;
+  if(!total){text='Not started';status='new'}
+  else if(pct<s.req){const need=Math.max(1,Math.ceil((r*total-s.att)/(1-r)-1e-9));text=`Attend next ${need}`;status='risk'}
+  else{const k=Math.max(0,Math.floor((s.att-r*total)/r+1e-9));status=k?'safe':'edge';text=k?`${k} skip${k>1?'s':''} available`:'No skips left'}
+  return {pct,text,status}}
+const marks={},flipped=new Set();
+const minutesNow=()=>{const d=new Date();return d.getHours()*60+d.getMinutes()};
+const timed=SUBJECTS.filter(s=>s.start!==null).sort((a,b)=>a.start-b.start);
+const phase=s=>{if(s.start===null)return'any';const n=minutesNow();return n>=s.end?'ended':n>=s.start?'now':'later'};
+function setMark(id,st){const s=SUBJECTS.find(x=>x.id===id),p=marks[id]||null;if(p===st)return;
+  if(p==='P')s.att--;if(p==='A')s.mis--;if(st==='P')s.att++;if(st==='A')s.mis++;if(st)marks[id]=st;else delete marks[id]}
+
+function render(){
+  const n=minutesNow();
+  $('#date').textContent=new Date().toLocaleDateString('en-US',{weekday:'long',day:'numeric',month:'long'});
+  const pend=SUBJECTS.filter(s=>!marks[s.id]);
+  const hero=timed.filter(s=>!marks[s.id]).find(s=>phase(s)==='now')||timed.filter(s=>!marks[s.id]).find(s=>phase(s)==='later')||pend[0];
+  const late=timed.filter(s=>phase(s)==='ended'&&!marks[s.id]);
+  let html='';
+  if(late.length)html+=`<button class="tile info alert span2" style="min-height:0" data-flip="${late[0].id}"><h3>NEEDS A MARK</h3><div class="big" style="font-size:22px">${late.length>1?`${late.length} classes ended unmarked`:`${late[0].name} ended ${dur(n-late[0].end)} ago`}</div></button>`;
+  if(hero){const i=stats(hero),p=phase(hero);
+    html+=`<div class="tile hero span2" style="--c:${hero.color}"><div class="k"><span>${p==='now'?'HAPPENING NOW':p==='later'?'UP NEXT':'ANY TIME'}</span><span>${hero.kind}</span></div>
+      <h2>${hero.name}</h2><div class="w">${hero.start===null?'No fixed time':`${fmt(hero.start)} – ${fmt(hero.end)}`}<small>${p==='now'?`Ends in ${dur(hero.end-n)}`:p==='later'?`Starts in ${dur(hero.start-n)}`:i.text} · ${i.pct}%</small></div>
+      <div class="hbtns"><button class="hb p" data-set="${hero.id}:P">Present</button><button class="hb a" data-set="${hero.id}:A">Absent</button></div></div>`}
+  else html+=`<div class="tile hero span2" style="--c:#d7f2df;min-height:190px"><div class="k"><span>ALL DONE</span></div><h2 style="margin-top:auto">Everything’s marked</h2><div class="w">See you at the next class.</div></div>`;
+
+  SUBJECTS.forEach(s=>{const i=stats(s),st=marks[s.id],f=flipped.has(s.id);
+    html+=`<div class="tile flip ${f?'f':''} ${st?'done':''}" data-flip="${s.id}" style="--c:${s.color}"><div class="in">
+      <div class="face front"><div class="f-k">${s.kind}</div><div class="f-name">${s.name}</div>${st?`<span class="mk ${st==='P'?'p':'a'}">${st==='P'?'✓':'✕'}</span>`:''}
+        <div class="f-pct">${i.pct}<small>%</small></div><div class="f-note">${i.text}</div></div>
+      <div class="face back"><div><div class="b-name">${s.name}</div><div class="b-when">${s.start===null?'Any time':fmt(s.start)}</div></div>
+        <div class="stack">${st?`<button class="bb s" data-set="${s.id}:${st==='P'?'A':'P'}">Change to ${st==='P'?'absent':'present'}</button><button class="bb s" data-set="${s.id}:">Undo</button>`:
+        `<button class="bb p" data-set="${s.id}:P">Present</button><button class="bb a" data-set="${s.id}:A">Absent</button>`}</div></div></div></div>`});
+
+  html+=`<div class="tile info span2"><h3>RECENTLY MISSED</h3><ul class="list">${MISSED.map(m=>`<li>${m[0]}<span>${m[1]}</span></li>`).join('')}</ul></div>`;
+  $('#bento').innerHTML=html;
+  $('#head').textContent=late.length?'Needs a mark':hero?(phase(hero)==='now'?'In class':'Up next'):'All caught up';
+
+  document.querySelectorAll('[data-set]').forEach(b=>b.onclick=e=>{e.stopPropagation();const[id,v]=b.dataset.set.split(':');setMark(id,v||null);if(!v||v)flipped.delete(id);render()});
+  document.querySelectorAll('.flip').forEach(t=>t.onclick=()=>{const id=t.dataset.flip;flipped.has(id)?flipped.delete(id):flipped.add(id);t.classList.toggle('f')});
+  document.querySelectorAll('.alert').forEach(t=>t.onclick=()=>{const id=t.dataset.flip;flipped.add(id);render();document.querySelector(`.flip[data-flip="${id}"]`).scrollIntoView({behavior:'smooth',block:'center'})});
+}
+render();setInterval(()=>{if(!flipped.size)render()},30000);
+</script>
+</body>
+</html>

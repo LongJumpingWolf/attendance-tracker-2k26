@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<title>Concept 7 · Departures</title>
+<style>
+  :root{--bg:#e8e5dd;--ink:#1a1915;--mute:#67635a;--good:#187030;--bad:#c4001a;--cw:9.6px;--ch:23px}
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font:16px/1.4 -apple-system,BlinkMacSystemFont,"SF Pro Text",Inter,system-ui,sans-serif;background:var(--bg);color:var(--ink);-webkit-font-smoothing:antialiased;display:flex;justify-content:center;touch-action:pan-y}
+  button{font:inherit;color:inherit;border:0;background:none;cursor:pointer;text-align:left}
+  .app{width:100%;max-width:430px;min-height:100dvh;padding:calc(env(safe-area-inset-top) + 16px) 12px calc(env(safe-area-inset-bottom) + 24px)}
+  .head{display:flex;justify-content:space-between;align-items:flex-end;padding:0 6px 12px}
+  .head h1{font-size:13px;letter-spacing:.2em;font-weight:800;color:var(--mute)}
+  .head h2{font-size:30px;letter-spacing:-.04em;font-weight:800;line-height:1.05}
+  .clock{display:flex;gap:2px}
+  .board{background:#d9d5cb;border-radius:22px;padding:14px 10px 10px;box-shadow:inset 0 0 0 1px rgba(0,0,0,.08)}
+  .cols,.row{display:flex;gap:calc(var(--cw)*1)}
+  .cols{font-size:10px;font-weight:800;letter-spacing:.14em;color:#4f4b44;padding:0 2px 8px}
+  .cols span:nth-child(1){width:calc(var(--cw)*5)} .cols span:nth-child(2){width:calc(var(--cw)*13)} .cols span:nth-child(3){width:calc(var(--cw)*3)}
+  .rowwrap{border-top:1px solid rgba(0,0,0,.12);padding:7px 0}
+  .row{width:100%;padding:0 2px;align-items:center}
+  .grp{display:flex;gap:1.5px}
+  .grp.t{width:calc(var(--cw)*5)} .grp.s{width:calc(var(--cw)*13)} .grp.k{width:calc(var(--cw)*3)}
+  .grp{width:auto}
+  .f{position:relative;display:inline-grid;place-items:center;width:calc(var(--cw) - 1.5px);height:var(--ch);background:linear-gradient(#fbfaf7 49%,#ecebe6 51%);border-radius:2.5px;font:800 15px/1 ui-monospace,"SF Mono",Menlo,Consolas,monospace;color:var(--ink);box-shadow:0 1px 0 rgba(0,0,0,.18)}
+  .f::after{content:"";position:absolute;left:0;right:0;top:50%;height:1px;background:rgba(0,0,0,.28)}
+  .f.flip{animation:flap .11s ease-out}
+  @keyframes flap{0%{transform:scaleY(.15);filter:brightness(.9)}100%{transform:scaleY(1)}}
+  .f.g{color:var(--good)} .f.r{color:var(--bad)} .f.dim{color:#8a867c}
+  .row.late .grp.st .f{animation:pulse 1.6s infinite}
+  @keyframes pulse{50%{background:linear-gradient(#ffe9e6 49%,#f7d9d5 51%)}}
+  .sel .row .f{box-shadow:0 0 0 1.5px var(--ink)}
+  .gate{margin:8px 2px 4px;background:#f4f2ec;border-radius:16px;padding:14px}
+  .gate b{font-size:17px;letter-spacing:-.02em}
+  .gate p{font-size:13.5px;color:var(--mute);margin-top:3px;font-variant-numeric:tabular-nums}
+  .gbtns{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:12px}
+  .gb{height:48px;border-radius:14px;font-weight:750;font-size:16px;text-align:center}
+  .gb.p{background:var(--good);color:#fff} .gb.a{background:rgba(196,0,26,.1);color:var(--bad)} .gb.s{background:rgba(26,25,21,.08)}
+  .legend{display:flex;gap:14px;flex-wrap:wrap;padding:14px 6px 0;font-size:12.5px;color:var(--mute)}
+  .legend i{display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:6px;vertical-align:-1px}
+  .notice{margin:0 6px 12px;background:rgba(196,0,26,.045);color:#b00018;border-radius:14px;padding:11px 14px;font-weight:600;font-size:14.5px;width:calc(100% - 12px);text-align:left}
+  .notice[hidden]{display:none}
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="head"><div><h1>ATTENDANCE</h1><h2>Departures</h2></div><div class="clock" id="clock"></div></div>
+  <button class="notice" id="notice" hidden></button>
+  <div class="board"><div class="cols"><span>TIME</span><span>SUBJECT</span><span>TYP</span><span>STATUS</span></div><div id="rows"></div></div>
+  <div class="legend"><span><i style="background:#1a1915"></i>NOW = in class</span><span><i style="background:#187030"></i>PRESENT</span><span><i style="background:#c4001a"></i>ABSENT / UNMARKED</span></div>
+</div>
+
+<script>
+const NOW0=new Date(),M0=NOW0.getHours()*60+NOW0.getMinutes(),cl=v=>Math.max(0,Math.min(1439,v));
+const SUBJECTS=[
+  {id:'ana',name:'Anatomy',att:20,mis:8,req:75,kind:'PRA',start:cl(M0-85),end:cl(M0-25)},
+  {id:'pha',name:'Pharmacology',att:30,mis:3,req:75,kind:'LEC',start:cl(M0-20),end:cl(M0+40)},
+  {id:'phy',name:'Physiology',att:15,mis:5,req:75,kind:'LEC',start:cl(M0+75),end:cl(M0+135)},
+  {id:'bio',name:'Biochemistry',att:26,mis:2,req:75,kind:'TUT',start:cl(M0+190),end:cl(M0+250)},
+  {id:'com',name:'Community Med',att:6,mis:0,req:75,kind:'LEC',start:null,end:null},
+];
+const $=s=>document.querySelector(s);
+const p2=n=>String(n).padStart(2,'0'),t24=m=>`${p2(Math.floor(m/60))}:${p2(m%60)}`;
+const dur=m=>{m=Math.max(1,Math.round(m));return m<60?`${m} min`:`${Math.floor(m/60)}h ${m%60}m`};
+const minutesNow=()=>{const d=new Date();return d.getHours()*60+d.getMinutes()};
+const phase=s=>{if(s.start===null)return'any';const n=minutesNow();return n>=s.end?'ended':n>=s.start?'now':'later'};
+function stats(s){const total=s.att+s.mis,pct=total?Math.round(s.att/total*100):0,r=s.req/100;let skip=0,need=0,status;
+  if(!total)status='new';else if(pct<s.req){need=Math.max(1,Math.ceil((r*total-s.att)/(1-r)-1e-9));status='risk'}
+  else{skip=Math.max(0,Math.floor((s.att-r*total)/r+1e-9));status=skip?'safe':'edge'}
+  return {pct,skip,need,status}}
+const marks={};let open=null;
+function setMark(id,st){const s=SUBJECTS.find(x=>x.id===id),p=marks[id]||null;if(p===st)return;
+  if(p==='P')s.att--;if(p==='A')s.mis--;if(st==='P')s.att++;if(st==='A')s.mis++;if(st)marks[id]=st;else delete marks[id]}
+const order=[...SUBJECTS.filter(s=>s.start!==null).sort((a,b)=>a.start-b.start),...SUBJECTS.filter(s=>s.start===null)];
+
+/* ---- split-flap engine ---- */
+const CH=' ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789:-';
+function pad(str,n){return (str+' '.repeat(n)).slice(0,n)}
+function group(id,n,cls=''){return `<span class="grp ${cls}" data-g="${id}" data-n="${n}">`+Array.from({length:n},()=>'<span class="f"> </span>').join('')+'</span>'}
+function setText(g,text,color){
+  const cells=[...g.children],str=pad(text.toUpperCase(),cells.length);
+  cells.forEach((c,i)=>{
+    const target=str[i];c.className='f'+(color==='g'?' g':color==='r'?' r':color==='d'?' dim':'');
+    if(c.dataset.v===target)return;c.dataset.v=target;
+    const from=Math.max(0,CH.indexOf(c.textContent)),to=Math.max(0,CH.indexOf(target));
+    let k=(from+1)%CH.length,steps=0;clearInterval(c._t);
+    c._t=setInterval(()=>{c.textContent=CH[k];c.classList.remove('flip');void c.offsetWidth;c.classList.add('flip');steps++;
+      if(k===to||steps>CH.length){clearInterval(c._t);c.textContent=target}k=(k+1)%CH.length},34+ i*6);
+  });
+}
+function statusOf(s){const m=marks[s.id],p=phase(s);
+  if(m==='P')return['PRESENT','g'];if(m==='A')return['ABSENT','r'];
+  if(p==='now')return['IN CLASS',''];if(p==='ended')return['UNMARKED','r'];if(p==='any')return['ANY TIME','d'];return['SCHEDULED','d']}
+
+function build(){
+  $('#rows').innerHTML=order.map(s=>`<div class="rowwrap" data-id="${s.id}"><button class="row" data-id="${s.id}">${group(s.id+'t',5,'t')}${group(s.id+'s',13,'s')}${group(s.id+'k',3,'k')}${group(s.id+'x',9,'st')}</button><div class="gp"></div></div>`).join('');
+  $('#clock').innerHTML=group('clk',5);
+  document.querySelectorAll('.row').forEach(r=>r.onclick=()=>{open=open===r.dataset.id?null:r.dataset.id;update()});
+}
+const g=id=>document.querySelector(`[data-g="${id}"]`);
+function update(){
+  const n=minutesNow();
+  setText(g('clk'),t24(n));
+  order.forEach(s=>{const[st,c]=statusOf(s);
+    setText(g(s.id+'t'),s.start===null?'--:--':t24(s.start));setText(g(s.id+'s'),s.name);setText(g(s.id+'k'),s.kind);setText(g(s.id+'x'),st,c);
+    const w=document.querySelector(`.rowwrap[data-id="${s.id}"]`);w.classList.toggle('sel',open===s.id);w.querySelector('.row').classList.toggle('late',st==='UNMARKED');
+    const gp=w.querySelector('.gp');
+    if(open===s.id){const i=stats(s),m=marks[s.id],p=phase(s);
+      gp.innerHTML=`<div class="gate"><b>${s.name}</b><p>${s.start===null?'No fixed time':`${t24(s.start)}–${t24(s.end)} · ${p==='now'?`ends in ${dur(s.end-n)}`:p==='ended'?`ended ${dur(n-s.end)} ago`:`starts in ${dur(s.start-n)}`}`}<br>${i.pct}% attendance · ${i.status==='risk'?`attend the next ${i.need} to recover`:i.status==='edge'?'no skips left':i.status==='new'?'not started':`${i.skip} skip${i.skip>1?'s':''} available`}</p>
+        <div class="gbtns">${m?`<button class="gb s" data-a="chg">Change to ${m==='P'?'absent':'present'}</button><button class="gb s" data-a="clr">Undo</button>`:`<button class="gb p" data-a="P">Present</button><button class="gb a" data-a="A">Absent</button>`}</div></div>`;
+      gp.querySelectorAll('[data-a]').forEach(b=>b.onclick=e=>{e.stopPropagation();const a=b.dataset.a;
+        if(a==='chg')setMark(s.id,m==='P'?'A':'P');else if(a==='clr')setMark(s.id,null);else{setMark(s.id,a);open=null}update()})}
+    else gp.innerHTML='';
+  });
+  const late=order.filter(s=>phase(s)==='ended'&&!marks[s.id]),nt=$('#notice');
+  if(late.length){nt.hidden=false;nt.textContent=late.length>1?`${late.length} flights have departed without a mark`:`${late[0].name} ended ${dur(n-late[0].end)} ago and isn’t marked`;nt.onclick=()=>{open=late[0].id;update()}}else nt.hidden=true;
+}
+build();update();setInterval(update,30000);
+</script>
+</body>
+</html>

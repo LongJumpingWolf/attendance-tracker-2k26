@@ -1,0 +1,159 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<title>Concept 8 · Knob</title>
+<style>
+  :root{--bg:#efefed;--ink:#191919;--mute:#666;--good:#187030;--bad:#c4001a}
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%}
+  body{font:16px/1.4 -apple-system,BlinkMacSystemFont,"SF Pro Text",Inter,system-ui,sans-serif;background:var(--bg);color:var(--ink);-webkit-font-smoothing:antialiased;display:flex;justify-content:center;touch-action:none;user-select:none}
+  button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
+  .app{width:100%;max-width:430px;height:100dvh;display:flex;flex-direction:column;padding:calc(env(safe-area-inset-top) + 18px) 20px calc(env(safe-area-inset-bottom) + 20px)}
+  .top{display:flex;justify-content:space-between;align-items:baseline}
+  .top .d{font-size:15px;color:var(--mute)} .top .n{font-size:15px;font-weight:700}
+  .notice{margin-top:10px;background:rgba(196,0,26,.07);color:var(--bad);border-radius:14px;padding:11px 14px;font-weight:600;font-size:14.5px;width:100%;text-align:left}
+  .notice[hidden]{display:none}
+  .dots{display:flex;gap:6px;justify-content:center;margin-top:14px}
+  .dots i{width:26px;height:5px;border-radius:5px;background:rgba(0,0,0,.12)}
+  .dots i.p{background:var(--good)} .dots i.a{background:var(--bad)} .dots i.cur{background:var(--ink)}
+  .meta{text-align:center;margin-top:16px}
+  .meta .k{font-size:12px;font-weight:800;letter-spacing:.1em;color:var(--mute)}
+  .meta .w{font-size:14.5px;color:var(--mute);margin-top:2px;font-variant-numeric:tabular-nums}
+  .knobwrap{position:relative;width:min(100%,340px);aspect-ratio:1;margin:8px auto 0;flex:none}
+  svg{width:100%;height:100%;display:block;touch-action:none}
+  #grip{cursor:grab;transition:transform .45s cubic-bezier(.3,1.6,.5,1)}
+  #grip.drag{transition:none;cursor:grabbing}
+  .label{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:0 27%;pointer-events:none}
+  .label .name{font-size:24px;line-height:1.05;font-weight:800;letter-spacing:-.04em}
+  .label .st{font-size:13.5px;color:var(--mute);margin-top:6px;font-weight:600}
+  .label .big{font-size:30px;font-weight:800;letter-spacing:-.04em}
+  .label.ok .big{color:var(--good)} .label.no .big{color:var(--bad)}
+  .cue{display:flex;justify-content:space-between;font-size:13px;font-weight:700;padding:0 6px;margin-top:-4px}
+  .cue .a{color:var(--bad)} .cue .p{color:var(--good)}
+  .info{text-align:center;color:var(--mute);font-size:14px;margin-top:10px;min-height:42px}
+  .alt{display:flex;gap:10px;justify-content:center;margin-top:auto}
+  .alt button{height:44px;padding:0 20px;border-radius:99px;background:rgba(0,0,0,.06);font-weight:650;font-size:15px}
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="top"><span class="d" id="date"></span><span class="n" id="left"></span></div>
+  <button class="notice" id="notice" hidden></button>
+  <div class="dots" id="dots"></div>
+  <div class="meta"><div class="k" id="kind"></div><div class="w" id="when"></div></div>
+  <div class="knobwrap" id="kw">
+    <svg viewBox="0 0 300 300" id="svg">
+      <defs>
+        <radialGradient id="face" cx="40%" cy="32%" r="80%"><stop offset="0" stop-color="#ffffff"/><stop offset=".6" stop-color="#f1f1ef"/><stop offset="1" stop-color="#dcdcd8"/></radialGradient>
+        <radialGradient id="cap" cx="40%" cy="30%" r="90%"><stop offset="0" stop-color="#fff"/><stop offset="1" stop-color="#ededea"/></radialGradient>
+      </defs>
+      <g id="ticks"></g>
+      <path id="arcP" fill="none" stroke="#187030" stroke-width="7" stroke-linecap="round"/>
+      <path id="arcA" fill="none" stroke="#c4001a" stroke-width="7" stroke-linecap="round"/>
+      <g id="grip">
+        <circle cx="150" cy="150" r="104" fill="url(#face)" stroke="rgba(0,0,0,.14)" stroke-width="1.5"/>
+        <g id="ridges"></g>
+        <circle cx="150" cy="150" r="78" fill="none" stroke="rgba(0,0,0,.08)" stroke-width="1.5"/>
+        <circle cx="150" cy="54" r="6" fill="#191919"/>
+      </g>
+      <circle cx="150" cy="150" r="70" fill="url(#cap)" stroke="rgba(0,0,0,.1)" stroke-width="1.2"/>
+    </svg>
+    <div class="label" id="label"></div>
+  </div>
+  <div class="cue"><span class="a">↺ ABSENT</span><span class="p">PRESENT ↻</span></div>
+  <div class="info" id="info"></div>
+  <div class="alt"><button id="altA">Absent</button><button id="altP">Present</button></div>
+</div>
+
+<script>
+const NOW0=new Date(),M0=NOW0.getHours()*60+NOW0.getMinutes(),cl=v=>Math.max(0,Math.min(1439,v));
+const SUBJECTS=[
+  {id:'ana',name:'Anatomy',att:20,mis:8,req:75,kind:'PRACTICAL',start:cl(M0-85),end:cl(M0-25)},
+  {id:'pha',name:'Pharmacology',att:30,mis:3,req:75,kind:'LECTURE',start:cl(M0-20),end:cl(M0+40)},
+  {id:'phy',name:'Physiology',att:15,mis:5,req:75,kind:'LECTURE',start:cl(M0+75),end:cl(M0+135)},
+  {id:'bio',name:'Biochemistry',att:26,mis:2,req:75,kind:'TUTORIAL',start:cl(M0+190),end:cl(M0+250)},
+  {id:'com',name:'Community Medicine',att:6,mis:0,req:75,kind:'LECTURE',start:null,end:null},
+];
+const $=s=>document.querySelector(s);
+const fmt=m=>{const h=Math.floor(m/60),mm=String(m%60).padStart(2,'0');return `${h%12||12}:${mm} ${h>=12?'PM':'AM'}`};
+const dur=m=>{m=Math.max(1,Math.round(m));return m<60?`${m} min`:`${Math.floor(m/60)}h ${m%60}m`};
+const minutesNow=()=>{const d=new Date();return d.getHours()*60+d.getMinutes()};
+const phase=s=>{if(s.start===null)return'any';const n=minutesNow();return n>=s.end?'ended':n>=s.start?'now':'later'};
+function stats(s){const total=s.att+s.mis,pct=total?Math.round(s.att/total*100):0,r=s.req/100;let text;
+  if(!total)text='Not started';else if(pct<s.req){const need=Math.max(1,Math.ceil((r*total-s.att)/(1-r)-1e-9));text=`Attend the next ${need} to recover`}
+  else{const k=Math.max(0,Math.floor((s.att-r*total)/r+1e-9));text=k?`${k} skip${k>1?'s':''} available`:'No skips left'}
+  return {pct,text}}
+const marks={},hist=[];
+const deck=[...SUBJECTS.filter(s=>s.start!==null).sort((a,b)=>a.start-b.start),...SUBJECTS.filter(s=>s.start===null)];
+const pending=()=>deck.filter(s=>!marks[s.id]);
+
+/* ---- knob geometry ---- */
+const LIMIT=75,MAXR=100,CX=150,CY=150;
+const rad=d=>d*Math.PI/180,pt=(deg,r)=>[CX+r*Math.sin(rad(deg)),CY-r*Math.cos(rad(deg))];
+function arc(fromDeg,toDeg,r){const[x1,y1]=pt(fromDeg,r),[x2,y2]=pt(toDeg,r),sweep=toDeg>fromDeg?1:0;return `M${x1} ${y1} A${r} ${r} 0 ${Math.abs(toDeg-fromDeg)>180?1:0} ${sweep} ${x2} ${y2}`}
+(function ticks(){let h='';for(let d=-120;d<=120;d+=6){const[a,b]=pt(d,126),[c,e]=pt(d,d%30===0?142:136);h+=`<line class="tk" data-d="${d}" x1="${a}" y1="${b}" x2="${c}" y2="${e}" stroke="rgba(0,0,0,.28)" stroke-width="${d%30===0?2.2:1.4}" stroke-linecap="round"/>`}$('#ticks').innerHTML=h;
+  let r='';for(let d=0;d<360;d+=12){const[a,b]=pt(d,88),[c,e]=pt(d,98);r+=`<line x1="${a}" y1="${b}" x2="${c}" y2="${e}" stroke="rgba(0,0,0,.14)" stroke-width="2.4" stroke-linecap="round"/>`}$('#ridges').innerHTML=r})();
+
+/* ---- feedback ---- */
+let ac=null;
+function tick(strong){try{ac=ac||new (window.AudioContext||window.webkitAudioContext)();const o=ac.createOscillator(),g=ac.createGain();o.frequency.value=strong?520:900;g.gain.setValueAtTime(strong?.07:.035,ac.currentTime);g.gain.exponentialRampToValueAtTime(.0001,ac.currentTime+.05);o.connect(g).connect(ac.destination);o.start();o.stop(ac.currentTime+.05)}catch(e){}
+  if(navigator.vibrate)navigator.vibrate(strong?24:6)}
+
+let rot=0,lastTick=0,busy=false;
+function render(rotDeg){
+  rot=rotDeg;$('#grip').setAttribute('transform',`rotate(${rot} 150 150)`);
+  $('#arcP').setAttribute('d',rot>1?arc(0,Math.min(rot,MAXR),126):'');$('#arcA').setAttribute('d',rot<-1?arc(0,Math.max(rot,-MAXR),126):'');
+  document.querySelectorAll('.tk').forEach(t=>{const d=+t.dataset.d,on=(rot>0&&d>0&&d<=rot)||(rot<0&&d<0&&d>=rot);t.setAttribute('stroke',on?(rot>0?'#187030':'#c4001a'):'rgba(0,0,0,.28)')});
+  const hint=Math.abs(rot)>=LIMIT?(rot>0?'Let go to mark present':'Let go to mark absent'):'';
+  if(hint)$('#info').textContent=hint;else paintInfo();
+}
+function paintInfo(){const s=pending()[0];if(!s){$('#info').textContent='';return}const i=stats(s);$('#info').innerHTML=`<b style="color:var(--ink)">${i.pct}%</b> attendance · ${i.text}`}
+
+/* ---- gesture ---- */
+const svg=$('#svg'),grip=$('#grip');let drag=null;
+const angleOf=e=>{const r=svg.getBoundingClientRect();return Math.atan2(e.clientY-(r.top+r.height/2),e.clientX-(r.left+r.width/2))*180/Math.PI};
+svg.addEventListener('pointerdown',e=>{if(busy||!pending().length)return;const r=svg.getBoundingClientRect(),d=Math.hypot(e.clientX-(r.left+r.width/2),e.clientY-(r.top+r.height/2))/(r.width/300);
+  if(d<70||d>112)return;drag={a0:angleOf(e),r0:rot,prev:angleOf(e),acc:rot};svg.setPointerCapture(e.pointerId);grip.classList.add('drag')});
+svg.addEventListener('pointermove',e=>{if(!drag)return;const a=angleOf(e);let d=a-drag.prev;if(d>180)d-=360;if(d<-180)d+=360;drag.prev=a;drag.acc+=d;
+  const v=Math.max(-MAXR,Math.min(MAXR,drag.acc));
+  const step=Math.floor(Math.abs(v)/12)*Math.sign(v);if(step!==lastTick){tick(false);lastTick=step}
+  if(Math.abs(v)>=LIMIT&&Math.abs(rot)<LIMIT)tick(true);render(v)});
+const endDrag=()=>{if(!drag)return;drag=null;grip.classList.remove('drag');lastTick=0;
+  if(rot>=LIMIT)confirm('P');else if(rot<=-LIMIT)confirm('A');else render(0)};
+svg.addEventListener('pointerup',endDrag);svg.addEventListener('pointercancel',endDrag);
+
+function confirm(st){
+  const s=pending()[0];if(!s||busy)return;busy=true;
+  marks[s.id]=st;hist.push(s.id);if(st==='P')s.att++;else s.mis++;
+  const lb=$('#label');lb.className='label '+(st==='P'?'ok':'no');lb.innerHTML=`<div class="big">${st==='P'?'✓ Present':'✕ Absent'}</div><div class="st">${s.name}</div>`;
+  render(st==='P'?MAXR:-MAXR);
+  setTimeout(()=>{grip.classList.remove('drag');render(0);busy=false;paint()},750);
+}
+function manual(st){if(busy||!pending().length)return;const t=st==='P'?MAXR:-MAXR;grip.classList.remove('drag');render(t);tick(true);setTimeout(()=>confirm(st),150)}
+$('#altP').onclick=()=>manual('P');$('#altA').onclick=()=>manual('A');
+addEventListener('keydown',e=>{if(e.key==='ArrowRight')manual('P');if(e.key==='ArrowLeft')manual('A')});
+
+/* ---- screen ---- */
+function paint(){
+  const n=minutesNow(),pend=pending();
+  $('#date').textContent=new Date().toLocaleDateString('en-US',{weekday:'long',day:'numeric',month:'long'});
+  $('#left').textContent=pend.length?`${pend.length} to mark`:'All marked';
+  $('#dots').innerHTML=deck.map(s=>`<i class="${marks[s.id]==='P'?'p':marks[s.id]==='A'?'a':pend[0]&&pend[0].id===s.id?'cur':''}"></i>`).join('');
+  const late=pend.filter(s=>phase(s)==='ended'&&s!==pend[0]),nt=$('#notice');
+  const first=pend[0];
+  if(first&&phase(first)==='ended'){nt.hidden=false;nt.textContent=`${first.name} ended ${dur(n-first.end)} ago and isn’t marked`}else nt.hidden=true;
+  const lb=$('#label');
+  if(!pend.length){lb.className='label ok';lb.innerHTML='<div class="big">All done</div><div class="st">Every class is marked</div>';$('#kind').textContent='';$('#when').textContent='';paintInfo();return}
+  const s=pend[0],p=phase(s);
+  lb.className='label';lb.innerHTML=`<div class="name">${s.name}</div><div class="st">${p==='now'?'NOW':p==='ended'?'ENDED':p==='later'?'UP NEXT':'ANY TIME'}</div>`;
+  $('#kind').textContent=s.kind;
+  $('#when').textContent=s.start===null?'No fixed time today':`${fmt(s.start)} – ${fmt(s.end)} · ${p==='now'?`ends in ${dur(s.end-n)}`:p==='ended'?`ended ${dur(n-s.end)} ago`:`starts in ${dur(s.start-n)}`}`;
+  paintInfo();
+}
+window.__rot=()=>rot;
+render(0);paint();setInterval(()=>{if(!drag&&!busy)paint()},30000);
+</script>
+</body>
+</html>

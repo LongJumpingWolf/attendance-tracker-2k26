@@ -1,0 +1,165 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<title>Concept 6 · Skip jar</title>
+<style>
+  :root{--bg:#f3f0ea;--ink:#1c1a16;--mute:#68645b;--good:#187030;--bad:#c4001a;--card:#fffdf9}
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font:16px/1.4 -apple-system,BlinkMacSystemFont,"SF Pro Text",Inter,system-ui,sans-serif;background:var(--bg);color:var(--ink);-webkit-font-smoothing:antialiased;display:flex;justify-content:center;touch-action:pan-y}
+  button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
+  .app{width:100%;max-width:430px;min-height:100dvh;padding:calc(env(safe-area-inset-top) + 18px) 18px calc(env(safe-area-inset-bottom) + 22px);display:flex;flex-direction:column}
+  header .d{font-size:15px;color:var(--mute)}
+  header h1{font-size:34px;letter-spacing:-.04em;line-height:1.1;font-weight:800;margin-top:2px}
+  header p{color:var(--mute);font-size:15px;margin-top:2px}
+  .picker{display:flex;gap:8px;overflow-x:auto;margin:16px -18px 0;padding:0 18px 2px;scrollbar-width:none}
+  .picker::-webkit-scrollbar{display:none}
+  .pill{flex:none;height:38px;padding:0 14px;border-radius:99px;background:var(--card);font-weight:650;font-size:14px;display:flex;align-items:center;gap:8px}
+  .pill i{width:9px;height:9px;border-radius:50%}
+  .pill.on{background:var(--ink);color:#fff}
+  .pill em{font-style:normal;font-size:12px;font-weight:800}
+  .pill em.p{color:#5fd483} .pill em.a{color:#ff8b8b}
+  .pill:not(.on) em.p{color:var(--good)} .pill:not(.on) em.a{color:var(--bad)}
+  .stage{position:relative;margin:8px auto 0;width:300px;max-width:100%}
+  canvas{display:block;width:300px;height:350px;max-width:100%;touch-action:none}
+  .count{position:absolute;left:0;right:0;top:0;text-align:center;pointer-events:none}
+  .count b{font-size:52px;font-weight:300;letter-spacing:-.06em;line-height:1}
+  .count span{display:block;font-size:13px;font-weight:800;letter-spacing:.09em;color:var(--mute);margin-top:2px}
+  .info{background:var(--card);border-radius:24px;padding:16px 18px;margin-top:4px}
+  .i-top{display:flex;justify-content:space-between;align-items:center;gap:8px}
+  .i-top b{font-size:19px;letter-spacing:-.025em}
+  .badge{font-size:10.5px;font-weight:800;letter-spacing:.06em;padding:3px 8px;border-radius:7px;background:rgba(28,26,22,.08);color:var(--mute)}
+  .badge.now{background:var(--ink);color:#fff} .badge.late{background:rgba(196,0,26,.1);color:var(--bad)}
+  .i-meta{color:var(--mute);font-size:14px;margin-top:6px;font-variant-numeric:tabular-nums;line-height:1.5}
+  .i-meta strong{color:var(--ink);font-weight:650}
+  .btns{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:14px}
+  .btn{height:52px;border-radius:17px;font-weight:700;font-size:17px}
+  .btn.p{background:var(--good);color:#fff} .btn.a{background:rgba(196,0,26,.09);color:var(--bad)} .btn.s{background:rgba(28,26,22,.07)}
+  .btn:active{opacity:.7}
+  .warn{background:rgba(196,0,26,.07);color:var(--bad);border-radius:14px;padding:11px 14px;font-weight:600;font-size:14.5px;margin-top:14px;width:100%;text-align:left}
+  .warn[hidden]{display:none}
+  .hint{text-align:center;color:var(--mute);font-size:12.5px;margin-top:10px}
+</style>
+</head>
+<body>
+<div class="app">
+  <header><div class="d" id="date"></div><h1>Skip jar</h1><p>Every marble is a class you can afford to miss.</p></header>
+  <button class="warn" id="warn" hidden></button>
+  <div class="picker" id="picker"></div>
+  <div class="stage"><canvas id="c"></canvas><div class="count" id="count"></div></div>
+  <div class="info" id="info"></div>
+  <div class="hint">Drag across the jar to shake the marbles</div>
+</div>
+
+<script>
+const NOW0=new Date(),M0=NOW0.getHours()*60+NOW0.getMinutes(),cl=v=>Math.max(0,Math.min(1439,v));
+const SUBJECTS=[
+  {id:'ana',name:'Anatomy',color:'#e2503f',att:20,mis:8,req:75,kind:'Practical',start:cl(M0-85),end:cl(M0-25)},
+  {id:'pha',name:'Pharmacology',color:'#2f6fe0',att:30,mis:3,req:75,kind:'Lecture',start:cl(M0-20),end:cl(M0+40)},
+  {id:'phy',name:'Physiology',color:'#1f9d61',att:15,mis:5,req:75,kind:'Lecture',start:cl(M0+75),end:cl(M0+135)},
+  {id:'bio',name:'Biochemistry',color:'#7c4ddb',att:26,mis:2,req:75,kind:'Tutorial',start:cl(M0+190),end:cl(M0+250)},
+  {id:'com',name:'Community Medicine',color:'#d98a06',att:6,mis:0,req:75,kind:'Lecture',start:null,end:null},
+];
+const $=s=>document.querySelector(s);
+const fmt=m=>{const h=Math.floor(m/60),mm=String(Math.floor(m)%60).padStart(2,'0');return `${h%12||12}:${mm} ${h>=12?'PM':'AM'}`};
+const dur=m=>{m=Math.max(1,Math.round(m));return m<60?`${m} min`:`${Math.floor(m/60)}h ${m%60}m`};
+const minutesNow=()=>{const d=new Date();return d.getHours()*60+d.getMinutes()};
+const phase=s=>{if(s.start===null)return'any';const n=minutesNow();return n>=s.end?'ended':n>=s.start?'now':'later'};
+function stats(s){const total=s.att+s.mis,pct=total?Math.round(s.att/total*100):0,r=s.req/100;let skip=0,need=0,status,more=0;
+  if(!total)status='new';
+  else if(pct<s.req){need=Math.max(1,Math.ceil((r*total-s.att)/(1-r)-1e-9));status='risk'}
+  else{skip=Math.max(0,Math.floor((s.att-r*total)/r+1e-9));status=skip?'safe':'edge';
+    more=Math.max(1,Math.ceil((r*(skip+1)-s.att+r*total)/(1-r)-1e-9))}
+  return {pct,skip,need,status,more}}
+const marks={},hist=[];
+function setMark(id,st){const s=SUBJECTS.find(x=>x.id===id),p=marks[id]||null;if(p===st)return;hist.push({id,p});
+  if(p==='P')s.att--;if(p==='A')s.mis--;if(st==='P')s.att++;if(st==='A')s.mis++;if(st)marks[id]=st;else delete marks[id]}
+
+/* ---------- physics ---------- */
+const cv=$('#c'),ctx=cv.getContext('2d'),W=300,H=350,DPR=Math.min(2,devicePixelRatio||1);
+cv.width=W*DPR;cv.height=H*DPR;ctx.scale(DPR,DPR);
+const J={x0:34,x1:266,top:118,bot:338,n0:96,n1:204,rc:34},R=12.5,G=.55,MAXM=24;
+let balls=[],color='#2f6fe0',emptyMsg='';
+const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
+const shade=(hex,k)=>{const n=parseInt(hex.slice(1),16),f=v=>Math.round(clamp(v*k,0,255));return `rgb(${f(n>>16)},${f((n>>8)&255)},${f(n&255)})`};
+function spawn(delay){setTimeout(()=>balls.push({x:J.n0+R+Math.random()*(J.n1-J.n0-2*R),y:34,vx:(Math.random()-.5)*2,vy:2,state:'in',a:1,col:color}),delay)}
+function setTarget(n){
+  const inn=balls.filter(b=>b.state==='in');
+  if(inn.length<n)for(let i=0;i<n-inn.length;i++)spawn(i*90);
+  else if(inn.length>n)inn.sort((a,b)=>a.y-b.y).slice(0,inn.length-n).forEach(b=>b.state='out');
+}
+function step(){
+  for(const b of balls){
+    if(b.state==='out'){const tx=(J.n0+J.n1)/2;b.vx+=(tx-b.x)*.02;b.vy-=.85;b.vx*=.88;b.x+=b.vx;b.y+=b.vy;if(b.y<J.top-40){b.state='free';b.vx=(Math.random()-.5)*9;b.vy=-7}continue}
+    if(b.state==='free'){b.vy+=.6;b.x+=b.vx;b.y+=b.vy;b.a-=.014;continue}
+    b.vy+=G;b.vx*=.996;b.x+=b.vx;b.y+=b.vy;
+    let lo=J.x0+R,hi=J.x1-R;if(b.y<J.top+R){lo=J.n0+R;hi=J.n1-R}
+    if(b.x<lo){b.x=lo;b.vx=Math.abs(b.vx)*.4}if(b.x>hi){b.x=hi;b.vx=-Math.abs(b.vx)*.4}
+    if(b.y>J.bot-R){b.y=J.bot-R;b.vy=-Math.abs(b.vy)*.32;b.vx*=.94}
+    for(const cx of [J.x0+J.rc,J.x1-J.rc]){ // rounded bottom corners
+      if((cx<150&&b.x<cx)||(cx>150&&b.x>cx)){if(b.y>J.bot-J.rc){const dx=b.x-cx,dy=b.y-(J.bot-J.rc),d=Math.hypot(dx,dy),m=J.rc-R;if(d>m){b.x=cx+dx/d*m;b.y=J.bot-J.rc+dy/d*m}}}}
+  }
+  const inn=balls.filter(b=>b.state==='in');
+  for(let it=0;it<3;it++)for(let i=0;i<inn.length;i++)for(let j=i+1;j<inn.length;j++){
+    const a=inn[i],b=inn[j],dx=b.x-a.x,dy=b.y-a.y,d=Math.hypot(dx,dy)||.01,m=2*R;
+    if(d<m){const push=(m-d)/2,nx=dx/d,ny=dy/d;a.x-=nx*push;a.y-=ny*push;b.x+=nx*push;b.y+=ny*push;
+      const rv=(b.vx-a.vx)*nx+(b.vy-a.vy)*ny;if(rv<0){const imp=-rv*.55;a.vx-=nx*imp;a.vy-=ny*imp;b.vx+=nx*imp;b.vy+=ny*imp}}}
+  balls=balls.filter(b=>b.a>0&&b.y<H+60);
+}
+function jarPath(){const{x0,x1,top,bot,n0,n1,rc}=J;ctx.beginPath();ctx.moveTo(n0,44);ctx.lineTo(n0,top-14);ctx.quadraticCurveTo(n0,top,x0+18,top);
+  ctx.lineTo(x0+8,top);ctx.quadraticCurveTo(x0,top,x0,top+14);ctx.lineTo(x0,bot-rc);ctx.quadraticCurveTo(x0,bot,x0+rc,bot);ctx.lineTo(x1-rc,bot);ctx.quadraticCurveTo(x1,bot,x1,bot-rc);
+  ctx.lineTo(x1,top+14);ctx.quadraticCurveTo(x1,top,x1-8,top);ctx.lineTo(x1-18,top);ctx.quadraticCurveTo(n1,top,n1,top-14);ctx.lineTo(n1,44)}
+function draw(){
+  ctx.clearRect(0,0,W,H);
+  jarPath();ctx.fillStyle='rgba(255,255,255,.55)';ctx.fill();
+  if(emptyMsg){ctx.setLineDash([6,6]);ctx.strokeStyle='rgba(196,0,26,.55)';ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(J.x0+14,J.bot-70);ctx.lineTo(J.x1-14,J.bot-70);ctx.stroke();ctx.setLineDash([]);
+    ctx.fillStyle='#c4001a';ctx.font='700 14px -apple-system,Inter,sans-serif';ctx.textAlign='center';ctx.fillText(emptyMsg,150,J.bot-46)}
+  for(const b of balls){ctx.globalAlpha=Math.max(0,b.a);const g=ctx.createRadialGradient(b.x-4,b.y-5,1.5,b.x,b.y,R);
+    g.addColorStop(0,'rgba(255,255,255,.95)');g.addColorStop(.28,b.col);g.addColorStop(1,shade(b.col,.72));
+    ctx.fillStyle=g;ctx.beginPath();ctx.arc(b.x,b.y,R,0,7);ctx.fill();ctx.globalAlpha=1}
+  jarPath();ctx.strokeStyle='rgba(28,26,22,.38)';ctx.lineWidth=3;ctx.lineJoin='round';ctx.stroke();
+  ctx.strokeStyle='rgba(255,255,255,.9)';ctx.lineWidth=5;ctx.lineCap='round';ctx.beginPath();ctx.moveTo(J.x0+13,J.top+30);ctx.lineTo(J.x0+13,J.bot-70);ctx.stroke();
+  ctx.fillStyle='#1c1a16';ctx.beginPath();ctx.roundRect(J.n0-10,32,J.n1-J.n0+20,12,6);ctx.fill();
+}
+(function loop(){step();step();draw();requestAnimationFrame(loop)})();
+/* shake with the finger */
+let last=null;
+cv.addEventListener('pointermove',e=>{const r=cv.getBoundingClientRect(),x=(e.clientX-r.left)*(W/r.width),y=(e.clientY-r.top)*(H/r.height);
+  if(last){const vx=x-last.x,vy=y-last.y;for(const b of balls)if(b.state==='in'&&Math.hypot(b.x-x,b.y-y)<70){b.vx+=clamp(vx*.35,-6,6);b.vy+=clamp(vy*.35,-6,6)}}last={x,y}});
+cv.addEventListener('pointerup',()=>last=null);cv.addEventListener('pointerleave',()=>last=null);
+
+/* ---------- UI ---------- */
+const order=[...SUBJECTS.filter(s=>s.start!==null).sort((a,b)=>a.start-b.start),...SUBJECTS.filter(s=>s.start===null)];
+let sel=null;
+function defaultSel(){const p=order.filter(s=>!marks[s.id]);return (p.find(s=>phase(s)==='now')||p.find(s=>phase(s)==='later')||p[0]||order[0]).id}
+function paint(){
+  const n=minutesNow();
+  $('#date').textContent=new Date().toLocaleDateString('en-US',{weekday:'long',day:'numeric',month:'long'});
+  $('#picker').innerHTML=order.map(s=>{const m=marks[s.id];return `<button class="pill ${sel===s.id?'on':''}" data-id="${s.id}"><i style="background:${s.color}"></i>${s.name.split(' ')[0]}${m?`<em class="${m==='P'?'p':'a'}">${m==='P'?'✓':'✕'}</em>`:''}</button>`}).join('');
+  document.querySelectorAll('.pill').forEach(b=>b.onclick=()=>{sel=b.dataset.id;paint()});
+  const late=order.filter(s=>phase(s)==='ended'&&!marks[s.id]),w=$('#warn');
+  if(late.length){w.hidden=false;w.textContent=late.length>1?`${late.length} classes ended without a mark`:`${late[0].name} ended ${dur(n-late[0].end)} ago and isn’t marked`;w.onclick=()=>{sel=late[0].id;paint()}}else w.hidden=true;
+  const s=SUBJECTS.find(x=>x.id===sel),i=stats(s),p=phase(s),st=marks[s.id];
+  color=s.color;
+  const target=Math.min(MAXM,i.skip);
+  balls.forEach(b=>{if(b.state==='in')b.col=s.color});
+  emptyMsg=i.status==='risk'?`attend ${i.need} to earn one back`:i.status==='edge'?'no marbles left':i.status==='new'?'nothing marked yet':'';
+  setTarget(target);
+  $('#count').innerHTML=`<b>${i.skip}</b><span>${i.skip===1?'SKIP':'SKIPS'} AVAILABLE</span>`;
+  const badge=s.start===null?'<span class="badge">ANY TIME</span>':p==='now'?'<span class="badge now">NOW</span>':p==='ended'?'<span class="badge late">ENDED</span>':'<span class="badge">LATER</span>';
+  const when=s.start===null?'No fixed time':`${fmt(s.start)} – ${fmt(s.end)} · ${p==='now'?`ends in ${dur(s.end-n)}`:p==='ended'?`ended ${dur(n-s.end)} ago`:`starts in ${dur(s.start-n)}`}`;
+  const next=i.status==='safe'||i.status==='edge'?`<br>${i.more} more class${i.more>1?'es':''} attended earns the next marble`:i.status==='risk'?`<br>Under the ${s.req}% you need`:'';
+  $('#info').innerHTML=`<div class="i-top"><b>${s.name}</b>${badge}</div><div class="i-meta">${when}<br><strong>${i.pct}%</strong> attendance · ${s.kind}${next}</div>`+
+    (st?`<div class="btns"><button class="btn s" id="chg">Change to ${st==='P'?'absent':'present'}</button><button class="btn s" id="clr">Undo</button></div>`
+       :`<div class="btns"><button class="btn p" id="bp">Present</button><button class="btn a" id="ba">Absent</button></div>`);
+  const go=v=>{setMark(s.id,v);const nx=defaultSel();sel=marks[s.id]&&nx!==s.id?s.id:nx;paint()};
+  if(st){$('#chg').onclick=()=>{setMark(s.id,st==='P'?'A':'P');paint()};$('#clr').onclick=()=>{setMark(s.id,null);paint()}}
+  else{$('#bp').onclick=()=>go('P');$('#ba').onclick=()=>go('A')}
+}
+sel=defaultSel();paint();
+window.__state=()=>({balls:balls.filter(b=>b.state==='in').length,out:balls.filter(b=>b.state!=='in').length,inside:balls.filter(b=>b.state==='in').every(b=>b.x>=J.x0&&b.x<=J.x1&&b.y<=J.bot)});
+setInterval(paint,30000);
+</script>
+</body>
+</html>

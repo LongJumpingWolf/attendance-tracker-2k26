@@ -1,0 +1,871 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Away Cover Reveal Concepts</title>
+  <style>
+    :root {
+      --paper: #f2f2f7;
+      --card: #ffffff;
+      --ink: #0b0b0d;
+      --mute: #68686f;
+      --blue: #4c6fff;
+      --blue-deep: #3149d6;
+      --blue-soft: #e2e8ff;
+      --gold: #ffc83d;
+      --green: #2fb36b;
+      --red: #ff3b4e;
+      --spring: cubic-bezier(.34, 1.56, .64, 1);
+    }
+
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      color: var(--ink);
+      background:
+        radial-gradient(circle at 18% 10%, rgba(255,255,255,.95), transparent 32rem),
+        linear-gradient(135deg, #f2f2f7 0%, #edf0fa 54%, #f6eef2 100%);
+      font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", sans-serif;
+      min-height: 100vh;
+    }
+    button { font: inherit; cursor: pointer; border: 0; }
+    .page { max-width: 1120px; margin: 0 auto; padding: 48px 24px 70px; }
+    .eyebrow { color: var(--blue); font-size: 12px; font-weight: 800; letter-spacing: .12em; text-transform: uppercase; }
+    h1 { max-width: 720px; margin: 12px 0 10px; font-size: clamp(36px, 6vw, 72px); line-height: .98; letter-spacing: -.055em; }
+    .intro { max-width: 650px; margin: 0; color: var(--mute); font-size: 18px; line-height: 1.45; }
+    .toolbar { display: flex; flex-wrap: wrap; gap: 8px; margin: 32px 0 22px; }
+    .tab { padding: 11px 15px; border-radius: 999px; color: var(--mute); background: rgba(255,255,255,.64); font-size: 14px; font-weight: 700; transition: background .2s, color .2s; }
+    .tab.active { color: white; background: var(--ink); }
+    .stage { padding: 20px; border: 1px solid rgba(255,255,255,.8); border-radius: 30px; background: rgba(255,255,255,.44); box-shadow: 0 24px 70px rgba(37, 43, 72, .10); overflow: hidden; }
+
+    .concept { display: none; grid-template-columns: minmax(0, 1fr) 400px; gap: 24px; align-items: center; }
+    .concept.active { display: grid; }
+    .concept-copy { max-width: 400px; padding: 24px 28px; }
+    .concept h2 { margin: 0 0 12px; font-size: 30px; letter-spacing: -.04em; }
+    .concept-copy p { margin: 0 0 18px; color: var(--mute); line-height: 1.5; }
+    .note { display: inline-flex; gap: 7px; align-items: center; margin-bottom: 14px; padding: 8px 11px; border-radius: 999px; background: rgba(255,255,255,.8); color: var(--mute); font-size: 12px; font-weight: 700; }
+    .replay { margin-top: 10px; padding: 12px 17px; border-radius: 13px; background: var(--ink); color: white; font-weight: 700; }
+
+    /* ---------- Shared scene ---------- */
+    .canvas {
+      position: relative; width: 400px; height: 440px; margin: 0 auto; overflow: hidden;
+      border-radius: 28px;
+      background:
+        radial-gradient(circle at 50% 43%, #ffffff 0, #f4f6ff 45%, #e9edfb 100%);
+      box-shadow: 0 22px 44px rgba(36, 43, 78, .14), inset 0 0 0 1px rgba(255,255,255,.9);
+    }
+    .glow {
+      position: absolute; left: 50%; top: 190px; width: 300px; height: 300px; margin: -150px 0 0 -150px;
+      border-radius: 50%; opacity: 0;
+      background: radial-gradient(circle, rgba(76,111,255,.32), transparent 68%);
+    }
+    .hero-wrap { position: absolute; left: 140px; top: 130px; width: 120px; height: 120px; }
+    .hero {
+      position: relative; width: 120px; height: 120px; border-radius: 36px; opacity: 0;
+      display: grid; place-items: center;
+      background: linear-gradient(145deg, #7b95ff 0%, var(--blue) 45%, var(--blue-deep) 100%);
+      box-shadow: 0 22px 40px rgba(49, 73, 214, .38), inset 0 2px 0 rgba(255,255,255,.45), inset 0 -6px 12px rgba(20,30,120,.25);
+    }
+    .hero::before {
+      content: ""; position: absolute; inset: 0; border-radius: inherit;
+      background: linear-gradient(120deg, transparent 35%, rgba(255,255,255,.5) 50%, transparent 65%);
+      background-size: 250% 100%; background-position: 150% 0; opacity: 0;
+    }
+    .hero svg { width: 74px; height: 74px; overflow: visible; }
+    .hero svg .fig-back { fill: rgba(255,255,255,.55); }
+    .hero svg .fig-front { fill: #fff; }
+
+    .dot {
+      position: absolute; right: -9px; top: -9px; min-width: 30px; height: 30px; padding: 0 8px;
+      display: grid; place-items: center; border: 4px solid #fff; border-radius: 999px;
+      background: var(--red); color: #fff; font-size: 13px; font-weight: 800; opacity: 0;
+      box-shadow: 0 6px 14px rgba(255, 59, 78, .45);
+    }
+    .ring, .burst {
+      position: absolute; left: 50%; top: 50%; width: 120px; height: 120px; margin: -60px 0 0 -60px;
+      border: 3px solid var(--blue); border-radius: 42px; opacity: 0; pointer-events: none;
+    }
+    .spark {
+      position: absolute; left: 50%; top: 50%; width: 14px; height: 14px; margin: -7px 0 0 -7px; opacity: 0;
+      background: var(--gold); clip-path: polygon(50% 0, 62% 38%, 100% 50%, 62% 62%, 50% 100%, 38% 62%, 0 50%, 38% 38%);
+    }
+    .spark:nth-child(3n) { background: #ff8fa3; width: 10px; height: 10px; margin: -5px 0 0 -5px; }
+    .spark:nth-child(3n+1) { background: #7b95ff; }
+
+    .msg {
+      position: absolute; left: 0; right: 0; top: 285px; text-align: center; opacity: 0;
+      font-size: 24px; font-weight: 800; letter-spacing: -.04em; line-height: 1.05;
+    }
+    .msg small { display: block; margin-top: 9px; color: var(--mute); font-size: 13px; font-weight: 700; letter-spacing: 0; }
+
+    .tabbar {
+      position: absolute; left: 0; right: 0; bottom: 0; height: 66px; display: flex; justify-content: space-around; align-items: center;
+      background: rgba(255,255,255,.86); border-top: 1px solid rgba(0,0,0,.06); backdrop-filter: blur(8px);
+    }
+    .tabbar .t { display: grid; justify-items: center; gap: 3px; width: 66px; color: #9a9aa3; font-size: 10px; font-weight: 700; }
+    .tabbar .t i { display: block; width: 22px; height: 22px; border-radius: 7px; border: 2px solid currentColor; }
+    .tabbar .t.today i { border-radius: 50%; }
+    .t.mates .ti { position: relative; display: grid; place-items: center; width: 28px; height: 28px; border-radius: 9px; }
+    .t.mates svg { width: 20px; height: 20px; fill: currentColor; }
+    .t.mates .tdot {
+      position: absolute; right: -4px; top: -4px; width: 13px; height: 13px; border: 2px solid #fff; border-radius: 50%;
+      background: var(--red); opacity: 0;
+    }
+
+    /* Everything is idle until .play is added, so replay = remove + re-add. */
+    .play .glow { animation: glowIn 3.6s ease-out .1s both; }
+    .play .hero { animation: heroIn 1s var(--spring) .1s both; }
+    .play .hero-wrap { animation: floaty 3.2s ease-in-out 1.4s infinite; }
+    .play .hero::before { animation: shine 1.4s ease-out 1.1s both; }
+    .play .msg { animation: msgIn .8s var(--spring) both; }
+    .play .dot { animation: dotPop .6s var(--spring) both; }
+    .play .tabbar .tdot { animation: tdotPop .5s var(--spring) both; }
+
+    @keyframes glowIn { 0% { opacity: 0; transform: scale(.4); } 30% { opacity: 1; transform: scale(1); } 100% { opacity: .55; transform: scale(1.05); } }
+    @keyframes heroIn { 0% { opacity: 0; transform: scale(.2) rotate(-18deg); } 100% { opacity: 1; transform: none; } }
+    @keyframes floaty { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-7px); } }
+    @keyframes shine { 0% { opacity: 1; background-position: 150% 0; } 100% { opacity: 1; background-position: -50% 0; } }
+    @keyframes msgIn { 0% { opacity: 0; transform: translateY(18px) scale(.94); } 100% { opacity: 1; transform: none; } }
+    @keyframes dotPop { 0% { opacity: 0; transform: scale(0); } 100% { opacity: 1; transform: scale(1); } }
+    @keyframes tdotPop { 0% { opacity: 0; transform: scale(0); } 100% { opacity: 1; transform: scale(1); } }
+    @keyframes ringOut { 0% { opacity: .75; transform: scale(1); } 100% { opacity: 0; transform: scale(3.1); } }
+    @keyframes sparkOut {
+      0% { opacity: 0; transform: rotate(var(--a)) translateY(-40px) scale(.2); }
+      20% { opacity: 1; }
+      100% { opacity: 0; transform: rotate(var(--a)) translateY(calc(var(--d) * -1)) scale(1) rotate(200deg); }
+    }
+
+    /* ---------- 1 · Halo ---------- */
+    .c1.play .ring { animation: ringOut 2.4s ease-out both; animation-iteration-count: 2; }
+    .c1.play .ring:nth-of-type(1) { animation-delay: .55s; }
+    .c1.play .ring:nth-of-type(2) { animation-delay: .95s; }
+    .c1.play .ring:nth-of-type(3) { animation-delay: 1.35s; }
+    .c1.play .spark { animation: sparkOut 1.5s cubic-bezier(.2,.8,.3,1) .7s both; }
+    .c1.play .msg { animation-delay: 1.3s; }
+    .c1.play .dot { animation-delay: 1.9s; }
+    .c1.play .tabbar .tdot { animation-delay: 2.3s; }
+    .c1 .tabbar .t.mates { color: var(--blue); }
+
+    /* ---------- 2 · Dock ---------- */
+    .c2 .fig-back { fill: rgba(255,255,255,.28); }
+    .c2 .chip {
+      position: absolute; left: 50%; top: 50%; width: 46px; height: 46px; margin: -23px 0 0 -23px; z-index: 5; opacity: 0;
+      display: grid; place-items: center; border: 3px solid #fff; border-radius: 50%;
+      background: linear-gradient(145deg, #ffe08a, var(--gold)); color: #7a4a00; font-weight: 900; font-size: 19px;
+      box-shadow: 0 10px 20px rgba(122, 74, 0, .3);
+    }
+    .c2.play .chip { animation: chipFly 2s cubic-bezier(.45,.05,.25,1) .9s both; }
+    .c2.play .hero { animation: heroIn 1s var(--spring) .1s both; }
+    .c2.play .hero-wrap { animation: none; }
+    .c2.play .hero-bump { animation: bump .7s var(--spring) 2.75s both; }
+    .c2.play .fig-back { animation: lightUp .6s ease-out 2.8s both; }
+    .c2.play .burst { animation: burstOut 1.1s ease-out 2.8s both; border-color: var(--gold); }
+    .c2.play .spark { animation: sparkOut 1.3s cubic-bezier(.2,.8,.3,1) 2.8s both; }
+    .c2.play .msg { animation-delay: 3.1s; }
+    .c2.play .dot { animation-delay: 3.5s; }
+    .c2.play .tabbar .tdot { animation-delay: 3.8s; }
+    .c2 .hero-bump { width: 120px; height: 120px; }
+    @keyframes chipFly {
+      0% { opacity: 0; transform: translate(-180px, 70px) scale(.4) rotate(-40deg); }
+      15% { opacity: 1; }
+      55% { opacity: 1; transform: translate(-40px, -90px) scale(1.1) rotate(0); }
+      88% { opacity: 1; transform: translate(20px, -18px) scale(.8); }
+      100% { opacity: 0; transform: translate(20px, -18px) scale(.3); }
+    }
+    @keyframes bump { 0% { transform: scale(1); } 30% { transform: scale(.86, 1.1); } 65% { transform: scale(1.1, .94); } 100% { transform: scale(1); } }
+    @keyframes lightUp { 0% { fill: rgba(255,255,255,.28); } 100% { fill: var(--gold); } }
+    @keyframes burstOut { 0% { opacity: .9; transform: scale(1); } 100% { opacity: 0; transform: scale(1.9); } }
+
+    /* ---------- 3 · Fly to tab ---------- */
+    .c3 .confetti {
+      position: absolute; left: 50%; top: 50%; width: 9px; height: 16px; margin: -8px 0 0 -4px; border-radius: 3px; opacity: 0;
+      background: var(--c);
+    }
+    .c3.play .confetti { animation: pop 1.8s cubic-bezier(.15,.7,.3,1) .6s both; }
+    .c3.play .hero-wrap { animation: none; }
+    .c3.play .fly { animation: flyToTab 1.1s cubic-bezier(.65,0,.25,1) 2.6s both; transform-origin: center; }
+    .c3.play .glow { animation: glowIn 2.6s ease-out .1s both, glowOut .6s ease-in 2.6s forwards; }
+    .c3.play .msg { animation: msgIn .8s var(--spring) 1.1s both, msgOut .5s ease-in 2.5s forwards; }
+    .c3 .t.mates .ti { color: #9a9aa3; }
+    .c3.play .t.mates .ti { animation: tabFill .7s var(--spring) 3.5s both; }
+    .c3.play .tabbar .tdot { animation-delay: 3.8s; }
+    .c3.play .tabname { animation: tabName .4s ease 3.5s both; }
+    .c3 .toast {
+      position: absolute; left: 50%; bottom: 82px; transform: translateX(-50%); padding: 9px 14px; border-radius: 999px;
+      background: var(--ink); color: #fff; font-size: 12px; font-weight: 700; white-space: nowrap; opacity: 0;
+    }
+    .c3.play .toast { animation: toastIn 2.6s ease 3.7s both; }
+    @keyframes pop {
+      0% { opacity: 0; transform: rotate(var(--a)) translateY(0) rotate(0); }
+      12% { opacity: 1; }
+      55% { opacity: 1; transform: rotate(var(--a)) translateY(calc(var(--d) * -1)) rotate(320deg); }
+      100% { opacity: 0; transform: rotate(var(--a)) translateY(calc(var(--d) * -1 + 70px)) rotate(640deg); }
+    }
+    @keyframes flyToTab {
+      0% { transform: translate(0, 0) scale(1); opacity: 1; }
+      70% { opacity: 1; }
+      100% { transform: translate(133px, 220px) scale(.23); opacity: 0; }
+    }
+    @keyframes glowOut { to { opacity: 0; } }
+    @keyframes msgOut { to { opacity: 0; transform: translateY(-10px); } }
+    @keyframes tabFill { 0% { background: transparent; color: #9a9aa3; transform: scale(1); } 40% { transform: scale(1.35); } 100% { background: var(--blue); color: #fff; transform: scale(1); } }
+    @keyframes tabName { to { color: var(--blue); } }
+    @keyframes toastIn { 0% { opacity: 0; transform: translate(-50%, 12px); } 15%, 80% { opacity: 1; transform: translate(-50%, 0); } 100% { opacity: 0; transform: translate(-50%, -6px); } }
+
+    /* ---------- 4 · Progress ring ---------- */
+    .c4 .ringsvg { position: absolute; left: 50%; top: 50%; width: 176px; height: 176px; margin: -88px 0 0 -88px; transform: rotate(-90deg); overflow: visible; }
+    .c4 .ringsvg circle { fill: none; stroke-width: 7; stroke-linecap: round; }
+    .c4 .ringsvg .track { stroke: rgba(76,111,255,.14); opacity: 0; }
+    .c4 .ringsvg .draw { stroke: url(#ringGrad); stroke-dasharray: 528; stroke-dashoffset: 528; }
+    .c4 .check {
+      position: absolute; right: -14px; bottom: -14px; width: 44px; height: 44px; z-index: 3; opacity: 0;
+      display: grid; place-items: center; border: 4px solid #fff; border-radius: 50%;
+      background: var(--green); box-shadow: 0 8px 16px rgba(47,179,107,.4);
+    }
+    .c4 .check svg { width: 22px; height: 22px; fill: none; stroke: #fff; stroke-width: 4; stroke-linecap: round; stroke-linejoin: round; stroke-dasharray: 26; stroke-dashoffset: 26; }
+    .c4.play .track { animation: fadeIn .4s ease .3s both; }
+    .c4.play .draw { animation: drawRing 1.8s cubic-bezier(.55,.05,.25,1) .5s both; }
+    .c4.play .hero-wrap { animation: none; }
+    .c4.play .hero-flip { animation: flip 1s cubic-bezier(.4,0,.2,1) 2.3s both; }
+    .c4.play .check { animation: dotPop .6s var(--spring) 2.4s both; }
+    .c4.play .check svg { animation: drawCheck .5s ease 2.7s both; }
+    .c4.play .ring { animation: ringOut 1.6s ease-out 2.3s both; border-color: var(--green); }
+    .c4.play .spark { animation: sparkOut 1.3s cubic-bezier(.2,.8,.3,1) 2.4s both; }
+    .c4.play .msg { animation-delay: 2.7s; }
+    .c4.play .dot { animation-delay: 3.2s; }
+    .c4.play .tabbar .tdot { animation-delay: 3.5s; }
+    .c4 .hero-flip { width: 120px; height: 120px; perspective: 500px; }
+    .c4 .avatars { position: absolute; left: 0; right: 0; top: 60px; display: flex; justify-content: center; gap: 0; opacity: 0; }
+    @keyframes fadeIn { to { opacity: 1; } }
+    @keyframes drawRing { to { stroke-dashoffset: 0; } }
+    @keyframes drawCheck { to { stroke-dashoffset: 0; } }
+    @keyframes flip { 0% { transform: rotateY(0); } 100% { transform: rotateY(360deg); } }
+
+    /* ---------- 5-8 · Non-icon concepts: big centre, then small ---------- */
+    .pill {
+      position: absolute; top: 18px; left: 50%; display: flex; align-items: center; gap: 8px; padding: 6px 13px 6px 6px;
+      border-radius: 999px; background: #fff; box-shadow: 0 8px 20px rgba(36,43,78,.16); opacity: 0;
+      font-size: 12px; font-weight: 800; white-space: nowrap; z-index: 6;
+    }
+    .pill b { display: grid; place-items: center; width: 24px; height: 24px; border-radius: 50%; background: linear-gradient(145deg, #ffe08a, var(--gold)); color: #7a4a00; font-size: 12px; }
+    .pill span { color: var(--mute); font-weight: 700; }
+    .s.play .pill { animation: pillIn .6s var(--spring) var(--pd) both; }
+    .s.play .tabbar .tdot { animation-delay: calc(var(--pd) + .3s); }
+    .s .tabbar .t.mates { color: var(--blue); }
+    @keyframes pillIn { 0% { opacity: 0; transform: translate(-50%, -16px) scale(.6); } 100% { opacity: 1; transform: translate(-50%, 0) scale(1); } }
+
+    .slip-wrap { position: absolute; left: 60px; top: 100px; width: 280px; height: 170px; }
+    .slip {
+      position: relative; width: 100%; height: 100%; padding: 18px 20px; border-radius: 14px; background: #fff; opacity: 0;
+      box-shadow: 0 18px 36px rgba(36,43,78,.18), 0 2px 0 rgba(0,0,0,.04);
+      background-image: repeating-linear-gradient(transparent 0 27px, rgba(76,111,255,.09) 27px 28px);
+    }
+    .slip .k { color: var(--mute); font-size: 10px; font-weight: 800; letter-spacing: .14em; text-transform: uppercase; }
+    .slip .cls { margin-top: 6px; font-size: 19px; font-weight: 800; letter-spacing: -.03em; }
+    .slip .by { margin-top: 20px; display: flex; gap: 8px; align-items: baseline; color: var(--mute); font-size: 12px; font-weight: 700; }
+    .slip .by em { font-style: normal; color: var(--ink); font-size: 20px; font-weight: 800; opacity: 0; }
+
+    /* 5 · Stamp */
+    .stamp {
+      position: absolute; right: 16px; bottom: 16px; padding: 4px 12px; border: 4px solid #e0334a; border-radius: 9px;
+      color: #e0334a; font-size: 27px; font-weight: 900; letter-spacing: .08em; opacity: 0; transform: rotate(-12deg);
+      box-shadow: inset 0 0 0 2px rgba(224,51,74,.25);
+    }
+    .c5.play .slip { animation: slipIn .9s var(--spring) .1s both, shake .4s ease 1.5s; }
+    .c5.play .slip-wrap { animation: slipAway .8s cubic-bezier(.6,0,.3,1) 3.2s both; }
+    .c5.play .stamp { animation: stampIn .4s cubic-bezier(.2,1.5,.4,1) 1.35s both; }
+    .c5.play .by em { animation: fadeIn .3s ease 1.5s both; }
+    .c5.play .msg { animation: msgIn .8s var(--spring) 1.7s both, msgOut .5s ease-in 3.1s forwards; }
+    .c5.play .thud { animation: thud .7s ease-out 1.4s both; }
+    .thud { position: absolute; right: 30px; bottom: 26px; width: 100px; height: 40px; border-radius: 50%; border: 3px solid rgba(224,51,74,.4); opacity: 0; }
+    @keyframes slipIn { 0% { opacity: 0; transform: translateY(-320px) rotate(-16deg); } 100% { opacity: 1; transform: rotate(-3deg); } }
+    @keyframes shake { 0%, 100% { transform: rotate(-3deg); } 20% { transform: rotate(-3deg) translate(-5px, 4px); } 45% { transform: rotate(-3deg) translate(5px, -3px); } 70% { transform: rotate(-3deg) translate(-3px, 2px); } }
+    @keyframes stampIn { 0% { opacity: 0; transform: scale(3) rotate(-12deg); } 100% { opacity: .92; transform: scale(1) rotate(-12deg); } }
+    @keyframes thud { 0% { opacity: .8; transform: scale(.5); } 100% { opacity: 0; transform: scale(2.6); } }
+    @keyframes slipAway { 0% { transform: none; opacity: 1; } 100% { transform: translate(0, -185px) scale(.2); opacity: 0; } }
+
+    /* 6 · Signature */
+    .sig { width: 100%; height: 76px; margin-top: 10px; overflow: visible; }
+    .sig path { fill: none; stroke: #1b2a8a; stroke-width: 3.4; stroke-linecap: round; stroke-linejoin: round; stroke-dasharray: 1; stroke-dashoffset: 1; }
+    .sig .under { stroke: rgba(27,42,138,.4); stroke-width: 2.4; }
+    .c6 .slip .sub { margin-top: -4px; color: var(--mute); font-size: 11px; font-weight: 700; opacity: 0; }
+    .c6.play .slip { animation: slipIn .9s var(--spring) .1s both; }
+    .c6.play .slip-wrap { animation: slipAway .8s cubic-bezier(.6,0,.3,1) 3.5s both; }
+    .c6.play .sig .name { animation: drawRing 1.6s cubic-bezier(.5,.1,.3,1) 1.1s both; }
+    .c6.play .sig .under { animation: drawRing .5s ease 2.6s both; }
+    .c6.play .slip .sub { animation: fadeIn .4s ease 2.8s both; }
+    .c6.play .msg { animation: msgIn .8s var(--spring) 2.2s both, msgOut .5s ease-in 3.4s forwards; }
+
+    /* 7 · Kinetic type */
+    .c7 { background: radial-gradient(circle at 50% 42%, #23253a 0, #0d0e17 70%); }
+    .c7 .tabbar { background: rgba(20,21,32,.92); border-top-color: rgba(255,255,255,.08); }
+    .c7 .spot { position: absolute; left: 50%; top: 0; width: 320px; height: 300px; margin-left: -160px; opacity: 0; clip-path: polygon(38% 0, 62% 0, 100% 100%, 0 100%); background: linear-gradient(rgba(255,255,255,.22), transparent 90%); }
+    .kt-wrap { position: absolute; left: 0; right: 0; top: 130px; text-align: center; }
+    .kt-lab { color: rgba(255,255,255,.6); font-size: 13px; font-weight: 800; letter-spacing: .3em; text-transform: uppercase; opacity: 0; }
+    .kt { display: flex; justify-content: center; margin-top: 6px; color: #fff; font-size: 56px; font-weight: 900; letter-spacing: -.04em; line-height: 1; }
+    .kt span { display: inline-block; opacity: 0; }
+    .kt span:last-child { color: var(--gold); }
+    .kt-sub { margin-top: 14px; color: rgba(255,255,255,.75); font-size: 15px; font-weight: 700; opacity: 0; }
+    .kt-sub b { color: var(--gold); }
+    .c7.play .spot { animation: spotIn 2.6s ease .1s both; }
+    .c7.play .kt-lab { animation: fadeIn .5s ease .2s both; }
+    .c7.play .kt span { animation: letterDrop .8s cubic-bezier(.3,1.5,.5,1) calc(.5s + var(--i) * .09s) both; }
+    .c7.play .kt-sub { animation: msgIn .7s var(--spring) 1.8s both; }
+    .c7.play .kt-wrap { animation: ktAway .8s cubic-bezier(.6,0,.3,1) 3.3s both; }
+    @keyframes spotIn { 0% { opacity: 0; } 25%, 80% { opacity: 1; } 100% { opacity: .5; } }
+    @keyframes letterDrop { 0% { opacity: 0; transform: translateY(-200px) rotate(var(--r)); } 100% { opacity: 1; transform: none; } }
+    @keyframes ktAway { 0% { transform: none; opacity: 1; } 100% { transform: translateY(-115px) scale(.2); opacity: 0; } }
+
+    /* 8 · Sticky note */
+    .note-wrap { position: absolute; left: 100px; top: 95px; width: 200px; height: 200px; }
+    .postit {
+      position: relative; width: 100%; height: 100%; padding: 32px 22px 18px; opacity: 0; border-radius: 4px 4px 22px 4px;
+      background: linear-gradient(160deg, #fff09a, #ffd94d);
+      box-shadow: 0 16px 26px rgba(120, 90, 0, .25);
+      color: #4a3b00; font-family: "Segoe Print", "Bradley Hand", "Comic Sans MS", cursive; font-size: 21px; line-height: 1.25;
+    }
+    .postit::before { content: ""; position: absolute; top: -12px; left: 70px; width: 62px; height: 26px; background: rgba(255,255,255,.6); transform: rotate(-4deg); box-shadow: 0 2px 4px rgba(0,0,0,.08); }
+    .postit .from { display: block; margin-top: 14px; font-size: 18px; text-align: right; }
+    .c8.play .postit { animation: slap .55s cubic-bezier(.2,.9,.3,1.1) .2s both; }
+    .c8.play .note-wrap { animation: stickCorner .9s cubic-bezier(.6,0,.3,1.1) 3.1s both; }
+    .c8.play .msg { animation: msgIn .8s var(--spring) 1s both, msgOut .5s ease-in 3s forwards; }
+    @keyframes slap {
+      0% { opacity: 0; transform: scale(2.4) rotate(16deg); box-shadow: 0 90px 60px rgba(120,90,0,.1); }
+      70% { opacity: 1; transform: scale(.94) rotate(-5deg); }
+      100% { opacity: 1; transform: scale(1) rotate(-3deg); }
+    }
+    @keyframes stickCorner { 0% { transform: none; } 100% { transform: translate(135px, -158px) scale(.3) rotate(8deg); } }
+
+    /* ---------- 9-12 · Tiny effects around the Mates button ---------- */
+    .m { height: 230px; }
+    .m .ph { position: absolute; left: 22px; right: 22px; top: 26px; display: grid; gap: 12px; }
+    .m .ph i { display: block; height: 14px; border-radius: 7px; background: rgba(0,0,0,.06); }
+    .m .ph i:nth-child(1) { width: 55%; height: 20px; }
+    .m .ph i:nth-child(3) { width: 80%; }
+    .m .ph i:nth-child(4) { width: 40%; }
+    .m .fx { position: absolute; left: 50%; top: 50%; width: 0; height: 0; }
+    .m .spark, .m .spark:nth-child(3n) { width: 9px; height: 9px; margin: -4.5px 0 0 -4.5px; }
+    .m.play .t.mates { animation: tabBlue .3s ease var(--pd) both; }
+    .m.play .tabbar .tdot { animation-delay: var(--pd); }
+    .m .tabname { transition: none; }
+    @keyframes tabBlue { from { color: #9a9aa3; } to { color: var(--blue); } }
+    @keyframes miniSpark {
+      0% { opacity: 0; transform: rotate(var(--a)) translateY(-8px) scale(.2); }
+      25% { opacity: 1; }
+      100% { opacity: 0; transform: rotate(var(--a)) translateY(calc(var(--d) * -1)) scale(1) rotate(160deg); }
+    }
+
+    /* 9 · Hop & twinkle */
+    .c9.play .t.mates .ti { animation: hop .95s ease-out .3s both; }
+    .c9.play .spark { animation: miniSpark 1s cubic-bezier(.2,.8,.3,1) .45s both; }
+    @keyframes hop {
+      0% { transform: none; } 18% { transform: translateY(-18px) scale(.92, 1.1); } 38% { transform: translateY(0) scale(1.18, .82); }
+      55% { transform: translateY(-9px) scale(.97, 1.04); } 72% { transform: translateY(0) scale(1.07, .94); } 100% { transform: none; }
+    }
+
+    /* 10 · Speech bubble */
+    .bubble {
+      position: absolute; right: 14px; bottom: 84px; display: flex; align-items: center; gap: 8px; padding: 8px 13px 8px 8px;
+      border-radius: 16px; background: var(--ink); color: #fff; font-size: 12px; font-weight: 700; white-space: nowrap;
+      opacity: 0; transform-origin: 84% 100%; box-shadow: 0 10px 22px rgba(11,11,13,.28);
+    }
+    .bubble::after { content: ""; position: absolute; right: 47px; bottom: -5px; width: 12px; height: 12px; background: var(--ink); transform: rotate(45deg); border-radius: 2px; }
+    .bubble b { display: grid; place-items: center; width: 24px; height: 24px; border-radius: 50%; background: linear-gradient(145deg, #ffe08a, var(--gold)); color: #7a4a00; font-size: 12px; }
+    .c10.play .bubble { animation: bubblePop .55s var(--spring) .5s both, bubbleOut .4s ease-in 4s forwards; }
+    .c10.play .t.mates .ti { animation: wiggle .6s ease-in-out .45s both; }
+    @keyframes bubblePop { 0% { opacity: 0; transform: scale(0); } 100% { opacity: 1; transform: scale(1); } }
+    @keyframes bubbleOut { to { opacity: 0; transform: scale(.3) translateY(14px); } }
+    @keyframes wiggle { 0%, 100% { transform: none; } 20% { transform: rotate(-16deg); } 45% { transform: rotate(13deg); } 70% { transform: rotate(-7deg); } }
+
+    /* 11 · Avatar peek */
+    .peek {
+      position: absolute; left: -17px; top: -17px; z-index: 3; width: 34px; height: 34px; display: grid; place-items: center; border-radius: 50%; opacity: 0;
+      background: linear-gradient(145deg, #ffe08a, var(--gold)); color: #7a4a00; font-size: 15px; font-weight: 900;
+      box-shadow: 0 0 0 3px #fff, 0 6px 12px rgba(0,0,0,.18);
+    }
+    .c11.play .peek { animation: peek 3.2s cubic-bezier(.4,0,.2,1) .3s both; }
+    @keyframes peek {
+      0% { opacity: 0; transform: translate(0, 8px) scale(.3); }
+      15% { opacity: 1; transform: translate(0, -42px) scale(1); }
+      25% { transform: translate(0, -42px) rotate(-16deg); }
+      35% { transform: translate(0, -42px) rotate(16deg); }
+      45% { transform: translate(0, -42px) rotate(-16deg); }
+      55% { transform: translate(0, -42px) rotate(0); }
+      78% { opacity: 1; transform: translate(0, -42px) scale(1); }
+      100% { opacity: 1; transform: translate(13px, -14px) scale(.58); box-shadow: 0 0 0 3px #fff, 0 0 0 7px var(--red), 0 6px 12px rgba(0,0,0,.18); }
+    }
+
+    /* 12 · Hearts and a slow ping */
+    .halo { position: absolute; left: -30px; top: -30px; z-index: -1; width: 60px; height: 60px; border-radius: 50%; background: radial-gradient(circle, rgba(76,111,255,.4), transparent 70%); opacity: 0; }
+    .heart { position: absolute; left: -6px; top: -8px; color: #ff5c7a; font-size: 13px; line-height: 1; opacity: 0; }
+    .c12.play .halo { animation: haloPulse 1.1s ease-out .3s 2 both; }
+    .c12.play .heart { animation: heartUp 1.9s ease-out calc(.5s + var(--i) * .28s) both; }
+    .c12.play .t.mates .tdot::after { content: ""; position: absolute; inset: -2px; border-radius: 50%; border: 2px solid var(--red); animation: ping 1.6s ease-out 2s infinite; }
+    @keyframes haloPulse { 0% { opacity: .9; transform: scale(.4); } 100% { opacity: 0; transform: scale(1.7); } }
+    @keyframes heartUp {
+      0% { opacity: 0; transform: translate(0, 0) scale(.4); }
+      15% { opacity: 1; }
+      100% { opacity: 0; transform: translate(var(--x), -64px) scale(1.15) rotate(var(--r)); }
+    }
+    @keyframes ping { 0% { opacity: .8; transform: scale(1); } 100% { opacity: 0; transform: scale(2.8); } }
+
+    /* ---------- 13-16 · More bubbles ---------- */
+    @keyframes fadeOutK { to { opacity: 0; } }
+
+    /* 13 · Thought bubble */
+    .thought {
+      position: absolute; right: 14px; bottom: 98px; display: flex; align-items: center; gap: 8px; padding: 9px 15px 9px 9px;
+      border-radius: 24px; background: #fff; font-size: 12px; font-weight: 800; white-space: nowrap; opacity: 0;
+      transform-origin: 84% 100%; box-shadow: 0 10px 24px rgba(36,43,78,.2);
+    }
+    .thought b { display: grid; place-items: center; width: 26px; height: 26px; border-radius: 50%; background: linear-gradient(145deg, #ffe08a, var(--gold)); color: #7a4a00; font-size: 12px; }
+    .trail { position: absolute; border-radius: 50%; background: #fff; box-shadow: 0 4px 10px rgba(36,43,78,.18); opacity: 0; }
+    .trail.a { right: 64px; bottom: 72px; width: 7px; height: 7px; }
+    .trail.b { right: 60px; bottom: 84px; width: 12px; height: 12px; }
+    .c13.play .trail.a { animation: bubblePop .35s var(--spring) .35s both, bubbleOut .3s ease-in 4.1s forwards; }
+    .c13.play .trail.b { animation: bubblePop .35s var(--spring) .55s both, bubbleOut .3s ease-in 4.1s forwards; }
+    .c13.play .thought { animation: bubblePop .6s var(--spring) .8s both, bobble 2.4s ease-in-out 1.5s 1, bubbleOut .4s ease-in 4.1s forwards; }
+    @keyframes bobble { 0%, 100% { translate: 0 0; } 50% { translate: 0 -4px; } }
+
+    /* 14 · Typing → message */
+    .chat { position: absolute; right: 14px; bottom: 84px; width: 58px; height: 38px; border-radius: 19px; background: #e6e6ec; opacity: 0; transform-origin: 84% 100%; box-shadow: 0 8px 18px rgba(36,43,78,.14); }
+    .chat::after { content: ""; position: absolute; right: 47px; bottom: -4px; width: 12px; height: 12px; background: #e6e6ec; transform: rotate(45deg); border-radius: 2px; }
+    .chat .in { position: absolute; inset: 0; overflow: hidden; border-radius: inherit; }
+    .typing { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; gap: 4px; }
+    .typing i { width: 7px; height: 7px; border-radius: 50%; background: #8e8e98; }
+    .chat .txt { position: absolute; inset: 0; display: flex; align-items: center; padding: 0 14px; font-size: 13px; font-weight: 700; white-space: nowrap; opacity: 0; }
+    .c14.play .chat { animation: bubblePop .45s var(--spring) .4s both, typeGrow .45s cubic-bezier(.3,1.4,.5,1) 2.2s both, bubbleOut .4s ease-in 5s forwards; }
+    .c14.play .typing { animation: fadeOutK .2s ease 2.15s forwards; }
+    .c14.play .typing i { animation: dotBounce .9s ease-in-out infinite; }
+    .c14.play .typing i:nth-child(2) { animation-delay: .15s; }
+    .c14.play .typing i:nth-child(3) { animation-delay: .3s; }
+    .c14.play .txt { animation: fadeIn .3s ease 2.5s both; }
+    .c14.play .t.mates .ti { animation: hop .95s ease-out 2.5s both; }
+    @keyframes typeGrow { from { width: 58px; } to { width: 190px; } }
+    @keyframes dotBounce { 0%, 60%, 100% { transform: translateY(0); opacity: .5; } 30% { transform: translateY(-5px); opacity: 1; } }
+
+    /* 15 · Soap bubbles */
+    .sb, .bigb { position: absolute; border-radius: 50%; opacity: 0; border: 1.5px solid rgba(255,255,255,.95); background: radial-gradient(circle at 30% 28%, #fff, rgba(200,215,255,.55) 60%, rgba(160,180,255,.3)); box-shadow: inset -3px -3px 6px rgba(76,111,255,.2), 0 4px 8px rgba(76,111,255,.15); }
+    .sb { left: calc(var(--s) / -2); top: calc(var(--s) / -2); width: var(--s); height: var(--s); }
+    .bigb { left: -23px; top: -23px; width: 46px; height: 46px; display: grid; place-items: center; z-index: 2; }
+    .bigb b { display: grid; place-items: center; width: 24px; height: 24px; border-radius: 50%; background: linear-gradient(145deg, #ffe08a, var(--gold)); color: #7a4a00; font-size: 12px; }
+    .popfx { position: absolute; left: 0; top: -56px; }
+    .c15 .spark, .c15 .spark:nth-child(3n) { border-radius: 50%; clip-path: none; background: #9db2ff; width: 6px; height: 6px; margin: -3px 0 0 -3px; }
+    .c15.play .sb { animation: bubRise 2.2s ease-out calc(.3s + var(--i) * .35s) both; }
+    .c15.play .bigb { animation: bigRise 3.3s ease-in-out .5s both; }
+    .c15.play .spark { animation: miniSpark .8s ease-out 3.55s both; }
+    @keyframes bubRise { 0% { opacity: 0; transform: translate(0, 0) scale(.2); } 20% { opacity: 1; } 100% { opacity: 0; transform: translate(var(--x), -64px) scale(1.05); } }
+    @keyframes bigRise {
+      0% { opacity: 0; transform: translate(0, 0) scale(.2); }
+      22% { opacity: 1; transform: translate(0, -52px) scale(1); }
+      32% { transform: translate(-3px, -56px) scale(1.1, .92); }
+      44% { transform: translate(3px, -56px) scale(.94, 1.08); }
+      56% { transform: translate(-2px, -56px) scale(1.05, .97); }
+      80% { opacity: 1; transform: translate(0, -56px) scale(1.04); }
+      90% { opacity: .5; transform: translate(0, -56px) scale(1.4); }
+      100% { opacity: 0; transform: translate(0, -56px) scale(1.7); }
+    }
+
+    /* 16 · Island: the button itself expands over the tab bar */
+    .island { position: absolute; z-index: 6; right: 53px; bottom: 26px; width: 28px; height: 28px; border-radius: 9px; background: var(--ink); overflow: hidden; opacity: 0; box-shadow: 0 10px 24px rgba(11,11,13,.3); }
+    .island .row { position: absolute; inset: 0; display: flex; align-items: center; gap: 9px; padding: 0 16px 0 9px; color: #fff; font-size: 13px; font-weight: 700; white-space: nowrap; opacity: 0; }
+    .island .row b { display: grid; place-items: center; flex: 0 0 auto; width: 28px; height: 28px; border-radius: 50%; background: linear-gradient(145deg, #ffe08a, var(--gold)); color: #7a4a00; font-size: 13px; }
+    .island .row span { color: rgba(255,255,255,.65); font-weight: 600; }
+    .c16.play .island { animation: islandGrow .7s cubic-bezier(.3,1.25,.5,1) .4s both, islandShrink .6s cubic-bezier(.6,0,.3,1) 4s forwards; }
+    .c16.play .island .row { animation: fadeIn .3s ease 1s both, fadeOutK .25s ease 3.85s forwards; }
+    @keyframes islandGrow {
+      0% { opacity: 0; right: 53px; bottom: 26px; width: 28px; height: 28px; border-radius: 9px; }
+      12% { opacity: 1; }
+      100% { opacity: 1; right: 14px; bottom: 10px; width: 300px; height: 46px; border-radius: 23px; }
+    }
+    @keyframes islandShrink {
+      0% { opacity: 1; right: 14px; bottom: 10px; width: 300px; height: 46px; border-radius: 23px; }
+      100% { opacity: 0; right: 53px; bottom: 26px; width: 28px; height: 28px; border-radius: 9px; }
+    }
+
+    @media (max-width: 860px) {
+      .concept.active { grid-template-columns: 1fr; }
+      .concept-copy { max-width: none; padding: 16px 12px 0; }
+    }
+    @media (max-width: 460px) {
+      .page { padding: 30px 16px 45px; }
+      .stage { padding: 10px; }
+      .canvas { transform: scale(.82); transform-origin: top center; margin-bottom: -78px; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .play *, .play { animation-duration: .01ms !important; animation-delay: 0s !important; animation-iteration-count: 1 !important; }
+    }
+  </style>
+</head>
+<body>
+  <svg width="0" height="0" style="position:absolute" aria-hidden="true">
+    <defs>
+      <symbol id="mates-icon" viewBox="0 0 48 48">
+        <circle cx="34" cy="16" r="6"/><path d="M25 39c0-7 4-11 9-11s9 4 9 11z"/>
+        <circle cx="17" cy="18" r="7"/><path d="M4 41c0-9 5-14 13-14s13 5 13 14z"/>
+      </symbol>
+      <linearGradient id="ringGrad" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#7b95ff"/><stop offset="1" stop-color="#2fb36b"/></linearGradient>
+    </defs>
+  </svg>
+
+  <main class="page">
+    <div class="eyebrow">Proxy-mate · interaction study</div>
+    <h1>Someone had your back while you were away.</h1>
+    <p class="intro">Tabs 1–4 put the Mates icon at the centre. Tabs 5–8 drop the icon entirely: something big and tactile takes over the screen, then shrinks into a small reminder. Tabs 9–16 are tiny effects that stay right around the Mates button, and 10 and 13–16 are all different takes on a bubble.</p>
+
+    <div class="toolbar" role="tablist" aria-label="Animation concepts">
+      <button class="tab active" data-target="c1" role="tab">1 · Halo</button>
+      <button class="tab" data-target="c2" role="tab">2 · Dock</button>
+      <button class="tab" data-target="c3" role="tab">3 · Fly to tab</button>
+      <button class="tab" data-target="c4" role="tab">4 · Verified</button>
+      <button class="tab" data-target="c5" role="tab">5 · Stamp</button>
+      <button class="tab" data-target="c6" role="tab">6 · Signature</button>
+      <button class="tab" data-target="c7" role="tab">7 · Headline</button>
+      <button class="tab" data-target="c8" role="tab">8 · Sticky note</button>
+      <button class="tab" data-target="c9" role="tab">9 · Hop &amp; twinkle</button>
+      <button class="tab" data-target="c10" role="tab">10 · Bubble</button>
+      <button class="tab" data-target="c11" role="tab">11 · Peek</button>
+      <button class="tab" data-target="c12" role="tab">12 · Hearts &amp; ping</button>
+      <button class="tab" data-target="c13" role="tab">13 · Thought</button>
+      <button class="tab" data-target="c14" role="tab">14 · Typing</button>
+      <button class="tab" data-target="c15" role="tab">15 · Soap bubble</button>
+      <button class="tab" data-target="c16" role="tab">16 · Island</button>
+    </div>
+
+    <section class="stage">
+      <!-- 1 · Halo -->
+      <article class="concept active" id="c1" role="tabpanel">
+        <div class="concept-copy">
+          <span class="note">Primary direction</span>
+          <h2>The Mates halo</h2>
+          <p>The icon springs in with a glow, sends soft rings and sparkles outward, then floats gently. A red badge pops onto it and the message rises below.</p>
+          <p><strong>Feels like:</strong> a warm, celebratory “you're looked after”.</p>
+          <button class="replay" data-replay="c1">Replay animation</button>
+        </div>
+        <div class="canvas c1" aria-label="Mates icon glows and shows a notification">
+          <div class="glow"></div>
+          <i class="ring"></i><i class="ring"></i><i class="ring"></i>
+          <div class="hero-wrap">
+            <div class="hero"><svg viewBox="0 0 48 48"><g class="fig-back"><circle cx="34" cy="16" r="6"/><path d="M25 39c0-7 4-11 9-11s9 4 9 11z"/></g><g class="fig-front"><circle cx="17" cy="18" r="7"/><path d="M4 41c0-9 5-14 13-14s13 5 13 14z"/></g></svg><span class="dot">1</span></div>
+            <i class="spark" style="--a:0deg;--d:120px"></i><i class="spark" style="--a:45deg;--d:105px"></i><i class="spark" style="--a:90deg;--d:125px"></i><i class="spark" style="--a:135deg;--d:100px"></i><i class="spark" style="--a:180deg;--d:120px"></i><i class="spark" style="--a:225deg;--d:108px"></i><i class="spark" style="--a:270deg;--d:125px"></i><i class="spark" style="--a:315deg;--d:100px"></i>
+          </div>
+          <div class="msg">Someone covered for you!<small>Arjun marked you present</small></div>
+          <div class="tabbar"><div class="t today"><i></i>Today</div><div class="t"><i></i>Classes</div><div class="t mates"><span class="ti"><svg><use href="#mates-icon"/></svg><b class="tdot"></b></span>Mates</div></div>
+        </div>
+      </article>
+
+      <!-- 2 · Dock -->
+      <article class="concept" id="c2" role="tabpanel">
+        <div class="concept-copy">
+          <span class="note">Most personal</span>
+          <h2>Your mate docks in</h2>
+          <p>The Mates icon starts with one figure lit and the second one dim. Arjun's avatar swoops in and lands on the empty spot. The icon squishes, the second figure lights gold, and stars burst out.</p>
+          <p><strong>Feels like:</strong> a real person joining you.</p>
+          <button class="replay" data-replay="c2">Replay animation</button>
+        </div>
+        <div class="canvas c2" aria-label="Arjun's avatar docks into the Mates icon">
+          <div class="glow"></div>
+          <div class="hero-wrap">
+            <div class="hero-bump">
+              <div class="hero"><svg viewBox="0 0 48 48"><g class="fig-back"><circle cx="34" cy="16" r="6"/><path d="M25 39c0-7 4-11 9-11s9 4 9 11z"/></g><g class="fig-front"><circle cx="17" cy="18" r="7"/><path d="M4 41c0-9 5-14 13-14s13 5 13 14z"/></g></svg><span class="dot">1</span></div>
+              <i class="burst"></i>
+              <i class="spark" style="--a:20deg;--d:115px"></i><i class="spark" style="--a:70deg;--d:100px"></i><i class="spark" style="--a:120deg;--d:118px"></i><i class="spark" style="--a:200deg;--d:104px"></i><i class="spark" style="--a:260deg;--d:120px"></i><i class="spark" style="--a:320deg;--d:100px"></i>
+            </div>
+            <div class="chip">A</div>
+          </div>
+          <div class="msg">Someone covered for you!<small>Arjun marked you present</small></div>
+          <div class="tabbar"><div class="t today"><i></i>Today</div><div class="t"><i></i>Classes</div><div class="t mates" style="color:var(--blue)"><span class="ti"><svg><use href="#mates-icon"/></svg><b class="tdot"></b></span>Mates</div></div>
+        </div>
+      </article>
+
+      <!-- 3 · Fly to tab -->
+      <article class="concept" id="c3" role="tabpanel">
+        <div class="concept-copy">
+          <span class="note">Clearest hand-off</span>
+          <h2>The icon flies to its tab</h2>
+          <p>A confetti burst greets the giant Mates icon and the message. Then the icon shrinks and flies straight into the tab bar, where the Mates tab lights up with its red dot.</p>
+          <p><strong>Feels like:</strong> “it's waiting for you down there”. It teaches where to tap.</p>
+          <button class="replay" data-replay="c3">Replay animation</button>
+        </div>
+        <div class="canvas c3" aria-label="Mates icon flies into the tab bar">
+          <div class="glow"></div>
+          <div class="hero-wrap fly">
+            <div class="hero"><svg viewBox="0 0 48 48"><g class="fig-back"><circle cx="34" cy="16" r="6"/><path d="M25 39c0-7 4-11 9-11s9 4 9 11z"/></g><g class="fig-front"><circle cx="17" cy="18" r="7"/><path d="M4 41c0-9 5-14 13-14s13 5 13 14z"/></g></svg></div>
+            <i class="confetti" style="--a:0deg;--d:130px;--c:#ff6b81"></i><i class="confetti" style="--a:30deg;--d:150px;--c:#ffc83d"></i><i class="confetti" style="--a:60deg;--d:125px;--c:#4c6fff"></i><i class="confetti" style="--a:95deg;--d:155px;--c:#2fb36b"></i><i class="confetti" style="--a:130deg;--d:130px;--c:#ff8a3d"></i><i class="confetti" style="--a:165deg;--d:150px;--c:#c56bff"></i><i class="confetti" style="--a:200deg;--d:128px;--c:#ffc83d"></i><i class="confetti" style="--a:235deg;--d:155px;--c:#ff6b81"></i><i class="confetti" style="--a:270deg;--d:130px;--c:#4c6fff"></i><i class="confetti" style="--a:305deg;--d:150px;--c:#2fb36b"></i><i class="confetti" style="--a:335deg;--d:125px;--c:#ff8a3d"></i><i class="confetti" style="--a:15deg;--d:170px;--c:#c56bff"></i>
+          </div>
+          <div class="msg">Someone covered for you!<small>Arjun marked you present</small></div>
+          <div class="toast">Arjun's cover is waiting in Mates</div>
+          <div class="tabbar"><div class="t today"><i></i>Today</div><div class="t"><i></i>Classes</div><div class="t mates"><span class="ti"><svg><use href="#mates-icon"/></svg><b class="tdot"></b></span><span class="tabname">Mates</span></div></div>
+        </div>
+      </article>
+
+      <!-- 4 · Verified -->
+      <article class="concept" id="c4" role="tabpanel">
+        <div class="concept-copy">
+          <span class="note">Most trustworthy</span>
+          <h2>Cover, confirmed</h2>
+          <p>A ring draws itself around the Mates icon, then the icon does a full flip and lands with a green check. It reads as a verified favour, not just a notification.</p>
+          <p><strong>Feels like:</strong> calm, official, and easy to trust.</p>
+          <button class="replay" data-replay="c4">Replay animation</button>
+        </div>
+        <div class="canvas c4" aria-label="Ring draws around the Mates icon and a check appears">
+          <div class="glow"></div>
+          <div class="hero-wrap">
+            <svg class="ringsvg" viewBox="0 0 176 176"><circle class="track" cx="88" cy="88" r="84"/><circle class="draw" cx="88" cy="88" r="84"/></svg>
+            <i class="ring"></i>
+            <div class="hero-flip">
+              <div class="hero"><svg viewBox="0 0 48 48"><g class="fig-back"><circle cx="34" cy="16" r="6"/><path d="M25 39c0-7 4-11 9-11s9 4 9 11z"/></g><g class="fig-front"><circle cx="17" cy="18" r="7"/><path d="M4 41c0-9 5-14 13-14s13 5 13 14z"/></g></svg><span class="dot">1</span></div>
+            </div>
+            <span class="check"><svg viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></span>
+            <i class="spark" style="--a:30deg;--d:118px"></i><i class="spark" style="--a:90deg;--d:108px"></i><i class="spark" style="--a:150deg;--d:120px"></i><i class="spark" style="--a:210deg;--d:104px"></i><i class="spark" style="--a:270deg;--d:122px"></i><i class="spark" style="--a:330deg;--d:106px"></i>
+          </div>
+          <div class="msg">Someone covered for you!<small>Arjun marked you present</small></div>
+          <div class="tabbar"><div class="t today"><i></i>Today</div><div class="t"><i></i>Classes</div><div class="t mates" style="color:var(--blue)"><span class="ti"><svg><use href="#mates-icon"/></svg><b class="tdot"></b></span>Mates</div></div>
+        </div>
+      </article>
+
+      <!-- 5 · Stamp -->
+      <article class="concept" id="c5" role="tabpanel">
+        <div class="concept-copy">
+          <span class="note">No icon · paper &amp; ink</span>
+          <h2>Stamped present</h2>
+          <p>An attendance slip drops onto the screen. A big PRESENT stamp slams down with a thud, the slip shudders, and Arjun's name appears on the “marked by” line. Then the slip shrinks up into a small pill.</p>
+          <p><strong>Feels like:</strong> physical, satisfying, official. The favour is on the record.</p>
+          <button class="replay" data-replay="c5">Replay animation</button>
+        </div>
+        <div class="canvas s c5" style="--pd:4s" aria-label="An attendance slip is stamped present">
+          <div class="slip-wrap">
+            <div class="slip">
+              <div class="k">Attendance slip</div>
+              <div class="cls">Database Systems · 10:00</div>
+              <div class="by">Marked by <em>Arjun</em></div>
+              <i class="thud"></i>
+              <div class="stamp">PRESENT</div>
+            </div>
+          </div>
+          <div class="msg">Someone covered for you!<small>Arjun marked you present</small></div>
+          <div class="pill"><b>A</b>Arjun covered you <span>· 1 class</span></div>
+          <div class="tabbar"><div class="t today"><i></i>Today</div><div class="t"><i></i>Classes</div><div class="t mates"><span class="ti"><svg><use href="#mates-icon"/></svg><b class="tdot"></b></span>Mates</div></div>
+        </div>
+      </article>
+
+      <!-- 6 · Signature -->
+      <article class="concept" id="c6" role="tabpanel">
+        <div class="concept-copy">
+          <span class="note">No icon · handwriting</span>
+          <h2>Signed on your behalf</h2>
+          <p>Arjun's signature writes itself across the slip in real time, stroke by stroke, then gets underlined. It is the most human version: you can almost see the pen.</p>
+          <p><strong>Feels like:</strong> a friend quietly signing the register for you.</p>
+          <button class="replay" data-replay="c6">Replay animation</button>
+        </div>
+        <div class="canvas s c6" style="--pd:4.3s" aria-label="A signature writes itself">
+          <div class="slip-wrap">
+            <div class="slip">
+              <div class="k">Signed on your behalf</div>
+              <svg class="sig" viewBox="0 0 220 76">
+                <path class="name" pathLength="1" d="M8 52 C18 8 34 8 30 40 C28 56 40 30 52 32 C62 34 50 52 62 46 C70 40 74 34 82 38 C90 44 84 54 96 44 C106 34 112 30 120 36 C128 44 122 54 134 42 L146 30 C150 22 152 22 152 30 C152 44 160 48 172 36 C184 24 196 40 210 34"/>
+                <path class="under" pathLength="1" d="M10 66 C80 74 150 60 212 58"/>
+              </svg>
+              <div class="sub">Arjun · 10:04 AM · Database Systems</div>
+            </div>
+          </div>
+          <div class="msg">Someone covered for you!<small>Arjun signed you in</small></div>
+          <div class="pill"><b>A</b>Arjun covered you <span>· 1 class</span></div>
+          <div class="tabbar"><div class="t today"><i></i>Today</div><div class="t"><i></i>Classes</div><div class="t mates"><span class="ti"><svg><use href="#mates-icon"/></svg><b class="tdot"></b></span>Mates</div></div>
+        </div>
+      </article>
+
+      <!-- 7 · Headline -->
+      <article class="concept" id="c7" role="tabpanel">
+        <div class="concept-copy">
+          <span class="note">No icon · pure type</span>
+          <h2>The headline drop</h2>
+          <p>The screen dims to a spotlight. Each letter of COVERED. crashes in with a bounce and a different tilt, then “by Arjun” fades up. The whole headline then collapses upward into a tiny pill.</p>
+          <p><strong>Feels like:</strong> a movie title card. Loud for one second, then out of the way.</p>
+          <button class="replay" data-replay="c7">Replay animation</button>
+        </div>
+        <div class="canvas s c7" style="--pd:4.1s" aria-label="COVERED headline drops in letter by letter">
+          <div class="spot"></div>
+          <div class="kt-wrap">
+            <div class="kt-lab">Someone</div>
+            <div class="kt"><span style="--i:0;--r:-24deg">C</span><span style="--i:1;--r:18deg">O</span><span style="--i:2;--r:-14deg">V</span><span style="--i:3;--r:26deg">E</span><span style="--i:4;--r:-20deg">R</span><span style="--i:5;--r:12deg">E</span><span style="--i:6;--r:-28deg">D</span><span style="--i:7;--r:16deg">.</span></div>
+            <div class="kt-sub">for you &mdash; <b>Arjun</b> marked you present</div>
+          </div>
+          <div class="pill"><b>A</b>Arjun covered you <span>· 1 class</span></div>
+          <div class="tabbar"><div class="t today"><i></i>Today</div><div class="t"><i></i>Classes</div><div class="t mates"><span class="ti"><svg><use href="#mates-icon"/></svg><b class="tdot"></b></span>Mates</div></div>
+        </div>
+      </article>
+
+      <!-- 8 · Sticky note -->
+      <article class="concept" id="c8" role="tabpanel">
+        <div class="concept-copy">
+          <span class="note">No icon · a note from a friend</span>
+          <h2>A sticky note slaps on</h2>
+          <p>A handwritten note smacks onto the screen from close-up and settles with a tiny wobble. After a moment it peels off and sticks itself to the top corner as a small reminder.</p>
+          <p><strong>Feels like:</strong> a friendly note left on your desk. The most casual, most “student” option.</p>
+          <button class="replay" data-replay="c8">Replay animation</button>
+        </div>
+        <div class="canvas s c8" style="--pd:3.6s" aria-label="A sticky note slaps onto the screen">
+          <div class="note-wrap">
+            <div class="postit">Got you in DBMS today ✌<span class="from">&mdash; Arjun</span></div>
+          </div>
+          <div class="msg" style="top:308px">Someone covered for you!<small>Arjun marked you present</small></div>
+          <div class="tabbar"><div class="t today"><i></i>Today</div><div class="t"><i></i>Classes</div><div class="t mates"><span class="ti"><svg><use href="#mates-icon"/></svg><b class="tdot"></b></span>Mates</div></div>
+        </div>
+      </article>
+
+      <!-- 9 · Hop & twinkle -->
+      <article class="concept" id="c9" role="tabpanel">
+        <div class="concept-copy">
+          <span class="note">Tiny · button only</span>
+          <h2>Hop &amp; twinkle</h2>
+          <p>The Mates button hops twice with a jelly squash, four tiny stars twinkle out around it, the icon turns blue and the red dot pops on.</p>
+          <p><strong>Feels like:</strong> a quick tap on the shoulder. Nothing else on screen moves.</p>
+          <button class="replay" data-replay="c9">Replay animation</button>
+        </div>
+        <div class="canvas m c9" style="--pd:.85s" aria-label="Mates tab hops and twinkles">
+          <div class="ph"><i></i><i></i><i></i><i></i></div>
+          <div class="tabbar"><div class="t today"><i></i>Today</div><div class="t"><i></i>Classes</div><div class="t mates"><span class="ti"><svg><use href="#mates-icon"/></svg><span class="fx"><i class="spark" style="--a:0deg;--d:30px"></i><i class="spark" style="--a:72deg;--d:34px"></i><i class="spark" style="--a:144deg;--d:30px"></i><i class="spark" style="--a:216deg;--d:34px"></i><i class="spark" style="--a:288deg;--d:30px"></i></span><b class="tdot"></b></span>Mates</div></div>
+        </div>
+      </article>
+
+      <!-- 10 · Bubble -->
+      <article class="concept" id="c10" role="tabpanel">
+        <div class="concept-copy">
+          <span class="note">Tiny · button only</span>
+          <h2>A little speech bubble</h2>
+          <p>The button wiggles like it's ringing, and a small bubble pops up from it: “Arjun covered you”. After a few seconds the bubble shrinks away and only the red dot stays.</p>
+          <p><strong>Feels like:</strong> the tab is telling you itself. It says who, without a full-screen moment.</p>
+          <button class="replay" data-replay="c10">Replay animation</button>
+        </div>
+        <div class="canvas m c10" style="--pd:1s" aria-label="Speech bubble pops from the Mates tab">
+          <div class="ph"><i></i><i></i><i></i><i></i></div>
+          <div class="bubble"><b>A</b>Arjun covered you</div>
+          <div class="tabbar"><div class="t today"><i></i>Today</div><div class="t"><i></i>Classes</div><div class="t mates"><span class="ti"><svg><use href="#mates-icon"/></svg><b class="tdot"></b></span>Mates</div></div>
+        </div>
+      </article>
+
+      <!-- 11 · Peek -->
+      <article class="concept" id="c11" role="tabpanel">
+        <div class="concept-copy">
+          <span class="note">Tiny · button only</span>
+          <h2>Arjun peeks out</h2>
+          <p>A tiny “A” avatar pops up from behind the icon, gives two little waves, then tucks into the corner of the button and becomes the badge, with a red ring instead of a plain dot.</p>
+          <p><strong>Feels like:</strong> a friend popping their head up. The badge itself says who covered.</p>
+          <button class="replay" data-replay="c11">Replay animation</button>
+        </div>
+        <div class="canvas m c11" style="--pd:3.4s" aria-label="Avatar peeks out of the Mates tab and becomes its badge">
+          <div class="ph"><i></i><i></i><i></i><i></i></div>
+          <div class="tabbar"><div class="t today"><i></i>Today</div><div class="t"><i></i>Classes</div><div class="t mates"><span class="ti"><svg><use href="#mates-icon"/></svg><span class="fx"><i class="peek">A</i></span></span>Mates</div></div>
+        </div>
+      </article>
+
+      <!-- 12 · Hearts & ping -->
+      <article class="concept" id="c12" role="tabpanel">
+        <div class="concept-copy">
+          <span class="note">Tiny · button only</span>
+          <h2>Hearts and a slow ping</h2>
+          <p>Five little hearts float up off the button while a soft blue halo pulses twice. After that, the red dot keeps a slow sonar ping going until you visit Mates.</p>
+          <p><strong>Feels like:</strong> a small thank-you. The ping keeps the reminder alive without any motion elsewhere.</p>
+          <button class="replay" data-replay="c12">Replay animation</button>
+        </div>
+        <div class="canvas m c12" style="--pd:1.1s" aria-label="Hearts float up from the Mates tab">
+          <div class="ph"><i></i><i></i><i></i><i></i></div>
+          <div class="tabbar"><div class="t today"><i></i>Today</div><div class="t"><i></i>Classes</div><div class="t mates"><span class="ti"><svg><use href="#mates-icon"/></svg><span class="fx"><i class="halo"></i><i class="heart" style="--i:0;--x:-16px;--r:-20deg">♥</i><i class="heart" style="--i:1;--x:12px;--r:18deg">♥</i><i class="heart" style="--i:2;--x:-4px;--r:-8deg">♥</i><i class="heart" style="--i:3;--x:20px;--r:24deg">♥</i><i class="heart" style="--i:4;--x:-22px;--r:-24deg">♥</i></span><b class="tdot"></b></span>Mates</div></div>
+        </div>
+      </article>
+
+      <!-- 13 · Thought bubble -->
+      <article class="concept" id="c13" role="tabpanel">
+        <div class="concept-copy">
+          <span class="note">Bubble · thought cloud</span>
+          <h2>The button is thinking of you</h2>
+          <p>Two tiny circles pop up from the button, growing in size like a comic thought trail, then a round cloud bubble bobs up: “Arjun covered you”. It fades away and the red dot stays.</p>
+          <p><strong>Feels like:</strong> gentle and cute. The favour is a thought, not an alert.</p>
+          <button class="replay" data-replay="c13">Replay animation</button>
+        </div>
+        <div class="canvas m c13" style="--pd:1.4s" aria-label="Thought bubble rises from the Mates tab">
+          <div class="ph"><i></i><i></i><i></i><i></i></div>
+          <i class="trail a"></i><i class="trail b"></i>
+          <div class="thought"><b>A</b>Arjun covered you</div>
+          <div class="tabbar"><div class="t today"><i></i>Today</div><div class="t"><i></i>Classes</div><div class="t mates"><span class="ti"><svg><use href="#mates-icon"/></svg><b class="tdot"></b></span>Mates</div></div>
+        </div>
+      </article>
+
+      <!-- 14 · Typing -->
+      <article class="concept" id="c14" role="tabpanel">
+        <div class="concept-copy">
+          <span class="note">Bubble · chat</span>
+          <h2>Arjun is typing…</h2>
+          <p>A small grey chat bubble appears above the button with three bouncing dots. It stretches open and the dots become a real message: “Got you today 👍”. The button hops as it lands.</p>
+          <p><strong>Feels like:</strong> a message from a mate. It fits the social side of the app.</p>
+          <button class="replay" data-replay="c14">Replay animation</button>
+        </div>
+        <div class="canvas m c14" style="--pd:2.7s" aria-label="Typing bubble turns into a message">
+          <div class="ph"><i></i><i></i><i></i><i></i></div>
+          <div class="chat"><div class="in"><div class="typing"><i></i><i></i><i></i></div><div class="txt">Got you today 👍</div></div></div>
+          <div class="tabbar"><div class="t today"><i></i>Today</div><div class="t"><i></i>Classes</div><div class="t mates"><span class="ti"><svg><use href="#mates-icon"/></svg><b class="tdot"></b></span>Mates</div></div>
+        </div>
+      </article>
+
+      <!-- 15 · Soap bubble -->
+      <article class="concept" id="c15" role="tabpanel">
+        <div class="concept-copy">
+          <span class="note">Bubble · soap</span>
+          <h2>A bubble floats up and pops</h2>
+          <p>Little soap bubbles drift up from the button. Then a bigger shiny one, with Arjun's avatar inside, rises, wobbles, and pops into droplets. The pop is what sets off the red dot.</p>
+          <p><strong>Feels like:</strong> playful and light. The pop is a small reward, and the dot is what's left behind.</p>
+          <button class="replay" data-replay="c15">Replay animation</button>
+        </div>
+        <div class="canvas m c15" style="--pd:3.6s" aria-label="Soap bubbles float from the Mates tab and one pops">
+          <div class="ph"><i></i><i></i><i></i><i></i></div>
+          <div class="tabbar"><div class="t today"><i></i>Today</div><div class="t"><i></i>Classes</div><div class="t mates"><span class="ti"><svg><use href="#mates-icon"/></svg><span class="fx">
+            <i class="sb" style="--s:9px;--x:-14px;--i:0"></i><i class="sb" style="--s:13px;--x:12px;--i:1"></i><i class="sb" style="--s:7px;--x:-6px;--i:2"></i><i class="sb" style="--s:11px;--x:18px;--i:3"></i>
+            <i class="bigb"><b>A</b></i>
+            <span class="popfx"><i class="spark" style="--a:0deg;--d:22px"></i><i class="spark" style="--a:60deg;--d:26px"></i><i class="spark" style="--a:120deg;--d:22px"></i><i class="spark" style="--a:180deg;--d:26px"></i><i class="spark" style="--a:240deg;--d:22px"></i><i class="spark" style="--a:300deg;--d:26px"></i></span>
+          </span><b class="tdot"></b></span>Mates</div></div>
+        </div>
+      </article>
+
+      <!-- 16 · Island -->
+      <article class="concept" id="c16" role="tabpanel">
+        <div class="concept-copy">
+          <span class="note">Bubble · expanding pill</span>
+          <h2>The button opens up</h2>
+          <p>The Mates button itself swells sideways into a black pill that sweeps across the tab bar, showing Arjun's avatar and “covered you · 1 class”. It then squeezes back into the button and leaves the red dot.</p>
+          <p><strong>Feels like:</strong> the most polished. The message comes out of the button and goes back into it.</p>
+          <button class="replay" data-replay="c16">Replay animation</button>
+        </div>
+        <div class="canvas m c16" style="--pd:4.5s" aria-label="Mates button expands into a pill and back">
+          <div class="ph"><i></i><i></i><i></i><i></i></div>
+          <div class="tabbar"><div class="t today"><i></i>Today</div><div class="t"><i></i>Classes</div><div class="t mates"><span class="ti"><svg><use href="#mates-icon"/></svg><b class="tdot"></b></span>Mates</div></div>
+          <div class="island"><div class="row"><b>A</b>Arjun covered you <span>· 1 class</span></div></div>
+        </div>
+      </article>
+    </section>
+  </main>
+
+  <script>
+    const tabs = document.querySelectorAll('.tab');
+    const concepts = document.querySelectorAll('.concept');
+
+    function play(id) {
+      const scene = document.querySelector('#' + id + ' .canvas');
+      scene.classList.remove('play');
+      void scene.offsetWidth;
+      scene.classList.add('play');
+    }
+    function show(id) {
+      tabs.forEach((tab) => tab.classList.toggle('active', tab.dataset.target === id));
+      concepts.forEach((concept) => concept.classList.toggle('active', concept.id === id));
+      play(id);
+    }
+    tabs.forEach((tab) => tab.addEventListener('click', () => show(tab.dataset.target)));
+    document.querySelectorAll('[data-replay]').forEach((button) => {
+      button.addEventListener('click', () => play(button.dataset.replay));
+    });
+    play('c1');
+  </script>
+</body>
+</html>

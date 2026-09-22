@@ -1,0 +1,153 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<title>Concept 5 · Conversation</title>
+<style>
+  :root{--bg:#fbfbfa;--ink:#111;--mute:#6a6a70;--good:#187030;--bad:#c4001a;--line:rgba(0,0,0,.09)}
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%}
+  body{font:16px/1.42 -apple-system,BlinkMacSystemFont,"SF Pro Text",Inter,system-ui,sans-serif;background:var(--bg);color:var(--ink);-webkit-font-smoothing:antialiased;display:flex;justify-content:center}
+  button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
+  .app{width:100%;max-width:430px;height:100dvh;display:flex;flex-direction:column}
+  header{padding:calc(env(safe-area-inset-top) + 14px) 20px 12px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:12px}
+  .av{width:40px;height:40px;border-radius:14px;background:var(--ink);color:#fff;display:grid;place-items:center;font-weight:800;font-size:18px}
+  header b{font-size:17px;letter-spacing:-.02em;display:block}
+  header small{color:var(--mute);font-size:13px}
+  .feed{flex:1;overflow-y:auto;padding:18px 16px 8px;display:flex;flex-direction:column;gap:10px;scroll-behavior:smooth}
+  .day{align-self:center;font-size:12px;color:var(--mute);font-weight:600;margin-bottom:4px}
+  .m{max-width:84%;padding:11px 15px;border-radius:22px;font-size:16px;animation:in .28s ease both}
+  .bot{align-self:flex-start;background:#f0f0ee;border-bottom-left-radius:8px}
+  .me{align-self:flex-end;background:var(--ink);color:#fff;border-bottom-right-radius:8px}
+  .m b{font-weight:700}
+  .m .sub{display:block;color:var(--mute);font-size:13.5px;margin-top:3px}
+  .me .sub{color:rgba(255,255,255,.7)}
+  @keyframes in{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+  .typing{align-self:flex-start;background:#f0f0ee;border-radius:22px;border-bottom-left-radius:8px;padding:14px 16px;display:flex;gap:5px}
+  .typing i{width:7px;height:7px;border-radius:50%;background:#9a9aa0;animation:b 1s infinite}
+  .typing i:nth-child(2){animation-delay:.15s}.typing i:nth-child(3){animation-delay:.3s}
+  @keyframes b{0%,60%,100%{transform:none;opacity:.5}30%{transform:translateY(-4px);opacity:1}}
+  .card{align-self:flex-start;background:#fff;border:1px solid var(--line);border-radius:22px;padding:14px 16px;width:84%;animation:in .28s ease both}
+  .card .r{display:flex;justify-content:space-between;align-items:center;padding:6px 0;font-size:15px;font-weight:600}
+  .card .r+.r{border-top:1px solid var(--line)}
+  .card .r span{color:var(--mute);font-weight:500;font-variant-numeric:tabular-nums;font-size:14px}
+  .card .g{color:var(--good)} .card .x{color:var(--bad)}
+  .quick{display:flex;flex-wrap:wrap;gap:8px;align-self:flex-start;animation:in .28s ease both}
+  .q{border:1.5px solid var(--ink);border-radius:99px;padding:9px 16px;font-weight:650;font-size:15px;background:#fff}
+  .q.p{background:var(--good);border-color:var(--good);color:#fff}
+  .q.a{background:#fff;border-color:var(--bad);color:var(--bad)}
+  .q:active{transform:scale(.96)}
+  .sugg{display:flex;gap:8px;overflow-x:auto;padding:8px 16px 4px;scrollbar-width:none}
+  .sugg::-webkit-scrollbar{display:none}
+  .s{flex:none;background:#f0f0ee;border-radius:99px;padding:8px 14px;font-size:14px;font-weight:600}
+  form{display:flex;gap:10px;padding:8px 16px calc(env(safe-area-inset-bottom) + 14px)}
+  input{flex:1;height:48px;border-radius:24px;border:1.5px solid var(--line);padding:0 18px;font:inherit;background:#fff;outline:none}
+  input:focus{border-color:var(--ink)}
+  form button{width:48px;height:48px;border-radius:50%;background:var(--ink);color:#fff;font-size:20px;font-weight:700}
+</style>
+</head>
+<body>
+<div class="app">
+  <header><div class="av">a</div><div><b>Attend</b><small id="sub">Your classes, one question at a time</small></div></header>
+  <div class="feed" id="feed"><div class="day" id="day"></div></div>
+  <div class="sugg" id="sugg"></div>
+  <form id="f"><input id="in" placeholder="Ask: can I skip physiology?" autocomplete="off"><button aria-label="Send">↑</button></form>
+</div>
+
+<script>
+const NOW0=new Date(),M0=NOW0.getHours()*60+NOW0.getMinutes(),cl=v=>Math.max(0,Math.min(1439,v));
+const SUBJECTS=[
+  {id:'ana',name:'Anatomy',att:20,mis:8,req:75,start:cl(M0-85),end:cl(M0-25)},
+  {id:'pha',name:'Pharmacology',att:30,mis:3,req:75,start:cl(M0-20),end:cl(M0+40)},
+  {id:'phy',name:'Physiology',att:15,mis:5,req:75,start:cl(M0+75),end:cl(M0+135)},
+  {id:'bio',name:'Biochemistry',att:26,mis:2,req:75,start:cl(M0+190),end:cl(M0+250)},
+  {id:'com',name:'Community Medicine',att:6,mis:0,req:75,start:null,end:null},
+];
+const $=s=>document.querySelector(s);
+const fmt=m=>{const h=Math.floor(m/60),mm=String(m%60).padStart(2,'0');return `${h%12||12}:${mm} ${h>=12?'PM':'AM'}`};
+const dur=m=>{m=Math.max(1,Math.round(m));return m<60?`${m} min`:`${Math.floor(m/60)}h ${m%60}m`};
+function stats(s){const total=s.att+s.mis,pct=total?Math.round(s.att/total*100):0,r=s.req/100;let skip=0,need=0,status;
+  if(!total)status='new';else if(pct<s.req){need=Math.max(1,Math.ceil((r*total-s.att)/(1-r)-1e-9));status='risk'}
+  else{skip=Math.max(0,Math.floor((s.att-r*total)/r+1e-9));status=skip?'safe':'edge'}
+  return {pct,skip,need,status}}
+const marks={},hist=[];
+const minutesNow=()=>{const d=new Date();return d.getHours()*60+d.getMinutes()};
+const phase=s=>{if(s.start===null)return'any';const n=minutesNow();return n>=s.end?'ended':n>=s.start?'now':'later'};
+function setMark(id,st){const s=SUBJECTS.find(x=>x.id===id),p=marks[id]||null;if(p===st)return;hist.push({id,p});
+  if(p==='P')s.att--;if(p==='A')s.mis--;if(st==='P')s.att++;if(st==='A')s.mis++;if(st)marks[id]=st;else delete marks[id]}
+
+/* ---- feed helpers ---- */
+const feed=$('#feed');
+const scroll=()=>requestAnimationFrame(()=>feed.scrollTo({top:feed.scrollHeight}));
+const add=(cls,html)=>{const d=document.createElement('div');d.className=cls;d.innerHTML=html;feed.appendChild(d);scroll();return d};
+const wait=ms=>new Promise(r=>setTimeout(r,ms));
+async function say(html,ms=650){const t=add('typing','<i></i><i></i><i></i>');await wait(ms);t.remove();return add('m bot',html)}
+const you=html=>add('m me',html);
+function quick(opts){return new Promise(res=>{const q=add('quick',opts.map((o,i)=>`<button class="q ${o.cls||''}" data-i="${i}">${o.label}</button>`).join(''));
+  q.querySelectorAll('.q').forEach(b=>b.onclick=()=>{const o=opts[+b.dataset.i];q.remove();you(o.label);res(o)})})}
+const sentence=s=>{const i=stats(s);return i.status==='risk'?`<b>${i.pct}%</b>, under the ${s.req}% you need. Attend the next <b>${i.need}</b> to recover.`:i.status==='edge'?`<b>${i.pct}%</b> with <b>no skips left</b>.`:i.status==='new'?'Nothing marked yet.':`<b>${i.pct}%</b> with <b>${i.skip} skip${i.skip>1?'s':''}</b> available.`};
+
+/* ---- the scripted "what needs a mark" flow ---- */
+let asking=false;
+function nextTarget(){
+  const p=SUBJECTS.filter(s=>!marks[s.id]);
+  return p.find(s=>phase(s)==='ended')||p.find(s=>phase(s)==='now')||p.find(s=>phase(s)==='any')||null;
+}
+async function ask(){
+  if(asking)return;asking=true;
+  const s=nextTarget();
+  if(!s){await say('You’re all caught up. Every class today is marked. ✓');
+    const up=SUBJECTS.filter(x=>x.start!==null&&phase(x)==='later').sort((a,b)=>a.start-b.start)[0];
+    if(up)await say(`Next is <b>${up.name}</b> at ${fmt(up.start)}. I’ll ask you then.`,500);asking=false;refreshSugg();return}
+  const p=phase(s),n=minutesNow();
+  let q,opts;
+  if(p==='ended'){q=`<b>${s.name}</b> ended ${dur(n-s.end)} ago and isn’t marked.<span class="sub">${fmt(s.start)} – ${fmt(s.end)}</span>Were you there?`;opts=[{label:'Yes, I was',v:'P',cls:'p'},{label:'No, I missed it',v:'A',cls:'a'}]}
+  else if(p==='now'){q=`<b>${s.name}</b> is on now, ends in ${dur(s.end-n)}.<span class="sub">${fmt(s.start)} – ${fmt(s.end)}</span>Are you in it?`;opts=[{label:'I’m here',v:'P',cls:'p'},{label:'Skipping this one',v:'A',cls:'a'}]}
+  else{q=`<b>${s.name}</b> has no fixed time.<span class="sub">${stats(s).pct}% right now</span>Did you attend today?`;opts=[{label:'Yes',v:'P',cls:'p'},{label:'No',v:'A',cls:'a'}]}
+  await say(q);
+  const o=await quick(opts);setMark(s.id,o.v);
+  await say(o.v==='P'?`Marked present. ${sentence(s)}`:`Marked absent. ${sentence(s)}`,500);
+  asking=false;ask();
+}
+
+/* ---- free text ---- */
+function findSubject(t){t=t.toLowerCase();return SUBJECTS.find(s=>t.includes(s.name.toLowerCase()))||SUBJECTS.find(s=>s.name.toLowerCase().split(' ').some(w=>w.length>3&&t.includes(w.slice(0,5))))}
+async function handle(text){
+  you(text.replace(/</g,'&lt;'));const t=text.toLowerCase(),s=findSubject(t);
+  if(/undo|take back|oops/.test(t)){const h=hist.pop();if(!h)return say('Nothing to undo yet.');const sub=SUBJECTS.find(x=>x.id===h.id),c=marks[h.id]||null;
+    if(c==='P')sub.att--;if(c==='A')sub.mis--;if(h.p==='P')sub.att++;if(h.p==='A')sub.mis++;if(h.p)marks[h.id]=h.p;else delete marks[h.id];return say(`Undone. ${sub.name} is back to <b>${h.p?(h.p==='P'?'present':'absent'):'unmarked'}</b>.`)}
+  if(/skip|bunk|miss|leave|cut|bail/.test(t)){
+    if(!s)return say('Which subject? Try “can I skip physiology?”');
+    const i=stats(s);
+    if(i.status==='risk')return say(`Not really. <b>${s.name}</b> is at <b>${i.pct}%</b>, already under ${s.req}%. Attend the next <b>${i.need}</b> to get back on track.`);
+    if(i.status==='edge')return say(`I wouldn’t. <b>${s.name}</b> is at <b>${i.pct}%</b>, right on the line. Missing one drops you below ${s.req}%.`);
+    const after=Math.round(s.att/(s.att+s.mis+1)*100);
+    return say(`Yes. <b>${s.name}</b> is at <b>${i.pct}%</b> with <b>${i.skip} skip${i.skip>1?'s':''}</b> available. Missing this one takes you to <b>${after}%</b>.`)}
+  if(/next|schedule|today|timetable|when/.test(t)&&!s){
+    const rows=SUBJECTS.filter(x=>x.start!==null).sort((a,b)=>a.start-b.start).map(x=>{const m=marks[x.id];return `<div class="r"><div>${x.name}</div><span class="${m==='P'?'g':m==='A'?'x':''}">${m?(m==='P'?'✓ present':'✕ absent'):fmt(x.start)}</span></div>`}).join('');
+    return say('Here’s your day:',400).then(()=>add('card',rows))}
+  if(/how|status|doing|attendance|percent|%|where/.test(t)||s){
+    if(s)return say(`<b>${s.name}</b>: ${sentence(s)}`);
+    const rows=SUBJECTS.map(x=>{const i=stats(x);return `<div class="r"><div>${x.name}</div><span class="${i.status==='risk'?'x':''}">${i.pct}% · ${i.status==='risk'?`attend ${i.need}`:i.status==='edge'?'no skips':`${i.skip} skip${i.skip===1?'':'s'}`}</span></div>`}).join('');
+    return say('Subject by subject:',400).then(()=>add('card',rows))}
+  return say('I can tell you if you can skip a class, how a subject is doing, or what’s next. Try “can I skip anatomy?”');
+}
+function refreshSugg(){
+  const sug=['How am I doing?','What’s next today?','Can I skip Physiology?','Can I skip Anatomy?','Undo'];
+  $('#sugg').innerHTML=sug.map(x=>`<button class="s">${x}</button>`).join('');
+  $('#sugg').querySelectorAll('.s').forEach(b=>b.onclick=()=>send(b.textContent));
+}
+let busy=false;
+async function send(text){if(!text.trim()||busy)return;busy=true;const wasAsking=asking;await handle(text);busy=false;if(!asking&&!wasAsking&&nextTarget())ask()}
+$('#f').onsubmit=e=>{e.preventDefault();const v=$('#in').value;$('#in').value='';send(v)};
+
+$('#day').textContent=new Date().toLocaleDateString('en-US',{weekday:'long',day:'numeric',month:'long'});
+(async()=>{
+  const h=new Date().getHours();
+  await say(`${h<12?'Good morning':h<18?'Good afternoon':'Good evening'}. You have <b>${SUBJECTS.length} subjects</b> today.`,500);
+  refreshSugg();ask();
+})();
+</script>
+</body>
+</html>

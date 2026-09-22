@@ -1,0 +1,140 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<title>Concept 3 · Dial</title>
+<style>
+  :root{--bg:#ece9e2;--ink:#1b1a17;--mute:#6a665d;--good:#187030;--bad:#c4001a;--card:#faf8f4}
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%}
+  body{font:16px/1.4 -apple-system,BlinkMacSystemFont,"SF Pro Text",Inter,system-ui,sans-serif;background:var(--bg);color:var(--ink);-webkit-font-smoothing:antialiased;display:flex;justify-content:center;touch-action:pan-y}
+  button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
+  .app{width:100%;max-width:430px;min-height:100dvh;padding:calc(env(safe-area-inset-top) + 18px) 20px calc(env(safe-area-inset-bottom) + 24px);display:flex;flex-direction:column}
+  .top{display:flex;justify-content:space-between;align-items:baseline}
+  .top .d{font-size:15px;color:var(--mute)}
+  .top .t{font-size:15px;font-weight:700;font-variant-numeric:tabular-nums}
+  .warn{margin-top:12px;background:rgba(196,0,26,.06);color:var(--bad);border-radius:14px;padding:11px 14px;font-weight:600;font-size:14.5px;text-align:left;width:100%}
+  .warn[hidden]{display:none}
+
+  .dialwrap{position:relative;margin:8px auto 0;width:100%;max-width:352px;aspect-ratio:1}
+  svg{width:100%;height:100%;display:block;overflow:visible}
+  .arc{cursor:pointer;transition:stroke-width .2s,opacity .25s}
+  .center{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:0 22%;pointer-events:none}
+  .c-kind{font-size:12px;font-weight:800;letter-spacing:.09em;color:var(--mute)}
+  .c-name{font-size:25px;font-weight:800;letter-spacing:-.04em;line-height:1.05;margin:5px 0 6px}
+  .c-big{font-size:38px;font-weight:300;letter-spacing:-.05em;font-variant-numeric:tabular-nums;line-height:1}
+  .c-sub{font-size:13px;color:var(--mute);margin-top:6px}
+
+  .panel{background:var(--card);border-radius:28px;padding:18px;margin-top:6px}
+  .p-row{display:flex;justify-content:space-between;align-items:center;gap:10px}
+  .p-row b{font-size:17px;letter-spacing:-.02em}
+  .p-row span{font-size:13.5px;color:var(--mute);font-variant-numeric:tabular-nums}
+  .bar{height:6px;border-radius:6px;background:rgba(27,26,23,.1);margin:12px 0 4px;position:relative;overflow:hidden}
+  .bar i{position:absolute;left:0;top:0;bottom:0;border-radius:6px}
+  .bar u{position:absolute;top:-2px;bottom:-2px;width:2px;background:var(--ink)}
+  .p-note{font-size:14px;color:var(--mute)}
+  .btns{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:14px}
+  .btn{height:54px;border-radius:18px;font-weight:700;font-size:17px}
+  .btn.p{background:var(--ink);color:#fff} .btn.a{background:rgba(27,26,23,.08)}
+  .btn.s{background:rgba(27,26,23,.08)}
+  .btn:active{opacity:.7}
+  .any{margin-top:16px}
+  .any h3{font-size:12px;letter-spacing:.09em;color:var(--mute);font-weight:800;margin:0 4px 8px}
+  .sat{display:flex;gap:8px;overflow-x:auto;scrollbar-width:none}
+  .sat::-webkit-scrollbar{display:none}
+  .orb{flex:none;background:var(--card);border-radius:20px;padding:10px 12px;display:flex;align-items:center;gap:12px;font-weight:650;font-size:14.5px}
+  .orb small{display:block;font-weight:500;color:var(--mute);font-size:12px}
+  .orb button{width:34px;height:34px;border-radius:50%;background:rgba(27,26,23,.07);font-weight:800}
+  .orb button.on.p{background:var(--good);color:#fff} .orb button.on.a{background:var(--bad);color:#fff}
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="top"><span class="d" id="date"></span><span class="t" id="clock"></span></div>
+  <button class="warn" id="warn" hidden></button>
+
+  <div class="dialwrap">
+    <svg viewBox="0 0 320 320" id="dial"></svg>
+    <div class="center" id="center"></div>
+  </div>
+
+  <div class="panel" id="panel"></div>
+  <div class="any" id="any"></div>
+</div>
+
+<script>
+const NOW0=new Date(),M0=NOW0.getHours()*60+NOW0.getMinutes(),cl=v=>Math.max(0,Math.min(1439,v));
+const SUBJECTS=[
+  {id:'ana',name:'Anatomy',color:'#e2503f',att:20,mis:8,req:75,kind:'PRACTICAL',start:cl(M0-85),end:cl(M0-25)},
+  {id:'pha',name:'Pharmacology',color:'#2f6fe0',att:30,mis:3,req:75,kind:'LECTURE',start:cl(M0-20),end:cl(M0+40)},
+  {id:'phy',name:'Physiology',color:'#1f9d61',att:15,mis:5,req:75,kind:'LECTURE',start:cl(M0+75),end:cl(M0+135)},
+  {id:'bio',name:'Biochemistry',color:'#7c4ddb',att:26,mis:2,req:75,kind:'TUTORIAL',start:cl(M0+190),end:cl(M0+250)},
+  {id:'com',name:'Community Medicine',color:'#d98a06',att:6,mis:0,req:75,kind:'LECTURE',start:null,end:null},
+];
+const $=s=>document.querySelector(s);
+const fmt=m=>{const h=Math.floor(m/60),mm=String(Math.floor(m)%60).padStart(2,'0');return `${h%12||12}:${mm} ${h>=12?'PM':'AM'}`};
+const dur=m=>{m=Math.max(1,Math.round(m));return m<60?`${m} min`:`${Math.floor(m/60)}h ${m%60}m`};
+function stats(s){const total=s.att+s.mis,pct=total?Math.round(s.att/total*100):0,r=s.req/100;let text,status;
+  if(!total){text='Not started';status='new'}
+  else if(pct<s.req){const need=Math.max(1,Math.ceil((r*total-s.att)/(1-r)-1e-9));text=`Attend the next ${need} to recover`;status='risk'}
+  else{const k=Math.max(0,Math.floor((s.att-r*total)/r+1e-9));status=k?'safe':'edge';text=k?`${k} skip${k>1?'s':''} available`:'No skips left'}
+  return {pct,text,status}}
+const marks={};const hist=[];
+const minutesNow=()=>{const d=new Date();return d.getHours()*60+d.getMinutes()+d.getSeconds()/60};
+const timed=SUBJECTS.filter(s=>s.start!==null).sort((a,b)=>a.start-b.start),untimed=SUBJECTS.filter(s=>s.start===null);
+const T0=Math.floor((Math.min(...timed.map(s=>s.start))-40)/60)*60,T1=Math.ceil((Math.max(...timed.map(s=>s.end))+40)/60)*60;
+const phase=s=>{const n=minutesNow();return n>=s.end?'ended':n>=s.start?'now':'later'};
+function setMark(id,st){const s=SUBJECTS.find(x=>x.id===id),p=marks[id]||null;if(p===st)return;hist.push({id,p});
+  if(p==='P')s.att--;if(p==='A')s.mis--;if(st==='P')s.att++;if(st==='A')s.mis++;if(st)marks[id]=st;else delete marks[id]}
+
+/* geometry: a 300 degree dial, gap at the bottom */
+const CX=160,CY=160,R=124,SW=24,A0=120,SPAN=300;
+const ang=m=>(A0+(m-T0)/(T1-T0)*SPAN)*Math.PI/180;
+const pt=(a,r)=>[CX+r*Math.cos(a),CY+r*Math.sin(a)];
+function arcPath(a1,a2,r){const[x1,y1]=pt(a1,r),[x2,y2]=pt(a2,r);return `M${x1.toFixed(2)} ${y1.toFixed(2)} A${r} ${r} 0 ${(a2-a1)>Math.PI?1:0} 1 ${x2.toFixed(2)} ${y2.toFixed(2)}`}
+
+let sel=null;
+function defaultSel(){const p=timed.filter(s=>!marks[s.id]);return (p.find(s=>phase(s)==='now')||p.find(s=>phase(s)==='later')||p[0]||timed[timed.length-1]).id}
+
+function drawDial(){
+  const n=minutesNow();let g='';
+  g+=`<path d="${arcPath(ang(T0),ang(T1),R)}" fill="none" stroke="rgba(27,26,23,.09)" stroke-width="${SW}" stroke-linecap="round"/>`;
+  for(let m=T0;m<=T1;m+=60){const[x1,y1]=pt(ang(m),R-SW/2-5),[x2,y2]=pt(ang(m),R-SW/2-13),[tx,ty]=pt(ang(m),R-SW/2-26);
+    g+=`<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="rgba(27,26,23,.35)" stroke-width="1.5"/><text x="${tx}" y="${ty+3.5}" text-anchor="middle" font-size="10" fill="#6a665d" font-weight="600">${fmt(m).replace(':00','').replace(' ','')}</text>`}
+  timed.forEach(s=>{const st=marks[s.id],on=sel===s.id;
+    g+=`<path class="arc" data-id="${s.id}" d="${arcPath(ang(s.start)+.02,ang(s.end)-.02,R)}" fill="none" stroke="${s.color}" stroke-width="${on?SW+8:SW}" stroke-linecap="round" opacity="${st?.38:1}"/>`;
+    if(st){const mid=(ang(s.start)+ang(s.end))/2,[x,y]=pt(mid,R);
+      g+=`<circle cx="${x}" cy="${y}" r="11" fill="${st==='P'?'#187030':'#c4001a'}" pointer-events="none"/><text x="${x}" y="${y+4.5}" text-anchor="middle" font-size="13" font-weight="800" fill="#fff" pointer-events="none">${st==='P'?'✓':'✕'}</text>`}});
+  if(n>=T0&&n<=T1){const a=ang(n),[x1,y1]=pt(a,R-SW/2-4),[x2,y2]=pt(a,R+SW/2+10),[hx,hy]=pt(a,R+SW/2+14);
+    g+=`<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="#1b1a17" stroke-width="3" stroke-linecap="round" pointer-events="none"/><circle cx="${hx}" cy="${hy}" r="5.5" fill="#1b1a17" pointer-events="none"/>`}
+  $('#dial').innerHTML=g;
+  document.querySelectorAll('.arc').forEach(p=>p.onclick=()=>{sel=p.dataset.id;paint()});
+}
+function paint(){
+  const n=minutesNow(),d=new Date();
+  $('#date').textContent=d.toLocaleDateString('en-US',{weekday:'long',day:'numeric',month:'long'});
+  $('#clock').textContent=fmt(Math.floor(n));
+  const late=timed.filter(s=>phase(s)==='ended'&&!marks[s.id]),w=$('#warn');
+  if(late.length){w.hidden=false;w.textContent=late.length>1?`${late.length} classes ended without a mark`:`${late[0].name} ended ${dur(n-late[0].end)} ago and isn’t marked`;w.onclick=()=>{sel=late[0].id;paint()}}else w.hidden=true;
+  drawDial();
+  const s=SUBJECTS.find(x=>x.id===sel),i=stats(s),p=phase(s),st=marks[s.id];
+  const big=st?(st==='P'?'Present':'Absent'):p==='now'?dur(s.end-n):p==='later'?fmt(s.start):dur(n-s.end);
+  const sub=st?`${fmt(s.start)}`:p==='now'?'left in class':p==='later'?`in ${dur(s.start-n)}`:'since it ended';
+  $('#center').innerHTML=`<div class="c-kind">${s.kind}</div><div class="c-name">${s.name}</div><div class="c-big" ${st?`style="font-size:26px;font-weight:700;color:${st==='P'?'#187030':'#c4001a'}"`:''}>${big}</div><div class="c-sub">${sub}</div>`;
+  $('#panel').innerHTML=`<div class="p-row"><b>${i.pct}% attendance</b><span>${fmt(s.start)} – ${fmt(s.end)}</span></div>
+    <div class="bar"><i style="width:${i.pct}%;background:${i.status==='risk'?'#c4001a':'#1b1a17'}"></i><u style="left:${s.req}%"></u></div>
+    <div class="p-note">${i.text} · needs ${s.req}%</div>`+
+    (st?`<div class="btns"><button class="btn s" id="chg">Change to ${st==='P'?'absent':'present'}</button><button class="btn s" id="clr">Undo</button></div>`
+       :`<div class="btns"><button class="btn p" id="bp">Present</button><button class="btn a" id="ba">Absent</button></div>`);
+  const go=v=>{setMark(s.id,v);sel=defaultSel();paint()};
+  if(st){$('#chg').onclick=()=>{setMark(s.id,st==='P'?'A':'P');paint()};$('#clr').onclick=()=>{setMark(s.id,null);paint()}}
+  else{$('#bp').onclick=()=>go('P');$('#ba').onclick=()=>go('A')}
+  $('#any').innerHTML=untimed.length?`<h3>ANY TIME TODAY</h3><div class="sat">`+untimed.map(u=>{const k=marks[u.id],ui=stats(u);
+    return `<div class="orb"><div>${u.name}<small>${ui.pct}% · ${ui.text}</small></div><button class="p ${k==='P'?'on':''}" data-m="${u.id}:P">✓</button><button class="a ${k==='A'?'on':''}" data-m="${u.id}:A">✕</button></div>`}).join('')+`</div>`:'';
+  document.querySelectorAll('[data-m]').forEach(b=>b.onclick=()=>{const[id,v]=b.dataset.m.split(':');setMark(id,marks[id]===v?null:v);paint()});
+}
+sel=defaultSel();paint();setInterval(paint,20000);
+</script>
+</body>
+</html>

@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Homepage concepts</title>
+<style>
+  :root{--bg:#f2f2f7;--ink:#000;--mute:#5f5f64}
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font:16px/1.45 -apple-system,BlinkMacSystemFont,"SF Pro Text",Inter,system-ui,sans-serif;background:var(--bg);color:var(--ink);-webkit-font-smoothing:antialiased;padding:calc(env(safe-area-inset-top) + 28px) 20px 40px}
+  main{max-width:620px;margin:0 auto}
+  h1{font-size:34px;letter-spacing:-.035em;line-height:1.1}
+  h2{font-size:12px;letter-spacing:.1em;color:var(--mute);font-weight:800;margin:26px 4px 10px}
+  .lead{color:var(--mute);margin:8px 0 0}
+  .grid{display:grid;gap:12px}
+  a{display:block;text-decoration:none;color:inherit;background:#fff;border-radius:20px;padding:18px 20px;transition:transform .12s}
+  a:active{transform:scale(.985)}
+  a .n{font-size:12px;font-weight:800;letter-spacing:.08em;color:var(--mute)}
+  a b{display:block;font-size:22px;letter-spacing:-.03em;margin:3px 0 4px}
+  a p{color:var(--mute);font-size:15px}
+  .foot{color:var(--mute);font-size:13.5px;margin-top:22px}
+</style>
+</head>
+<body>
+<main>
+  <h1>Homepage concepts</h1>
+  <p class="lead">Ten standalone versions of the Today screen. Same data, ten different ideas. Open each on your phone, or in a browser at phone width.</p>
+
+  <h2>ROUND 3 · AFTER EVERYTHING IS MARKED</h2>
+  <div class="grid">
+    <a href="12-all-done.html"><span class="n">CONCEPT 12</span><b>All done</b><p>Five ideas for the Today tab once every class is resolved: a day ring, tomorrow first, an attendance pass with stamps, a skip budget, and a choose-your-own widget (skip forecast, where you stand, or your next deadline) with a first-time empty state. Light and dark.</p></a>
+  </div>
+
+  <h2>ROUND 2 · INTERACTIVE METAPHORS</h2>
+  <div class="grid">
+    <a href="6-skip-jar.html"><span class="n">CONCEPT 6</span><b>Skip jar</b><p>Your skip budget as real marbles in a jar, with physics. Marking absent pulls one out, attending earns marbles back. Shake it with your finger.</p></a>
+    <a href="7-departures.html"><span class="n">CONCEPT 7</span><b>Departures board</b><p>A split-flap airport board. Every class is a flight, and marking it flips the letters to PRESENT or ABSENT.</p></a>
+    <a href="8-knob.html"><span class="n">CONCEPT 8</span><b>Safe knob</b><p>Turn a rotary knob clockwise to check in, counter-clockwise to mark absent. Ticks light up as you turn, with sound and haptics.</p></a>
+    <a href="9-orbit.html"><span class="n">CONCEPT 9</span><b>Orbit</b><p>Subjects are planets circling the clock. The closer to “now”, the sooner the class. Drag one onto the Present or Absent dock.</p></a>
+    <a href="10-stamps.html"><span class="n">CONCEPT 10</span><b>Stamp pad</b><p>Each class is a passport page. Drag a rubber stamp onto it, feel the thunk, and the page flies away.</p></a>
+  </div>
+
+  <h2>ROUND 1 · LAYOUTS</h2>
+  <div class="grid">
+    <a href="1-timeline.html"><span class="n">CONCEPT 1</span><b>Timeline</b><p>Your day as a calendar with a live “now” line. Tap a class block, mark it in the dock below.</p></a>
+    <a href="2-swipe-deck.html"><span class="n">CONCEPT 2</span><b>Swipe deck</b><p>One big card at a time. Swipe right for present, left for absent.</p></a>
+    <a href="3-dial.html"><span class="n">CONCEPT 3</span><b>Dial</b><p>A watch-face. Every class is an arc on the dial, a hand shows the time.</p></a>
+    <a href="4-bento.html"><span class="n">CONCEPT 4</span><b>Bento</b><p>Colourful tiles. Each subject tile flips over to mark it.</p></a>
+    <a href="5-conversation.html"><span class="n">CONCEPT 5</span><b>Conversation</b><p>A chat that asks about each class, and answers “can I skip physiology?”.</p></a>
+  </div>
+  <p class="foot">Each file is self-contained (one HTML file, no build step). Marks are kept in memory only, so refresh to reset.</p>
+</main>
+</body>
+</html>

@@ -1,0 +1,79 @@
+{
+  "name": "College Tracker",
+  "short_name": "Tracker",
+  "description": "College Tracker - attendance and deadline tracker",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f2f2f7",
+  "theme_color": "#f2f2f7",
+  "orientation": "any",
+  "permissions": [
+    "notifications"
+  ],
+  "shortcuts": [
+    {
+      "name": "Mark class present",
+      "short_name": "Present",
+      "description": "Mark the class that has started as present",
+      "url": "/?mark=next",
+      "icons": [
+        {
+          "src": "/favicon-192.png",
+          "sizes": "192x192",
+          "type": "image/png"
+        }
+      ]
+    },
+    {
+      "name": "Proxy-mates",
+      "short_name": "Mates",
+      "description": "Covers, favours and your monthly wrapped",
+      "url": "/?go=mates",
+      "icons": [
+        {
+          "src": "/favicon-192.png",
+          "sizes": "192x192",
+          "type": "image/png"
+        }
+      ]
+    },
+    {
+      "name": "Subjects",
+      "short_name": "Subjects",
+      "url": "/?go=subjects",
+      "icons": [
+        {
+          "src": "/favicon-192.png",
+          "sizes": "192x192",
+          "type": "image/png"
+        }
+      ]
+    }
+  ],
+  "icons": [
+    {
+      "src": "/favicon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/favicon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/favicon-192-maskable.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "/favicon-512-maskable.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ]
+}
