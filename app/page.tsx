@@ -822,7 +822,7 @@ export default function Home() {
     <div className="min-h-dvh text-foreground lg:pl-[88px]">
       {/* Stays up while demo data is on screen, so it's never mistaken for the real thing and Exit is always one tap away */}
       {demoActive && (
-        <div className="fixed top-0 inset-x-0 z-[76] bg-ink text-paper pt-[env(safe-area-inset-top)] lg:left-[88px]">
+        <div data-tour-topbar className="fixed top-0 inset-x-0 z-[76] bg-ink text-paper pt-[env(safe-area-inset-top)] lg:left-[88px]">
           <div className="max-w-3xl mx-auto lg:max-w-[1280px] 2xl:max-w-[1440px] px-4 lg:px-10 h-10 flex items-center justify-between gap-3">
             <span className="text-[13px] font-semibold truncate">Viewing demo data</span>
             <button onClick={exitDemo} className="text-[13px] font-semibold underline underline-offset-2 flex-shrink-0">
@@ -832,7 +832,7 @@ export default function Home() {
         </div>
       )}
       {/* One comfortable column up to 1024px; from there the content gets the room: side rail, wider frame, two columns */}
-      <div className={`w-full max-w-3xl mx-auto pl-[max(1rem,env(safe-area-inset-left))] pr-[max(1rem,env(safe-area-inset-right))] sm:pl-[max(1.5rem,env(safe-area-inset-left))] sm:pr-[max(1.5rem,env(safe-area-inset-right))] lg:max-w-[1280px] lg:px-10 2xl:max-w-[1440px] ${demoActive ? "pt-10" : ""}`}>
+      <div className={`w-full max-w-3xl mx-auto pl-[max(1rem,env(safe-area-inset-left))] pr-[max(1rem,env(safe-area-inset-right))] sm:pl-[max(1.5rem,env(safe-area-inset-left))] sm:pr-[max(1.5rem,env(safe-area-inset-right))] lg:max-w-[1280px] lg:px-10 2xl:max-w-[1440px] ${demoActive ? "pt-[calc(2.5rem+env(safe-area-inset-top))]" : ""}`}>
         {!detailSubject && (
           <header className={`pt-[calc(env(safe-area-inset-top)+16px)] ${currentPage === "today" ? "pb-5" : "pb-6"} flex items-center justify-between gap-3`}>
             <div className="min-w-0">
