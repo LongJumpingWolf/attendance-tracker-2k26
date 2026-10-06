@@ -30,14 +30,6 @@ export default function SyncPanel({ sync, onToast }: { sync: CloudSync; onToast:
     if (problem) setError(problem)
   }
 
-  const choose = async (use: "cloud" | "here") => {
-    setBusy(true)
-    const ok = await sync.resolve(use)
-    setBusy(false)
-    if (!ok) return setError("Couldn’t save to the sync store. Try again.")
-    onToast(use === "cloud" ? "Signed in. Your synced data replaced what was here." : "Signed in. This browser’s data is now the synced copy.")
-  }
-
   if (sync.kind === "none") {
     return (
       <div className={card}>
@@ -59,27 +51,7 @@ export default function SyncPanel({ sync, onToast }: { sync: CloudSync; onToast:
         </p>
       )}
 
-      {sync.choice ? (
-        <section>
-          <h3 className={label}>This browser already has data</h3>
-          <div className={card}>
-            <p className="text-[15px] font-semibold leading-snug">Which copy should you keep?</p>
-            <p className="text-[13px] text-mute mt-1 leading-snug">
-              Your account already has {sync.choice.cloud.subjects.length} {sync.choice.cloud.subjects.length === 1 ? "subject" : "subjects"} saved. The
-              two copies can’t be combined, so one replaces the other.
-            </p>
-            <div className="grid gap-2 mt-4">
-              <button disabled={busy} onClick={() => void choose("cloud")} className={primaryButton}>
-                Use my account’s copy
-              </button>
-              <button disabled={busy} onClick={() => void choose("here")} className={tintButton}>
-                Keep this browser’s data instead
-              </button>
-            </div>
-            {error && <p className="text-[13px] text-bad mt-2">{error}</p>}
-          </div>
-        </section>
-      ) : sync.account ? (
+      {sync.account ? (
         <>
           <section>
             <h3 className={label}>Account</h3>
@@ -100,7 +72,7 @@ export default function SyncPanel({ sync, onToast }: { sync: CloudSync; onToast:
               Sync now
             </button>
             <p className="text-[13px] text-mute mt-3 px-1 leading-snug">
-              Sign in with this same account in any other browser and your subjects, marks and deadlines appear there. A scanned QR code then marks
+              Sign in with this same account in any other browser and your subjects, marks and deadlines appear there. If both browsers changed things, the changes are combined, never one thrown away. A scanned QR code then marks
               your attendance whichever browser opens it.
             </p>
           </section>

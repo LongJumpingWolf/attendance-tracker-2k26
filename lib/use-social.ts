@@ -11,7 +11,9 @@ import {
   watchPings,
   sendPingDoc,
   answerPingDoc,
+  claimPingDoc,
   removePingDoc,
+  savePushToken,
   sendRequest,
   respondToRequest,
   removeRequest,
@@ -21,6 +23,20 @@ import {
 } from "./social"
 import { localDate } from "./attendance"
 import { PING_HISTORY_DAYS, daysSince } from "./pings"
+import { requestNotificationPermission } from "./notifications"
+import { requestFCMToken } from "./firebase"
+
+/** Register this device for ping alerts. Only when notifications are allowed (or asked for), and never fatal. */
+async function registerPingAlerts(uid: string, ask: boolean) {
+  try {
+    if (typeof Notification === "undefined") return
+    if (Notification.permission !== "granted" && !(ask && (await requestNotificationPermission()))) return
+    const token = await requestFCMToken()
+    if (token) await savePushToken(uid, token)
+  } catch {
+    /* alerts are a bonus: the in-app bubble still works */
+  }
+}
 
 /** A class to ask about, before an answer exists */
 export type PingInput = Omit<PingItem, "answer">
@@ -57,6 +73,8 @@ export interface SocialApi {
   cancelPing: (id: string) => Promise<void>
   /** Answer a ping a mate sent you: item key -> yes / no */
   answerPing: (id: string, answers: Record<string, "yes" | "no">) => Promise<void>
+  /** Claim an answered ping before applying it. True only for the one device that should apply it. */
+  claimPing: (id: string) => Promise<boolean>
   /** Dummy trigger: a mate has answered a ping you sent (local only, nothing is sent) */
   simulateReply: (mateName: string, items: PingInput[], answer: "yes" | "no") => void
   /** Dummy trigger: a mate is asking you whether you marked them present (local only) */
@@ -219,6 +237,7 @@ export function useSocial(): SocialApi {
         unsub.current = watchRequests(user.uid, setRequests, (e) => setError(e.message))
         unsubPings.current = watchPings(user.uid, setRemotePings, (e) => setError(e.message))
         localStorage.setItem("socialOn", "1")
+        void registerPingAlerts(user.uid, false)
         setStatus("ready")
       })
       .catch((e: Error) => {
@@ -415,6 +434,8 @@ export function useSocial(): SocialApi {
       }
       try {
         await sendPingDoc({ uid: myUid, name: myName }, to, date, asked, requestId as string)
+        // First ping is the natural moment to ask: the reply will arrive as an alert
+        void registerPingAlerts(myUid, true)
         return done
       } catch {
         return { ok: false, message: "Couldn't send that. Try again." }
@@ -440,6 +461,26 @@ export function useSocial(): SocialApi {
         return
       }
       await answerPingDoc(id, items)
+    },
+    [mockMode],
+  )
+
+  const claimPing = useCallback(
+    async (id: string) => {
+      const mark = (p: Ping): Ping => (p.id === id ? { ...p, status: "processed" } : p)
+      if (id.startsWith("demo-")) {
+        setDemoPings((prev) => prev.map(mark))
+        return true
+      }
+      if (mockMode) {
+        const cur = readMockPings()
+        if (cur.find((p) => p.id === id)?.status !== "answered") return false
+        const updated = cur.map(mark)
+        writeMockPings(updated)
+        setRemotePings(updated)
+        return true
+      }
+      return claimPingDoc(id)
     },
     [mockMode],
   )
@@ -521,6 +562,7 @@ export function useSocial(): SocialApi {
     sendPing,
     cancelPing,
     answerPing,
+    claimPing,
     simulateReply,
     simulateIncoming,
   }

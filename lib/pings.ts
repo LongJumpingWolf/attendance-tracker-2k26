@@ -9,6 +9,9 @@ export const PING_HISTORY_DAYS = 30
 /** How many whole days ago the classes were (0 = today) */
 export const daysSince = (date: string) => -daysUntil(date)
 
+/** The mate has replied (whether or not the asker's device has applied it yet) */
+export const isAnswered = (p: Ping) => p.status === "answered" || p.status === "processed"
+
 export const isExpired = (p: Ping) => p.status === "asking" && daysSince(p.date) > PING_EXPIRES_DAYS
 
 /** "Today", "Yesterday", "3 days ago" */

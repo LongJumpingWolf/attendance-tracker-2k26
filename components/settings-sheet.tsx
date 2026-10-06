@@ -6,6 +6,7 @@ import Sheet, { Segmented, tintButton } from "./sheet"
 import { RemindersList, ReminderEditor } from "./settings-reminders"
 import ScanPanel from "./settings-scan"
 import SyncPanel from "./settings-sync"
+import RestorePoints from "./restore-points"
 import type { CloudSync } from "@/hooks/use-cloud-sync"
 import { isTestSubject } from "@/lib/scan-test"
 import { BackupPanel, NotificationsPanel, ResetPanel, TagsPanel } from "./settings-panels"
@@ -392,15 +393,26 @@ export default function SettingsSheet(p: SettingsSheetProps) {
 
       {panel === "tags" && <TagsPanel tags={p.tags} subjects={p.subjects} onAdd={p.onAddTag} onDelete={p.onDeleteTag} />}
 
-      {panel === "backup" && <BackupPanel
-          onSaveFull={saveFullBackup}
-          onExport={p.onExportData}
-          onImportData={(d) => {
-            if (d.full && d.reminders) setSchedule(d.reminders)
-            p.onImportData(d)
-          }}
-          onToast={(m) => p.onToast(m)}
-        />}
+      {panel === "backup" && (
+        <div className="space-y-6">
+          <BackupPanel
+            onSaveFull={saveFullBackup}
+            onExport={p.onExportData}
+            onImportData={(d) => {
+              if (d.full && d.reminders) setSchedule(d.reminders)
+              p.onImportData(d)
+            }}
+            onToast={(m) => p.onToast(m)}
+          />
+          <RestorePoints
+            onRestore={(d) => {
+              setSchedule(d.reminders)
+              p.onImportData({ ...d, full: true })
+            }}
+            onToast={(m) => p.onToast(m)}
+          />
+        </div>
+      )}
 
       {panel === "sync" && <SyncPanel sync={p.sync} onToast={(m) => p.onToast(m)} />}
 

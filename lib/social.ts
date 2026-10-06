@@ -8,6 +8,7 @@
  *   invites/{token}    { owner, ownerName, expiresAt }     short-lived magic links
  *   requests/{id}      { from, to, fromName, toName, participants, status }
  *   pings/{id}         { from, to, fromName, toName, participants, date, items[], status }   "did you mark me present?"
+ *   pushTokens/{uid}   { token }   this account's device token; Cloud Functions use it to alert about pings
  */
 import { getAuth, signInAnonymously, onAuthStateChanged, type User } from "firebase/auth"
 import {
@@ -18,6 +19,7 @@ import {
   addDoc,
   updateDoc,
   deleteDoc,
+  runTransaction,
   query,
   where,
   onSnapshot,
@@ -150,6 +152,23 @@ export const sendPingDoc = (me: { uid: string; name: string }, to: { uid: string
 /** The mate's reply: every item gets a yes or no */
 export const answerPingDoc = (id: string, items: PingItem[]) =>
   updateDoc(doc(db, "pings", id), { items, status: "answered", respondedAt: serverTimestamp() })
+
+/**
+ * The asker's device claims an answered ping before applying it. Only one device can win, so an answer is applied
+ * exactly once even when the same account is open in two browsers. Returns false if someone already claimed it.
+ */
+export const claimPingDoc = (id: string) =>
+  runTransaction(db, async (tx) => {
+    const ref = doc(db, "pings", id)
+    const snap = await tx.get(ref)
+    if (!snap.exists() || snap.data().status !== "answered") return false
+    tx.update(ref, { status: "processed", processedAt: serverTimestamp() })
+    return true
+  })
+
+/** Save this device's push token so a mate's ping or reply can alert it (read only by the owner and the Cloud Functions) */
+export const savePushToken = (uid: string, token: string) =>
+  setDoc(doc(db, "pushTokens", uid), { token, updatedAt: serverTimestamp() })
 
 /** Cancel a ping you sent, or clear an old one */
 export const removePingDoc = (id: string) => deleteDoc(doc(db, "pings", id))

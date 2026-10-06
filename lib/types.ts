@@ -95,7 +95,8 @@ export interface Ping {
   /** YYYY-MM-DD the classes were on */
   date: string
   items: PingItem[]
-  status: "asking" | "answered"
+  /** asking -> answered (by the mate) -> processed (the asker's device applied the answer, exactly once) */
+  status: "asking" | "answered" | "processed"
 }
 
 /** A connection request between two accounts. Accepted requests are the mate connections. */

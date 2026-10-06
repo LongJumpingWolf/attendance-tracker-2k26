@@ -25,7 +25,11 @@ import {
 } from "@/lib/attendance"
 import { applyImport, type FinalSubject } from "@/lib/timetable-import"
 import { lastWeekInfo } from "@/lib/wrapped"
-import { isExpired } from "@/lib/pings"
+import { isAnswered, isExpired } from "@/lib/pings"
+import { dbDel, dbGet, dbSet, protectStorage } from "@/lib/db"
+import { newId } from "@/lib/ids"
+import { saveRestorePoint } from "@/lib/restore-points"
+import { loadSchedule } from "@/lib/reminders"
 import { useSocial } from "@/lib/use-social"
 import { useCloudSync } from "@/hooks/use-cloud-sync"
 import BottomNav from "@/components/bottom-nav"
@@ -100,32 +104,36 @@ export default function Home() {
   const [pendingLink, setPendingLink] = useState<{ kind: "add" | "invite"; value: string } | null>(null)
 
   // ---------- load / persist ----------
+  // The working copy lives in IndexedDB (lib/db.ts), which also moves over anything an older version left in localStorage.
+  // Nothing is written back until this has finished, so an empty screen can never overwrite saved data.
   useEffect(() => {
-    const read = <T,>(key: string): T | null => {
-      try {
-        const raw = localStorage.getItem(key)
-        return raw ? (JSON.parse(raw) as T) : null
-      } catch {
-        return null
+    let alive = true
+    void (async () => {
+      const [savedSubjects, savedTasks, savedTags, savedMates] = await Promise.all([
+        dbGet<Subject[]>("subjects"),
+        dbGet<Task[]>("tasks"),
+        dbGet<string[]>("tags"),
+        dbGet<Mate[]>("mates"),
+      ])
+      if (!alive) return
+      if (Array.isArray(savedSubjects)) {
+        setSubjects(savedSubjects)
+        setAllTags(Array.from(new Set(savedSubjects.flatMap((s) => s.tags || []))))
       }
-    }
-    const savedSubjects = read<Subject[]>("subjects")
-    if (savedSubjects) {
-      setSubjects(savedSubjects)
-      setAllTags(Array.from(new Set(savedSubjects.flatMap((s) => s.tags || []))))
-    }
-    const savedTasks = read<Task[]>("tasks")
-    if (savedTasks) setTasks(savedTasks)
-    const savedTags = read<string[]>("tags")
-    if (savedTags) setAllTags(savedTags)
-    const savedMates = read<Mate[]>("mates")
-    if (savedMates) setMates(savedMates)
+      if (Array.isArray(savedTasks)) setTasks(savedTasks)
+      if (Array.isArray(savedTags)) setAllTags(savedTags)
+      if (Array.isArray(savedMates)) setMates(savedMates)
 
-    // Habit tracker, to-do list and tutorial were removed; drop their leftovers
-    for (const key of ["todos", "binTodos", "binClearDate", "habits", "tutorialSeen"]) localStorage.removeItem(key)
+      // Habit tracker, to-do list and tutorial were removed; drop their leftovers
+      for (const key of ["todos", "binTodos", "binClearDate", "habits", "tutorialSeen"]) localStorage.removeItem(key)
 
-    setDateLabel(new Date().toLocaleDateString("en-US", { weekday: "long", day: "numeric", month: "long" }))
-    setLoaded(true)
+      setDateLabel(new Date().toLocaleDateString("en-US", { weekday: "long", day: "numeric", month: "long" }))
+      setLoaded(true)
+      void protectStorage() // ask the browser not to evict this data when the device runs low on space
+    })()
+    return () => {
+      alive = false
+    }
   }, [])
 
   useEffect(() => {
@@ -140,16 +148,16 @@ export default function Home() {
 
   // Only write after the initial load so we never overwrite saved data with empty state
   useEffect(() => {
-    if (loaded) localStorage.setItem("subjects", JSON.stringify(subjects))
+    if (loaded) void dbSet("subjects", subjects)
   }, [subjects, loaded])
   useEffect(() => {
-    if (loaded) localStorage.setItem("tasks", JSON.stringify(tasks))
+    if (loaded) void dbSet("tasks", tasks)
   }, [tasks, loaded])
   useEffect(() => {
-    if (loaded) localStorage.setItem("tags", JSON.stringify(allTags))
+    if (loaded) void dbSet("tags", allTags)
   }, [allTags, loaded])
   useEffect(() => {
-    if (loaded) localStorage.setItem("mates", JSON.stringify(mates))
+    if (loaded) void dbSet("mates", mates)
   }, [mates, loaded])
 
   // ---------- friend connections ----------
@@ -209,7 +217,7 @@ export default function Home() {
 
   // ---------- pings: "did you mark me present?" ----------
   // Replies to pings you sent, and pings mates sent you that wait for your answer.
-  const answeredPings = social.sent.filter((p) => p.status === "answered")
+  const answeredPings = social.sent.filter(isAnswered)
   const incomingPings = social.received.filter((p) => p.status === "asking" && !isExpired(p))
 
   // A yes marks the class present and counts as a favour. Every answered ping is applied exactly once.
@@ -225,11 +233,23 @@ export default function Home() {
       }
     }
     const applied = appliedPings.current
-    const fresh = answeredPings.filter((p) => !applied.has(p.id))
+    // Only "answered" pings are new: "processed" ones were already applied, here or on another device
+    const fresh = answeredPings.filter((p) => p.status === "answered" && !applied.has(p.id))
     if (fresh.length === 0) return
     for (const p of fresh) applied.add(p.id)
     localStorage.setItem("appliedPings", JSON.stringify([...applied]))
-    applyPingAnswers(fresh)
+    // Claim each one first (only one device wins), then apply. If the claim can't be made, try again later.
+    for (const p of fresh) {
+      social
+        .claimPing(p.id)
+        .then((won) => {
+          if (won) applyPingAnswers([p])
+        })
+        .catch(() => {
+          applied.delete(p.id)
+          localStorage.setItem("appliedPings", JSON.stringify([...applied]))
+        })
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loaded, answeredKey])
 
@@ -468,7 +488,7 @@ export default function Home() {
   }
 
   const handleAddSubject = (values: SubjectValues) => {
-    setSubjects([...subjects, { id: Date.now().toString(), ...values }])
+    setSubjects([...subjects, { id: newId(), ...values }])
     mergeTags(values.tags)
     setIsAddOpen(false)
   }
@@ -492,6 +512,8 @@ export default function Home() {
   }
 
   const handleResetAllData = () => {
+    // A reset is deliberate, but a copy is kept under Settings > Backup & restore in case it was a slip
+    void saveRestorePoint("Before reset", { subjects, tasks, tags: allTags, mates, reminders: loadSchedule() })
     setSubjects([])
     setTasks([])
     setAllTags([])
@@ -507,6 +529,7 @@ export default function Home() {
       "wrappedSeenWeek", "demo-pings", "mock-pings", "subjectsView", "onboardingDone",
     ])
       localStorage.removeItem(key)
+    for (const key of ["subjects", "tasks", "tags", "mates", "syncBase"]) void dbDel(key)
   }
 
   // ---------- deadlines ----------
@@ -518,7 +541,7 @@ export default function Home() {
       // `subjectId` may have been cleared, so it is set explicitly rather than merged
       setTasks((prev) => prev.map((t) => (t.id === editing.id ? { ...t, ...values, subjectId: values.subjectId } : t)))
     } else {
-      setTasks((prev) => [...prev, { id: Date.now().toString(), ...values }])
+      setTasks((prev) => [...prev, { id: newId(), ...values }])
     }
     setDeadlineEditor(null)
     setCurrentPage("calendar")
@@ -684,7 +707,7 @@ export default function Home() {
       setMates((prev) => {
         const at = prev.findIndex((m) => (m.uid && m.uid === p.to) || m.name.trim().toLowerCase() === p.toName.trim().toLowerCase())
         const bump = (m: Mate): Mate => ({ ...m, covered: m.covered + yes.length, coveredLog: [...(m.coveredLog ?? []), ...yes.map(() => p.date)] })
-        if (at === -1) return [...prev, bump({ id: demo ? Date.now().toString() : p.to, ...(demo ? {} : { uid: p.to }), name: p.toName, covered: 0, repaid: 0 })]
+        if (at === -1) return [...prev, bump({ id: demo ? newId() : p.to, ...(demo ? {} : { uid: p.to }), name: p.toName, covered: 0, repaid: 0 })]
         return prev.map((m, i) => (i === at ? bump(m) : m))
       })
     }
@@ -898,7 +921,7 @@ export default function Home() {
               onToast={(message) => showToast(message)}
               addOpen={isMateOpen}
               onCloseAdd={() => setIsMateOpen(false)}
-              onAdd={(name) => setMates((prev) => [...prev, { id: Date.now().toString(), name, covered: 0, repaid: 0 }])}
+              onAdd={(name) => setMates((prev) => [...prev, { id: newId(), name, covered: 0, repaid: 0 }])}
               onFavour={logFavour}
               onRepay={logRepay}
               subjects={subjects}
@@ -938,6 +961,7 @@ export default function Home() {
         onResetAllData={handleResetAllData}
         onExportData={handleBackupData}
         onImportData={(data) => {
+          void saveRestorePoint("Before restoring a backup", { subjects, tasks, tags: allTags, mates, reminders: loadSchedule() })
           setTasks(data.tasks)
           setAllTags(data.tags)
           if (data.full) {

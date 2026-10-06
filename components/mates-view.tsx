@@ -6,7 +6,7 @@ import { Check, X, Copy, ShareNetwork, CaretDown, Link as LinkIcon } from "@phos
 import type { Mate, Ping, Subject } from "@/lib/types"
 import { localDate } from "@/lib/attendance"
 import { copyText } from "@/lib/clipboard"
-import { PING_HISTORY_DAYS, daysSince, isExpired, whenLabel } from "@/lib/pings"
+import { PING_HISTORY_DAYS, daysSince, isAnswered, isExpired, whenLabel } from "@/lib/pings"
 import PingSheet from "./ping-sheet"
 import type { SocialApi } from "@/lib/use-social"
 import Sheet, { Field, inputClass, primaryButton, SectionHeader, tintButton } from "./sheet"
@@ -332,7 +332,7 @@ function PingHistory({ sent, received, onClear }: { sent: Ping[]; received: Ping
         return { id: p.id, date: p.date, tone: o.tone === "yes" ? "yes" : o.tone === "no" ? "no" : "mute", text: `${p.toName}: ${o.text.toLowerCase()}`, sentByMe: true }
       }),
     ...received
-      .filter((p) => p.status === "answered" && daysSince(p.date) <= PING_HISTORY_DAYS)
+      .filter((p) => isAnswered(p) && daysSince(p.date) <= PING_HISTORY_DAYS)
       .map((p): Row => {
         const yes = p.items.filter((i) => i.answer === "yes").map((i) => i.name)
         const no = p.items.filter((i) => i.answer === "no").map((i) => i.name)
