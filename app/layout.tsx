@@ -3,6 +3,7 @@ import type { Metadata, Viewport } from "next"
 import { Inter } from "next/font/google"
 import "./globals.css"
 import ThemeSync from "@/components/theme-sync"
+import OfflineShell from "@/components/offline-shell"
 
 // Apple-style sans. Apple devices use SF Pro through the system stack (see globals.css);
 // everywhere else falls back to Inter, which is the closest match.
@@ -58,6 +59,7 @@ export default function RootLayout({
       </head>
       <body className="antialiased" suppressHydrationWarning>
         <ThemeSync />
+        <OfflineShell />
         {children}
       </body>
     </html>

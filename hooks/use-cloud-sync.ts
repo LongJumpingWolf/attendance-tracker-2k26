@@ -19,6 +19,8 @@ const BASE_KEY = "syncBase"
 
 export type SyncStatus = "off" | "syncing" | "synced" | "offline"
 
+const isOffline = () => typeof navigator !== "undefined" && navigator.onLine === false
+
 type Data = Omit<FullBackupData, "reminders">
 
 const read = (key: string) => {
@@ -151,6 +153,10 @@ export function useCloudSync(opts: {
   const pull = useCallback(async (): Promise<"updated" | "same" | "none" | "failed"> => {
     const owner = ownerRef.current
     if (!owner) return "none"
+    if (isOffline()) {
+      setStatus("offline") // no waiting on a network that is known to be down
+      return "failed"
+    }
     try {
       const doc = await withTimeout(cloudGet(owner), PULL_TIMEOUT)
       if (!doc) return "none"
@@ -176,6 +182,10 @@ export function useCloudSync(opts: {
     if (!owner || busy.current) return
     const now = fingerprint(dataRef.current)
     if (now === lastJson.current) return
+    if (isOffline()) {
+      setStatus("offline") // the change is already saved on this device; it is sent when the connection returns
+      return
+    }
     busy.current = true
     setStatus("syncing")
     const sent = current()
@@ -314,6 +324,23 @@ export function useCloudSync(opts: {
     return () => document.removeEventListener("visibilitychange", onVisible)
   }, [ready, accountId, paused, pull])
 
+  // The moment the connection comes back, catch up: fetch what changed elsewhere, merge it, and send what was done offline
+  const syncRef = useRef<() => Promise<boolean>>(async () => false)
+  useEffect(() => {
+    if (!ready || !accountId) return
+    const onOnline = () => {
+      if (!paused && ownerRef.current === accountId) void syncRef.current()
+    }
+    window.addEventListener("online", onOnline)
+    return () => window.removeEventListener("online", onOnline)
+  }, [ready, accountId, paused])
+
+  // Changes saved on this device that the stored copy doesn't have yet
+  const [pending, setPending] = useState(false)
+  useEffect(() => {
+    setPending(Boolean(ownerRef.current) && fingerprint(dataRef.current) !== lastJson.current)
+  }, [changed, status])
+
   /** Returns an error message, or null. In development without Firebase keys, pass an email for the test account. */
   const signIn = async (devEmail?: string): Promise<string | null> => {
     if (cloudKind() === "dev") {
@@ -344,8 +371,9 @@ export function useCloudSync(opts: {
     await push()
     return revRef.current !== before
   }
+  syncRef.current = syncNow
 
-  return { kind: cloudKind(), account, ready, status, lastAt, signIn, signOut, syncNow }
+  return { kind: cloudKind(), account, ready, status, pending, lastAt, signIn, signOut, syncNow }
 }
 
 export type CloudSync = ReturnType<typeof useCloudSync>

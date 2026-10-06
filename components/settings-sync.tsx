@@ -12,7 +12,7 @@ const STATUS: Record<CloudSync["status"], { text: string; cls: string }> = {
   off: { text: "Off", cls: "bg-ink/[0.07] text-mute" },
   syncing: { text: "Syncing…", cls: "bg-ink/[0.07] text-mute" },
   synced: { text: "Up to date", cls: "bg-good/15 text-good" },
-  offline: { text: "Can’t reach the store", cls: "bg-bad/10 text-bad" },
+  offline: { text: "Offline", cls: "bg-ink/[0.07] text-mute" },
 }
 
 /** Settings > Sync between browsers: sign in with Google and your data follows you */
@@ -63,7 +63,9 @@ export default function SyncPanel({ sync, onToast }: { sync: CloudSync; onToast:
                   {sync.lastAt ? `Last synced ${new Date(sync.lastAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}` : "Not synced yet"}
                 </span>
               </span>
-              <span className={`text-[12px] font-semibold rounded-full px-2.5 py-1 ${STATUS[sync.status].cls}`}>{STATUS[sync.status].text}</span>
+              <span className={`text-[12px] font-semibold rounded-full px-2.5 py-1 ${STATUS[sync.status].cls}`}>
+                {sync.status === "offline" && sync.pending ? "Saved here, will sync" : STATUS[sync.status].text}
+              </span>
             </div>
             <button
               onClick={async () => onToast((await sync.syncNow()) ? "Updated from your other browser" : "Everything is up to date")}
