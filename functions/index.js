@@ -3,13 +3,15 @@ const admin = require('firebase-admin');
 
 admin.initializeApp();
 
+Object.assign(exports, require('./pings'));
+
 exports.sendScheduledNotifications = functions.https.onRequest(async (req, res) => {
   console.log('Running sendScheduledNotifications via HTTP at', new Date().toISOString());
 
   const now = new Date();
   const kolkataTime = new Date(now.toLocaleString("en-US", {timeZone: "Asia/Kolkata"}));
 
-  const currentDay = kolkataTime.toLocaleLowerCase('en-US', { weekday: 'long' });
+  const currentDay = kolkataTime.toLocaleString('en-US', { weekday: 'long' }).toLowerCase();
   const currentTime = kolkataTime.toTimeString().slice(0, 5); // HH:MM
 
   console.log(`Current day: ${currentDay}, time: ${currentTime}`);
