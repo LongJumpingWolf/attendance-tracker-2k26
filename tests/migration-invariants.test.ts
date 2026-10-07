@@ -102,13 +102,13 @@ describe("Firebase is still the backend, and nothing has been wired to Supabase"
     expect(offenders).toEqual([])
   })
 
-  it("only the Supabase CLI (dev) is installed, with a local project directory but no migrations and no remote link", () => {
-    // Phase 2 added the CLI and `supabase init`. A client package (@supabase/*) or any migration must update this test in the same commit, saying so.
+  it("only the Supabase CLI (dev) is installed, with a local project directory, schema migrations and no remote link", () => {
+    // Phase 2 added the CLI and `supabase init`; Phase 2B added the local schema migrations. A client package (@supabase/*) must update this test in the same commit, saying so.
     const pkg = JSON.parse(fs.readFileSync(path.join(ROOT, "package.json"), "utf8"))
     expect(Object.keys(pkg.dependencies ?? {}).filter((n) => /supabase/i.test(n))).toEqual([])
     expect(Object.keys(pkg.devDependencies ?? {}).filter((n) => /supabase/i.test(n))).toEqual(["supabase"])
     expect(fs.existsSync(path.join(ROOT, "supabase", "config.toml"))).toBe(true)
-    expect(fs.existsSync(path.join(ROOT, "supabase", "migrations"))).toBe(false)
+    expect(fs.existsSync(path.join(ROOT, "supabase", "migrations"))).toBe(true)
     expect(fs.existsSync(path.join(ROOT, "supabase", ".temp", "project-ref"))).toBe(false)
   })
 
