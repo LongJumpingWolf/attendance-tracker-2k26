@@ -64,7 +64,7 @@ export default function SyncPanel({ sync, onToast }: { sync: CloudSync; onToast:
                 </span>
               </span>
               <span className={`text-[12px] font-semibold rounded-full px-2.5 py-1 ${STATUS[sync.status].cls}`}>
-                {sync.status === "offline" && sync.pending ? "Saved here, will sync" : STATUS[sync.status].text}
+                {sync.status === "offline" && sync.pending ? "Saved here, will sync" : sync.status === "synced" && sync.realtime ? "Up to date · live" : STATUS[sync.status].text}
               </span>
             </div>
             <button

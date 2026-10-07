@@ -23,8 +23,9 @@ export interface FullBackup {
   data: FullBackupData
 }
 
-export const buildBackup = (data: FullBackupData): string =>
-  JSON.stringify({ app: BACKUP_APP, version: BACKUP_VERSION, exportedAt: new Date().toISOString(), data } satisfies FullBackup, null, 2)
+/** `pretty` is for files people open; sync sends the compact form */
+export const buildBackup = (data: FullBackupData, pretty = true): string =>
+  JSON.stringify({ app: BACKUP_APP, version: BACKUP_VERSION, exportedAt: new Date().toISOString(), data } satisfies FullBackup, null, pretty ? 2 : 0)
 
 const isObj = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null
 const list = <T>(v: unknown, ok: (x: unknown) => x is T): T[] => (Array.isArray(v) ? v.filter(ok) : [])

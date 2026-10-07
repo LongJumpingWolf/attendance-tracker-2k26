@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react"
 import { signInDev, signInWithGoogle, signOutAccount, watchAccount, type Account } from "@/lib/account"
 import { buildBackup, parseFullBackup, type FullBackupData } from "@/lib/backup"
-import { cloudGet, cloudKind, cloudPut } from "@/lib/cloud-sync"
+import { cloudGet, cloudKind, cloudPut, watchCloud, type CloudDoc } from "@/lib/cloud-sync"
 import { loadSchedule, saveSchedule } from "@/lib/reminders"
 import { dbDel, dbGet, dbSet } from "@/lib/db"
 import { mergeData, same } from "@/lib/merge"
@@ -65,6 +65,7 @@ export function useCloudSync(opts: {
   const [authReady, setAuthReady] = useState(false)
   const [ready, setReady] = useState(false)
   const [status, setStatus] = useState<SyncStatus>("off")
+  const [realtime, setRealtime] = useState(false)
   const [lastAt, setLastAt] = useState<number | null>(null)
 
   const dataRef = useRef(data)
@@ -79,6 +80,7 @@ export function useCloudSync(opts: {
   const busy = useRef(false)
   const baseRef = useRef<FullBackupData | null>(null)
   const conflictsRef = useRef(0)
+  const missedRef = useRef(false) // a live update arrived while we were sending; fetch it once we are done
 
   const stamp = () => {
     const now = Date.now()
@@ -149,17 +151,9 @@ export function useCloudSync(opts: {
     stamp()
   }
 
-  /** Fetches the stored copy and adopts it if it is newer than what this browser last saw */
-  const pull = useCallback(async (): Promise<"updated" | "same" | "none" | "failed"> => {
-    const owner = ownerRef.current
-    if (!owner) return "none"
-    if (isOffline()) {
-      setStatus("offline") // no waiting on a network that is known to be down
-      return "failed"
-    }
-    try {
-      const doc = await withTimeout(cloudGet(owner), PULL_TIMEOUT)
-      if (!doc) return "none"
+  /** Takes in a stored copy (fetched, or pushed to us live): merged in if it is newer than what this browser last saw */
+  const ingest = useCallback(
+    async (doc: CloudDoc): Promise<"updated" | "same" | "failed"> => {
       const parsed = parseFullBackup(doc.data)
       if (!parsed.ok) return "failed"
       if (doc.rev > (revRef.current ?? 0)) {
@@ -171,11 +165,27 @@ export function useCloudSync(opts: {
       if (lastJson.current === null) lastJson.current = fingerprint(parsed.data)
       setStatus("synced")
       return "same"
+    },
+    [reconcile],
+  )
+
+  /** Fetches the stored copy and adopts it if it is newer than what this browser last saw */
+  const pull = useCallback(async (): Promise<"updated" | "same" | "none" | "failed"> => {
+    const owner = ownerRef.current
+    if (!owner) return "none"
+    if (isOffline()) {
+      setStatus("offline") // no waiting on a network that is known to be down
+      return "failed"
+    }
+    try {
+      const doc = await withTimeout(cloudGet(owner), PULL_TIMEOUT)
+      if (!doc) return "none"
+      return await ingest(doc)
     } catch {
       setStatus("offline")
       return "failed"
     }
-  }, [reconcile])
+  }, [ingest])
 
   const push = useCallback(async () => {
     const owner = ownerRef.current
@@ -189,7 +199,7 @@ export function useCloudSync(opts: {
     busy.current = true
     setStatus("syncing")
     const sent = current()
-    const r = await cloudPut(owner, buildBackup(sent), revRef.current)
+    const r = await cloudPut(owner, buildBackup(sent, false), revRef.current)
     busy.current = false
     if (r.ok) {
       revRef.current = r.rev
@@ -203,6 +213,10 @@ export function useCloudSync(opts: {
       if ((await pull()) === "updated" && conflictsRef.current === 0) notifyRef.current("Updated from your other browser")
     } else {
       setStatus("offline")
+    }
+    if (missedRef.current) {
+      missedRef.current = false
+      void pull()
     }
   }, [pull])
 
@@ -264,7 +278,7 @@ export function useCloudSync(opts: {
         const hasLocal = d.subjects.length + d.tasks.length > 0 // the demo mates shown on a fresh install are not real data
         if (!doc) {
           const sent = current()
-          const r = await cloudPut(accountId, buildBackup(sent), null)
+          const r = await cloudPut(accountId, buildBackup(sent, false), null)
           if (!cancelled) {
             if (r.ok) {
               adopt(accountId, r.rev, fingerprint(d))
@@ -285,7 +299,7 @@ export function useCloudSync(opts: {
                 : "Signed in and combined your data. Where both differed, this browser's version was kept.",
             )
             const merged = current()
-            const r = await cloudPut(accountId, buildBackup(merged), doc.rev)
+            const r = await cloudPut(accountId, buildBackup(merged, false), doc.rev)
             if (!cancelled) {
               if (r.ok) {
                 adopt(accountId, r.rev, fingerprint(merged))
@@ -323,6 +337,31 @@ export function useCloudSync(opts: {
     document.addEventListener("visibilitychange", onVisible)
     return () => document.removeEventListener("visibilitychange", onVisible)
   }, [ready, accountId, paused, pull])
+
+  // Realtime: another device's change shows up here by itself. One listener on this account's one document. If it can't
+  // run (offline, blocked, rules), nothing else changes: the app keeps working from its own copy and the normal
+  // catch-ups (opening, returning to the app, reconnecting) carry on. lib/realtime.ts restarts it when it can.
+  useEffect(() => {
+    if (!ready || !accountId || paused) return
+    const stop = watchCloud(
+      accountId,
+      (doc) => {
+        if (ownerRef.current !== accountId || doc.rev <= (revRef.current ?? 0)) return // our own write coming back, or nothing new
+        if (busy.current) {
+          missedRef.current = true
+          return
+        }
+        void ingest(doc).then((r) => {
+          if (r === "updated" && conflictsRef.current === 0) notifyRef.current("Updated from your other browser")
+        })
+      },
+      setRealtime,
+    )
+    return () => {
+      stop()
+      setRealtime(false)
+    }
+  }, [ready, accountId, paused, ingest])
 
   // The moment the connection comes back, catch up: fetch what changed elsewhere, merge it, and send what was done offline
   const syncRef = useRef<() => Promise<boolean>>(async () => false)
@@ -373,7 +412,7 @@ export function useCloudSync(opts: {
   }
   syncRef.current = syncNow
 
-  return { kind: cloudKind(), account, ready, status, pending, lastAt, signIn, signOut, syncNow }
+  return { kind: cloudKind(), account, ready, status, pending, realtime, lastAt, signIn, signOut, syncNow }
 }
 
 export type CloudSync = ReturnType<typeof useCloudSync>

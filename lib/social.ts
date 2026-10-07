@@ -28,6 +28,7 @@ import {
 } from "firebase/firestore"
 import { app, db } from "./firebase"
 import type { FriendRequest, Ping, PingItem } from "./types"
+import { resilient } from "./realtime"
 
 export const socialConfigured = () =>
   Boolean(
@@ -71,10 +72,19 @@ export async function getProfileName(uid: string): Promise<string | null> {
 /** Live list of every request that involves this user (incoming, outgoing, accepted) */
 export function watchRequests(uid: string, onData: (r: FriendRequest[]) => void, onError: (e: Error) => void) {
   const q = query(collection(db, "requests"), where("participants", "array-contains", uid))
-  return onSnapshot(
-    q,
-    (snap) => onData(snap.docs.map((d) => ({ id: d.id, ...(d.data() as Omit<FriendRequest, "id">) }))),
-    onError,
+  return resilient(
+    ({ ok, fail }) =>
+      onSnapshot(
+        q,
+        (snap) => {
+          ok()
+          onData(snap.docs.map((d) => ({ id: d.id, ...(d.data() as Omit<FriendRequest, "id">) })))
+        },
+        fail,
+      ),
+    (live, e) => {
+      if (!live && e) onError(e as Error)
+    },
   )
 }
 
@@ -127,10 +137,19 @@ export const magicLink = (token: string) => `${location.origin}/?invite=${token}
 /** Live list of pings that involve this user (ones they sent and ones sent to them) */
 export function watchPings(uid: string, onData: (p: Ping[]) => void, onError: (e: Error) => void) {
   const q = query(collection(db, "pings"), where("participants", "array-contains", uid))
-  return onSnapshot(
-    q,
-    (snap) => onData(snap.docs.map((d) => ({ id: d.id, ...(d.data() as Omit<Ping, "id">) }))),
-    onError,
+  return resilient(
+    ({ ok, fail }) =>
+      onSnapshot(
+        q,
+        (snap) => {
+          ok()
+          onData(snap.docs.map((d) => ({ id: d.id, ...(d.data() as Omit<Ping, "id">) })))
+        },
+        fail,
+      ),
+    (live, e) => {
+      if (!live && e) onError(e as Error)
+    },
   )
 }
 
