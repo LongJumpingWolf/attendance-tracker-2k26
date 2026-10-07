@@ -4,6 +4,8 @@ Decision lock for the Firebase to Supabase migration. Resolves the six owner dec
 
 **Nothing is implemented by this document.** No Supabase project, table or migration exists; no application code, Firebase configuration, package or deployment was touched.
 
+> **Production census (2026-10-07):** see `MIGRATION_PRODUCTION_CENSUS.md`. A read-only census found 0 `requests`, 0 `pings` and 1 `users` document, so no duplicate pairs, legacy Pings or quarantine candidates exist today. Decisions 2a and 2b are not changed by it.
+
 ## Status legend
 
 | Status | Meaning |
