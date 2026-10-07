@@ -1,0 +1,20 @@
+{
+  "_comment": "Phase 0 baseline, measured at commit 3644948 with no test edited. The health check fails if a suite reports FEWER passing tests than this (a deleted or skipped test is a regression), or any failure. Raise numbers when tests are ADDED; never lower them.",
+  "commit": "3644948",
+  "unitNote": "177 tests in 15 files at 3644948, plus 55 migration-invariants tests added in Phase 1 (16 files, 232).",
+  "unit": { "files": 16, "tests": 232 },
+  "rules": { "files": 4, "tests": 64 },
+  "lint": { "errors": 0, "maxWarnings": 75 },
+  "knownFlaky": [
+    "tests/rules/identity.test.ts > 1. anonymous -> Google sign-in keeps who you are > keeps the same id, the same mates and the same listeners, and Pings still work both ways"
+  ],
+  "e2e": {
+    "ping": 40,
+    "ping-reliability": 20,
+    "nav": 35,
+    "value": 32,
+    "today": 38,
+    "cleanup": 27,
+    "sync": 11
+  }
+}
