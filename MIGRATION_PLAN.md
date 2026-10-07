@@ -1,5 +1,7 @@
 # MIGRATION_PLAN.md — Firebase to Supabase
 
+> **Decision lock:** the six owner decisions in section 25 are analysed in `MIGRATION_DECISIONS.md`, which also **amends section 12.2** (see the note there). Where the two documents differ, `MIGRATION_DECISIONS.md` wins.
+
 Status: **Phase 0 audit.** Written from the repository at HEAD `3644948` ("Ping Phase 2: identity, server-side rules, exactly-once processing, rules tests"), working tree clean. Nothing was changed, installed, deployed or migrated to produce this document.
 
 How this was produced: four read-only code audits (auth/identity/Firebase imports; Firestore model/rules/friends; Ping/notifications/functions; IndexedDB/sync/attendance), plus a baseline test run (section 11). File and line references are to HEAD. Where an audit could not verify something, it is marked **UNVERIFIED** and must be checked before it is relied on. Facts about Supabase itself (limits, third-party-auth behaviour) come from general knowledge, not from this repository, and are marked **VERIFY**: check the current Supabase documentation and pricing page before any phase depends on them.
@@ -422,6 +424,8 @@ Notes, reported honestly:
 
 ### 12.2 Relational model
 
+> **Amended by `MIGRATION_DECISIONS.md` (decisions 2a, 2b, 3):** `pings.class_date` is stored as text, not `date`; there is **no foreign key** from a Ping to `connections` (legacy Pings can reference removed or duplicate requests); legacy rows carry `legacy` and `legacy_flags` and nullable `created_at`; strict limits (8 items, name lengths, date window) are enforced by the create and answer RPCs rather than table `CHECK`s; add `legacy_requests`, `connection_aliases` and `quarantined_records`; `push_tokens` is keyed by `(uid, device_id)`. User ids are `text` and policies read `auth.jwt()->>'sub'`, never `auth.uid()`.
+
 ```
 profiles        (uid text PK, name text CHECK(1..40), updated_at timestamptz)
 invites         (token text PK, owner text, owner_name text, expires_at timestamptz, created_at timestamptz)
@@ -750,6 +754,8 @@ Each item is binary PASS/FAIL. Any FAIL = NO-GO.
 ---
 
 ## 25. DECISIONS NEEDED FROM THE OWNER (before Phase 2)
+
+> **Analysed in `MIGRATION_DECISIONS.md`** (recommendation, evidence, risk and rollback for each, with status PROVISIONAL / REQUIRES SPIKE / APPROVED FOR IMPLEMENTATION and an owner sign-off table). Item 2 is split there into 2a (duplicate friend pairs) and 2b (legacy Pings). The list below is left as originally written.
 
 1. Confirm Option A (keep Firebase Auth) as the identity strategy, and accept the **Phase 5 spike gate** (stop if the Free-plan bridge cannot be made to work).
 2. Policy for legacy duplicate friend pairs and legacy Pings that violate the new constraints (reject/expire; never coerce).
