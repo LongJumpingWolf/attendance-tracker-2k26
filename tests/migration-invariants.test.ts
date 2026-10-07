@@ -102,11 +102,14 @@ describe("Firebase is still the backend, and nothing has been wired to Supabase"
     expect(offenders).toEqual([])
   })
 
-  it("no Supabase package is installed and there is no supabase/ project directory yet", () => {
+  it("only the Supabase CLI (dev) is installed, with a local project directory but no migrations and no remote link", () => {
+    // Phase 2 added the CLI and `supabase init`. A client package (@supabase/*) or any migration must update this test in the same commit, saying so.
     const pkg = JSON.parse(fs.readFileSync(path.join(ROOT, "package.json"), "utf8"))
-    const all = { ...pkg.dependencies, ...pkg.devDependencies }
-    expect(Object.keys(all).filter((n) => /supabase/i.test(n))).toEqual([])
-    expect(fs.existsSync(path.join(ROOT, "supabase"))).toBe(false)
+    expect(Object.keys(pkg.dependencies ?? {}).filter((n) => /supabase/i.test(n))).toEqual([])
+    expect(Object.keys(pkg.devDependencies ?? {}).filter((n) => /supabase/i.test(n))).toEqual(["supabase"])
+    expect(fs.existsSync(path.join(ROOT, "supabase", "config.toml"))).toBe(true)
+    expect(fs.existsSync(path.join(ROOT, "supabase", "migrations"))).toBe(false)
+    expect(fs.existsSync(path.join(ROOT, "supabase", ".temp", "project-ref"))).toBe(false)
   })
 
   it("the Firebase project and the deployed rules file are still in place", () => {
