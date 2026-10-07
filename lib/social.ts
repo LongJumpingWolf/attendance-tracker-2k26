@@ -3,32 +3,23 @@
  * no Cloud Functions needed). Every user gets a permanent anonymous account id; that id is what the
  * QR code and the permanent link carry. Magic links are short-lived invite tokens.
  *
+ * This file keeps what is genuinely Firebase Auth (anonymous sign-in) and the link helpers. Every Firestore operation
+ * now lives in lib/backend/firebase (see PHASE4A_REPOSITORY_ARCHITECTURE.md). The functions below with a `database`
+ * parameter are thin forwards to that adapter, kept so the identity layer and the emulator tests keep their signatures.
+ * New application code should use `getBackend()` from lib/backend instead.
+ *
  * Collections (see firestore.rules):
  *   users/{uid}        { name }
  *   invites/{token}    { owner, ownerName, expiresAt }     short-lived magic links
  *   requests/{id}      { from, to, fromName, toName, participants, status }
- *   pings/{id}         "did you mark me present?" (see lib/ping-server.ts and firestore.rules)
+ *   pings/{id}         "did you mark me present?" (see lib/backend/firebase and firestore.rules)
  *   pushTokens/{uid}   { token }   this account's device token; Cloud Functions use it to alert about pings
  */
 import { getAuth, signInAnonymously, onAuthStateChanged, type User } from "firebase/auth"
-import {
-  collection,
-  doc,
-  getDoc,
-  setDoc,
-  addDoc,
-  updateDoc,
-  deleteDoc,
-  query,
-  where,
-  onSnapshot,
-  serverTimestamp,
-  Timestamp,
-} from "firebase/firestore"
-import { app, db } from "./firebase"
 import type { Firestore } from "firebase/firestore"
-import type { FriendRequest, Ping, PingItem } from "./types"
-import { resilient } from "./realtime"
+import { app, db } from "./firebase"
+import type { FriendRequest, Ping } from "./types"
+import { firebaseBackendFor } from "./backend/firebase"
 
 export const socialConfigured = () =>
   Boolean(
@@ -61,101 +52,45 @@ export function ensureSignedIn(): Promise<User> {
   return signingIn
 }
 
-export const saveProfile = (uid: string, name: string, database: Firestore = db) =>
-  setDoc(doc(database, "users", uid), { name, updatedAt: serverTimestamp() })
-
-export async function getProfileName(uid: string): Promise<string | null> {
-  const snap = await getDoc(doc(db, "users", uid))
-  return snap.exists() ? ((snap.data().name as string) ?? null) : null
+const be = (database: Firestore) => firebaseBackendFor(database)
+const onState = (onError: (e: Error) => void) => (live: boolean, e?: unknown) => {
+  if (!live && e) onError(e as Error)
 }
+
+export const saveProfile = (uid: string, name: string, database: Firestore = db) => be(database).profiles.save(uid, name)
+
+export const getProfileName = (uid: string): Promise<string | null> => be(db).profiles.getName(uid)
 
 /** Live list of every request that involves this user (incoming, outgoing, accepted) */
-export function watchRequests(uid: string, onData: (r: FriendRequest[]) => void, onError: (e: Error) => void, database: Firestore = db) {
-  const q = query(collection(database, "requests"), where("participants", "array-contains", uid))
-  return resilient(
-    ({ ok, fail }) =>
-      onSnapshot(
-        q,
-        (snap) => {
-          ok()
-          onData(snap.docs.map((d) => ({ id: d.id, ...(d.data() as Omit<FriendRequest, "id">) })))
-        },
-        fail,
-      ),
-    (live, e) => {
-      if (!live && e) onError(e as Error)
-    },
-  )
-}
+export const watchRequests = (uid: string, onData: (r: FriendRequest[]) => void, onError: (e: Error) => void, database: Firestore = db) =>
+  be(database).connections.watch(uid, { onData, onState: onState(onError) })
 
-export const sendRequest = (me: { uid: string; name: string }, to: { uid: string; name: string }, database: Firestore = db) =>
-  addDoc(collection(database, "requests"), {
-    from: me.uid,
-    to: to.uid,
-    fromName: me.name,
-    toName: to.name,
-    participants: [me.uid, to.uid],
-    status: "pending",
-    createdAt: serverTimestamp(),
-  })
+/** Every request that involves this user, once */
+export const listRequests = (uid: string, database: Firestore = db) => be(database).connections.list(uid)
 
-export const respondToRequest = (id: string, status: "accepted" | "declined") =>
-  updateDoc(doc(db, "requests", id), { status, respondedAt: serverTimestamp() })
+/** Resolves to `{ id }`, as the Firestore document reference it replaced did */
+export const sendRequest = async (me: { uid: string; name: string }, to: { uid: string; name: string }, database: Firestore = db) => ({
+  id: await be(database).connections.send(me, to),
+})
 
-export const removeRequest = (id: string) => deleteDoc(doc(db, "requests", id))
+export const respondToRequest = (id: string, status: "accepted" | "declined", database: Firestore = db) => be(database).connections.respond(id, status)
 
-const randomToken = () => {
-  const bytes = new Uint8Array(12)
-  crypto.getRandomValues(bytes)
-  return Array.from(bytes, (b) => b.toString(36).padStart(2, "0")).join("").slice(0, 18)
-}
+export const removeRequest = (id: string, database: Firestore = db) => be(database).connections.remove(id)
 
 /** A magic link that stops working after `minutes` */
-export async function createInvite(uid: string, name: string, minutes = 15) {
-  const token = randomToken()
-  const expiresAt = Date.now() + minutes * 60_000
-  await setDoc(doc(db, "invites", token), {
-    owner: uid,
-    ownerName: name,
-    expiresAt: Timestamp.fromMillis(expiresAt),
-    createdAt: serverTimestamp(),
-  })
-  return { token, expiresAt }
-}
+export const createInvite = (uid: string, name: string, minutes = 15) => be(db).invites.create(uid, name, minutes)
 
-export async function readInvite(token: string) {
-  const snap = await getDoc(doc(db, "invites", token))
-  if (!snap.exists()) return null
-  const d = snap.data()
-  const expiresAt = (d.expiresAt as Timestamp).toMillis()
-  return { owner: d.owner as string, ownerName: d.ownerName as string, expired: expiresAt < Date.now(), expiresAt }
-}
+export const readInvite = (token: string) => be(db).invites.read(token)
 
 export const permanentLink = (uid: string) => `${location.origin}/?add=${uid}`
 export const magicLink = (token: string) => `${location.origin}/?invite=${token}`
 
 /** Live list of pings that involve this user (ones they sent and ones sent to them) */
-export function watchPings(uid: string, onData: (p: Ping[]) => void, onError: (e: Error) => void, database: Firestore = db) {
-  const q = query(collection(database, "pings"), where("participants", "array-contains", uid))
-  return resilient(
-    ({ ok, fail }) =>
-      onSnapshot(
-        q,
-        (snap) => {
-          ok()
-          onData(snap.docs.map((d) => ({ id: d.id, ...(d.data() as Omit<Ping, "id">) })))
-        },
-        fail,
-      ),
-    (live, e) => {
-      if (!live && e) onError(e as Error)
-    },
-  )
-}
+export const watchPings = (uid: string, onData: (p: Ping[]) => void, onError: (e: Error) => void, database: Firestore = db) =>
+  be(database).pings.watch(uid, { onData, onState: onState(onError) })
 
 /** Save this device's push token so a mate's ping or reply can alert it (read only by the owner and the Cloud Functions) */
-export const savePushToken = (uid: string, token: string, database: Firestore = db) =>
-  setDoc(doc(database, "pushTokens", uid), { token, updatedAt: serverTimestamp() })
+export const savePushToken = (uid: string, token: string, database: Firestore = db) => be(database).pushTokens.save(uid, token)
 
 /** Stop alerting this device for this account (used before switching or signing out of it) */
-export const deletePushToken = (uid: string, database: Firestore = db) => deleteDoc(doc(database, "pushTokens", uid))
+export const deletePushToken = (uid: string, database: Firestore = db) => be(database).pushTokens.remove(uid)

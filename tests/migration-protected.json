@@ -10,7 +10,7 @@
   "lib/ping-apply.ts": "9653d5db44231c42dc4b88ff44ab92abbd5e12c336f546970688790b7c340264",
   "lib/ping-id.ts": "4f9cebe433b01dbd676fc881f9376a335dd5f072766278b095be034df31a0757",
   "lib/pings.ts": "27b8f5b81f453c752d952b91f4d240fbc02d4bac35becafbca70e21463cce45d",
-  "lib/identity.ts": "ad27e0eb94df807bee8b3c601ff3377cd61cf07e2859222a47005bff1b2b186c",
+  "lib/identity.ts": "c350721178bc911df71017acdbdc3444e016c1b01b95b4f70abdfb0e5c4500b0",
   "lib/social-session.ts": "1b079ea472c2613a275515380b71453a513778d2a57830005b3c51f006d803a0",
   "lib/account.ts": "2262da363002a28c582b977f5eb0535536d3a504419b0da3383373e96c8ab924",
   "lib/realtime.ts": "bacee3438b0eebfc21af2dba27bde71f331643ab9d38efcd72f046f8ce82e899",

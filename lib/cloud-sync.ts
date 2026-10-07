@@ -3,10 +3,11 @@
  * firestore.rules). Until Firebase keys are added, development builds use a small route on the dev server
  * instead (app/api/dev-sync), so a laptop and a phone on the same Wi-Fi can already sync.
  */
-import { doc, getDoc, onSnapshot, runTransaction } from "firebase/firestore"
-import { db, firebaseConfigured } from "./firebase"
-import { ensureSignedIn } from "./social"
-import { resilient } from "./realtime"
+import { firebaseConfigured } from "./firebase"
+import { getBackend } from "./backend"
+import { DOC_LIMIT_BYTES, firestoreDocBytes } from "./backend/limits"
+
+export { DOC_LIMIT_BYTES, firestoreDocBytes }
 
 /**
  * What is stored is the backup text, gzipped and base64'd ("gz1:" in front). Plain text from earlier versions is still
@@ -41,20 +42,6 @@ export interface CloudDoc {
 
 export type PutResult = { ok: true; rev: number } | { ok: false; reason: "conflict" | "unavailable" | "too-large" }
 
-/** Firestore refuses documents over 1 MiB (1,048,576 bytes). Stay well under it, and under the 900,000-character cap in firestore.rules. */
-export const DOC_LIMIT_BYTES = 800_000
-
-/**
- * The size Firestore counts for the stored document: its name (each path part plus 1, plus 16), every field name (+1)
- * with its value (a string is its UTF-8 bytes + 1, a number is 8), and 32 for the document itself.
- */
-export function firestoreDocBytes(owner: string, data: string): number {
-  const utf8 = (s: string) => new TextEncoder().encode(s).length
-  const name = utf8("syncs") + 1 + utf8(owner) + 1 + 16
-  const fields = utf8("data") + 1 + utf8(data) + 1 + (utf8("rev") + 1 + 8) + (utf8("updatedAt") + 1 + 8)
-  return name + fields + 32
-}
-
 export type CloudKind = "firebase" | "dev" | "none"
 
 export const cloudKind = (): CloudKind =>
@@ -63,10 +50,8 @@ export const cloudKind = (): CloudKind =>
 export async function cloudGet(owner: string): Promise<CloudDoc | null> {
   const kind = cloudKind()
   if (kind === "firebase") {
-    await ensureSignedIn()
-    const snap = await getDoc(doc(db, "syncs", owner))
-    if (!snap.exists()) return null
-    const d = snap.data() as CloudDoc
+    const d = await getBackend().sync.get(owner)
+    if (!d) return null
     return { ...d, data: await unpack(d.data) }
   }
   if (kind === "dev") {
@@ -87,16 +72,7 @@ export async function cloudPut(owner: string, text: string, expectedRev: number 
     // Checked before any network call. Nothing is sent, and nothing on this device is touched.
     if (firestoreDocBytes(owner, data) > DOC_LIMIT_BYTES) return { ok: false, reason: "too-large" }
     if (kind === "firebase") {
-      await ensureSignedIn()
-      const ref = doc(db, "syncs", owner)
-      return await runTransaction(db, async (tx) => {
-        const snap = await tx.get(ref)
-        const rev = snap.exists() ? (snap.data().rev as number) : null
-        if (rev !== expectedRev) return { ok: false, reason: "conflict" } as const
-        const next = (rev ?? 0) + 1
-        tx.set(ref, { data, rev: next, updatedAt: Date.now() })
-        return { ok: true, rev: next } as const
-      })
+      return await getBackend().sync.put(owner, data, expectedRev)
     }
     if (kind === "dev") {
       const res = await fetch(`/api/dev-sync/${owner}`, {
@@ -122,33 +98,12 @@ export async function cloudPut(owner: string, text: string, expectedRev: number 
 export function watchCloud(owner: string, onDoc: (d: CloudDoc) => void, onLive: (live: boolean) => void): () => void {
   const kind = cloudKind()
   if (kind === "firebase") {
-    return resilient(
-      ({ ok, fail }) => {
-        let off = () => {}
-        let gone = false
-        ensureSignedIn().then(
-          () => {
-            if (gone) return
-            off = onSnapshot(
-              doc(db, "syncs", owner),
-              (snap) => {
-                ok()
-                if (!snap.exists()) return
-                const d = snap.data() as CloudDoc
-                unpack(d.data).then((data) => onDoc({ ...d, data }), () => {})
-              },
-              fail,
-            )
-          },
-          fail,
-        )
-        return () => {
-          gone = true
-          off()
-        }
+    return getBackend().sync.watch(owner, {
+      onData: (d) => {
+        unpack(d.data).then((data) => onDoc({ ...d, data }), () => {})
       },
-      (live) => onLive(live),
-    )
+      onState: (live) => onLive(live),
+    })
   }
   if (kind === "dev") {
     onLive(true)

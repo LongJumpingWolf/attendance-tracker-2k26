@@ -24,9 +24,9 @@ import {
   type Auth,
   type AuthCredential,
 } from "firebase/auth"
-import { collection, deleteDoc, doc, getDocs, query, where, type Firestore } from "firebase/firestore"
+import type { Firestore } from "firebase/firestore"
 import type { FriendRequest, Mate } from "./types"
-import { deletePushToken, saveProfile, sendRequest } from "./social"
+import { deletePushToken, listRequests, removeRequest, saveProfile, sendRequest } from "./social"
 
 export interface Connection {
   /** The mate's account id */
@@ -39,10 +39,7 @@ export interface Connection {
 const codeOf = (e: unknown) => (e as { code?: string } | null)?.code
 
 /** Every connection (accepted or still waiting) that involves this account */
-async function allRequests(db: Firestore, uid: string): Promise<FriendRequest[]> {
-  const snap = await getDocs(query(collection(db, "requests"), where("participants", "array-contains", uid)))
-  return snap.docs.map((d) => ({ id: d.id, ...(d.data() as Omit<FriendRequest, "id">) }))
-}
+const allRequests = (db: Firestore, uid: string): Promise<FriendRequest[]> => listRequests(uid, db)
 
 /** The mates this account is connected to right now */
 export async function listConnections(db: Firestore, uid: string): Promise<Connection[]> {
@@ -111,7 +108,7 @@ export async function switchToExisting(
   const old = auth.currentUser
   if (old && carry.length > 0) {
     saveCarry({ from: old.uid, mates: carry }) // first, so a crash after the next step can still be finished
-    await Promise.all(carry.map((c) => deleteDoc(doc(db, "requests", c.requestId))))
+    await Promise.all(carry.map((c) => removeRequest(c.requestId, db)))
   }
   if (old) await deletePushToken(old.uid, db).catch(() => {}) // this device stops being alerted for the identity it is leaving
   const uid = (await signInWithCredential(auth, credential)).user.uid

@@ -2,21 +2,8 @@
 
 import { useCallback, useEffect, useRef, useState } from "react"
 import type { FriendRequest, Ping, PingItem } from "./types"
-import {
-  socialConfigured,
-  ensureSignedIn,
-  saveProfile,
-  getProfileName,
-  watchRequests,
-  watchPings,
-  savePushToken,
-  sendRequest,
-  respondToRequest,
-  removeRequest,
-  createInvite,
-  readInvite,
-  magicLink,
-} from "./social"
+import { socialConfigured, ensureSignedIn, magicLink } from "./social"
+import { getBackend, LEASE_MS } from "./backend"
 import { localDate } from "./attendance"
 import { MAX_PING_ITEMS, PING_HISTORY_DAYS, daysSince, msOf } from "./pings"
 import { requestNotificationPermission } from "./notifications"
@@ -26,7 +13,6 @@ import { app, db } from "./firebase"
 import { getAuth } from "firebase/auth"
 import { followIdentity } from "./social-session"
 import { announceProfile, completeCarry } from "./identity"
-import { answerPing as answerPingOnServer, createPing, finalizePing as finalizeOnServer, leasePing as leaseOnServer, removePing, LEASE_MS } from "./ping-server"
 import { forget, idFor, logicalKey } from "./ping-id"
 import { deviceId } from "./device"
 
@@ -37,7 +23,7 @@ async function registerPingAlerts(uid: string, ask: boolean): Promise<boolean> {
     if (Notification.permission !== "granted" && !(ask && (await requestNotificationPermission()))) return false
     const token = await requestFCMToken()
     if (!token) return false
-    await savePushToken(uid, token)
+    await getBackend().pushTokens.save(uid, token)
     return true
   } catch {
     return false /* alerts are a bonus: the Ping still shows when the app is opened */
@@ -317,7 +303,7 @@ export function useSocial(onNotice?: (message: string) => void): SocialApi {
       return
     }
 
-    if (me.current.uid) await saveProfile(me.current.uid, clean)
+    if (me.current.uid) await getBackend().profiles.save(me.current.uid, clean)
   }, [mockMode])
 
   const connect = useCallback(async (targetUid: string, knownName?: string): Promise<ConnectResult> => {
@@ -367,17 +353,17 @@ export function useSocial(onNotice?: (message: string) => void): SocialApi {
       if (existing.status === "accepted") return { ok: true, message: `You're already connected with ${other}.` }
       if (existing.status === "pending") {
         if (existing.to === myUid) {
-          await respondToRequest(existing.id, "accepted")
+          await getBackend().connections.respond(existing.id, "accepted")
           return { ok: true, message: `Connected with ${other}.` }
         }
         return { ok: true, message: `Your request to ${other} is already waiting.` }
       }
-      await removeRequest(existing.id)
+      await getBackend().connections.remove(existing.id)
     }
 
-    const targetName = knownName ?? (await getProfileName(targetUid))
+    const targetName = knownName ?? (await getBackend().profiles.getName(targetUid))
     if (!targetName) return { ok: false, message: "That code isn't valid." }
-    await sendRequest({ uid: myUid, name: myName }, { uid: targetUid, name: targetName })
+    await getBackend().connections.send({ uid: myUid, name: myName }, { uid: targetUid, name: targetName })
     return { ok: true, message: `Request sent to ${targetName}.` }
   }, [mockMode])
 
@@ -406,7 +392,7 @@ export function useSocial(onNotice?: (message: string) => void): SocialApi {
         return { ok: true, message: `Invite accepted for ${ownerName}.` }
       }
 
-      const invite = await readInvite(token)
+      const invite = await getBackend().invites.read(token)
       if (!invite) return { ok: false, message: "That link isn't valid." }
       if (invite.expired) return { ok: false, message: "That link has expired. Ask for a new one." }
       return connect(invite.owner, invite.ownerName)
@@ -422,7 +408,7 @@ export function useSocial(onNotice?: (message: string) => void): SocialApi {
       setRequests(updated)
       return Promise.resolve()
     }
-    return respondToRequest(id, next)
+    return getBackend().connections.respond(id, next)
   }, [mockMode])
 
   const cancel = useCallback((id: string) => {
@@ -433,7 +419,7 @@ export function useSocial(onNotice?: (message: string) => void): SocialApi {
       setRequests(updated)
       return Promise.resolve()
     }
-    return removeRequest(id)
+    return getBackend().connections.remove(id)
   }, [mockMode])
 
   const makeInvite = useCallback(async () => {
@@ -449,7 +435,7 @@ export function useSocial(onNotice?: (message: string) => void): SocialApi {
       return { link: `${window.location.origin}/?invite=${token}`, expiresAt }
     }
 
-    const { token, expiresAt } = await createInvite(myUid, myName, 15)
+    const { token, expiresAt } = await getBackend().invites.create(myUid, myName, 15)
     return { link: magicLink(token), expiresAt }
   }, [mockMode])
 
@@ -488,7 +474,7 @@ export function useSocial(onNotice?: (message: string) => void): SocialApi {
           return done
         }
         // Offline returns at once and sends nothing; a write the server hasn't confirmed is reported as not confirmed
-        const r = await attempt(() => createPing(db, { id, from: { uid: myUid, name: myName }, to, date, items: asked, requestId: requestId as string }))
+        const r = await attempt(() => getBackend().pings.create({ id, from: { uid: myUid, name: myName }, to, date, items: asked, requestId: requestId as string }))
         if (!r.ok) return { ok: false, message: r.message } // the id is kept, so trying again cannot make a second Ping
         forget(key)
         // First ping is the natural moment to ask: the reply will arrive as an alert
@@ -518,7 +504,7 @@ export function useSocial(onNotice?: (message: string) => void): SocialApi {
         setRemotePings(updated)
         return done
       }
-      const r = await attempt(() => answerPingOnServer(db, id, items))
+      const r = await attempt(() => getBackend().pings.answer(id, items))
       return r.ok ? done : { ok: false, message: r.message }
     },
     [mockMode],
@@ -551,7 +537,7 @@ export function useSocial(onNotice?: (message: string) => void): SocialApi {
         setRemotePings(updated)
         return true
       }
-      return leaseOnServer(db, id, dev)
+      return getBackend().pings.lease(id, dev)
     },
     [mockMode],
   )
@@ -569,7 +555,7 @@ export function useSocial(onNotice?: (message: string) => void): SocialApi {
         setRemotePings(updated)
         return
       }
-      await finalizeOnServer(db, id)
+      await getBackend().pings.finalize(id)
     },
     [mockMode],
   )
@@ -586,7 +572,7 @@ export function useSocial(onNotice?: (message: string) => void): SocialApi {
         setRemotePings(kept)
         return
       }
-      await removePing(db, id)
+      await getBackend().pings.remove(id)
     },
     [mockMode],
   )
@@ -594,7 +580,7 @@ export function useSocial(onNotice?: (message: string) => void): SocialApi {
   // Keep history short: pings you sent that are older than a month are deleted
   useEffect(() => {
     if (mockMode || !uid) return
-    for (const p of remotePings) if (p.from === uid && daysSince(p.date) > PING_HISTORY_DAYS) removePing(db, p.id).catch(() => {})
+    for (const p of remotePings) if (p.from === uid && daysSince(p.date) > PING_HISTORY_DAYS) getBackend().pings.remove(p.id).catch(() => {})
   }, [remotePings, uid, mockMode])
 
   const simulateReply = useCallback((mateName: string, items: PingInput[], answer: "yes" | "no") => {

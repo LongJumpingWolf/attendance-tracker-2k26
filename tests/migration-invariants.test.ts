@@ -96,9 +96,13 @@ describe("Firebase is still the backend, and nothing has been wired to Supabase"
       return e.isDirectory() ? sources(rel) : /\.(ts|tsx|js|mjs)$/.test(e.name) ? [rel] : []
     })
 
-  it("no application source imports or mentions Supabase", () => {
-    // Phase 4 (repository abstraction) and later phases add Supabase on purpose and must update this test in the same commit, saying so.
-    const offenders = ["app", "components", "hooks", "lib"].flatMap(sources).filter((f) => /supabase/i.test(fs.readFileSync(path.join(ROOT, f), "utf8")))
+  it("no application source imports or mentions Supabase, except inside the backend adapter boundary (lib/backend)", () => {
+    // Phase 4A added the repository boundary: Supabase may be named only under lib/backend/ (the contracts, the selector and the
+    // inactive adapter). UI, hooks and the rest of lib must never import it directly. Any wider use must update this test, saying so.
+    const offenders = ["app", "components", "hooks", "lib"]
+      .flatMap(sources)
+      .filter((f) => !f.startsWith("lib/backend/"))
+      .filter((f) => /supabase/i.test(fs.readFileSync(path.join(ROOT, f), "utf8")))
     expect(offenders).toEqual([])
   })
 
