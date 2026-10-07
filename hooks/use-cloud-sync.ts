@@ -1,7 +1,7 @@
 "use client"
 
 import { useCallback, useEffect, useRef, useState } from "react"
-import { signInDev, signInWithGoogle, signOutAccount, watchAccount, type Account } from "@/lib/account"
+import { confirmSwitch as confirmAccountSwitch, signInDev, signInWithGoogle, signOutAccount, watchAccount, type Account, type SwitchPlan } from "@/lib/account"
 import { buildBackup, parseFullBackup, type FullBackupData } from "@/lib/backup"
 import { cloudGet, cloudKind, cloudPut, watchCloud, type CloudDoc } from "@/lib/cloud-sync"
 import { loadSchedule, saveSchedule } from "@/lib/reminders"
@@ -14,10 +14,13 @@ const REV_KEY = "syncRev"
 const AT_KEY = "syncAt"
 const PUSH_DELAY = 1200
 const PULL_TIMEOUT = 6000
+/** After an upload fails while online, try again after this long, doubling each time up to the cap */
+const RETRY_FIRST = 15_000
+const RETRY_MAX = 300_000
 /** The copy this device and the stored copy last agreed on: the common starting point for merging later changes */
 const BASE_KEY = "syncBase"
 
-export type SyncStatus = "off" | "syncing" | "synced" | "offline"
+export type SyncStatus = "off" | "syncing" | "synced" | "offline" | "too-large"
 
 const isOffline = () => typeof navigator !== "undefined" && navigator.onLine === false
 
@@ -61,12 +64,18 @@ export function useCloudSync(opts: {
   paused?: boolean
 }) {
   const { loaded, data, apply, notify, paused = false } = opts
+  const pausedRef = useRef(paused)
+  pausedRef.current = paused
   const [account, setAccount] = useState<Account | null>(null)
   const [authReady, setAuthReady] = useState(false)
   const [ready, setReady] = useState(false)
   const [status, setStatus] = useState<SyncStatus>("off")
   const [realtime, setRealtime] = useState(false)
+  // Bumped when something must be sent although the data didn't change (a merge that kept this device's edits)
+  const [kick, setKick] = useState(0)
   const [lastAt, setLastAt] = useState<number | null>(null)
+  // Google already has an account from another device and switching would leave mates made here behind: wait for a yes
+  const [switchPlan, setSwitchPlan] = useState<SwitchPlan | null>(null)
 
   const dataRef = useRef(data)
   dataRef.current = data
@@ -81,6 +90,11 @@ export function useCloudSync(opts: {
   const baseRef = useRef<FullBackupData | null>(null)
   const conflictsRef = useRef(0)
   const missedRef = useRef(false) // a live update arrived while we were sending; fetch it once we are done
+  const pendingAfterMerge = useRef(false) // the merge kept changes the stored copy doesn't have yet
+  const retryTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
+  const retryWait = useRef(RETRY_FIRST)
+  const warnedLarge = useRef(false)
+  const realtimeRef = useRef(false)
 
   const stamp = () => {
     const now = Date.now()
@@ -117,6 +131,16 @@ export function useCloudSync(opts: {
    * result, and saves restore points whenever this device's data is about to change. Returns whether the data here changed.
    */
   const reconcile = useCallback(async (cloud: FullBackupData, rev: number, base: FullBackupData | null): Promise<boolean> => {
+    // Save the restore points first, before anything on this device is replaced. A point is only worth making when
+    // this device holds changes the stored copy never saw (a plain catch-up replaces nothing of value).
+    const before = current()
+    const trial = mergeData(base, before, cloud)
+    const unsynced = !base || !same(before, base)
+    if (trial.conflicts > 0 || (unsynced && !same(trial.data, before))) {
+      await saveRestorePoint(trial.conflicts > 0 ? "Before merging with your other browser" : "Before a sync update", before)
+      if (trial.conflicts > 0) await saveRestorePoint("Your other browser's copy", cloud)
+    }
+    // Merge again on whatever is here now, so anything done while the points were being saved is kept
     const local = current()
     const { data: merged, conflicts } = mergeData(base, local, cloud)
     const changed = !same(merged, local)
@@ -128,15 +152,12 @@ export function useCloudSync(opts: {
     revRef.current = rev
     write(REV_KEY, String(rev))
     lastJson.current = fingerprint(cloud) // anything the merge kept that the stored copy lacks is pushed next
+    pendingAfterMerge.current = fingerprint(merged) !== fingerprint(cloud)
     setBase(cloud)
-    if (changed || conflicts > 0) {
-      void saveRestorePoint(conflicts > 0 ? "Before merging with your other browser" : "Before a sync update", local)
-      if (conflicts > 0) {
-        void saveRestorePoint("Your other browser's copy", cloud)
-        notifyRef.current(
-          `Merged with your other browser. ${conflicts} ${conflicts === 1 ? "item was" : "items were"} changed in both places, so yours was kept. The other copy is saved under Restore points.`,
-        )
-      }
+    if (conflicts > 0) {
+      notifyRef.current(
+        `Merged with your other browser. ${conflicts} ${conflicts === 1 ? "item was" : "items were"} changed in both places, so yours was kept. The other copy is saved under Restore points.`,
+      )
     }
     return changed
   }, [])
@@ -158,11 +179,18 @@ export function useCloudSync(opts: {
       if (!parsed.ok) return "failed"
       if (doc.rev > (revRef.current ?? 0)) {
         const changed = await reconcile(parsed.data, doc.rev, await loadBase())
-        setStatus("synced")
-        stamp()
+        // Only "synced" when nothing is still waiting to be sent
+        setStatus(pendingAfterMerge.current ? "syncing" : "synced")
+        if (pendingAfterMerge.current) setKick((k) => k + 1)
+        if (!pendingAfterMerge.current) stamp()
         return changed ? "updated" : "same"
       }
       if (lastJson.current === null) lastJson.current = fingerprint(parsed.data)
+      if (fingerprint(dataRef.current) !== lastJson.current) {
+        setStatus("syncing") // this device has changes the stored copy lacks; they are sent next
+        setKick((k) => k + 1)
+        return "same"
+      }
       setStatus("synced")
       return "same"
     },
@@ -172,7 +200,7 @@ export function useCloudSync(opts: {
   /** Fetches the stored copy and adopts it if it is newer than what this browser last saw */
   const pull = useCallback(async (): Promise<"updated" | "same" | "none" | "failed"> => {
     const owner = ownerRef.current
-    if (!owner) return "none"
+    if (!owner || pausedRef.current) return "none"
     if (isOffline()) {
       setStatus("offline") // no waiting on a network that is known to be down
       return "failed"
@@ -189,7 +217,14 @@ export function useCloudSync(opts: {
 
   const push = useCallback(async () => {
     const owner = ownerRef.current
-    if (!owner || busy.current) return
+    if (!owner || busy.current || pausedRef.current) return // never while demo data is on screen, even from a timer set earlier
+    // After a restart nothing is known about what the stored copy holds. The copy last confirmed by a successful write
+    // (the sync base) says what has been sent, so changes that were still waiting when the app closed are sent now,
+    // and nothing is re-sent when there are none.
+    if (lastJson.current === null) {
+      const b = await loadBase()
+      if (b) lastJson.current = fingerprint(b)
+    }
     const now = fingerprint(dataRef.current)
     if (now === lastJson.current) return
     if (isOffline()) {
@@ -202,23 +237,42 @@ export function useCloudSync(opts: {
     const r = await cloudPut(owner, buildBackup(sent, false), revRef.current)
     busy.current = false
     if (r.ok) {
+      // Only now, after the store confirmed the write, is anything called synced
       revRef.current = r.rev
       write(REV_KEY, String(r.rev))
       lastJson.current = now
       setBase(sent)
+      warnedLarge.current = false
+      retryWait.current = RETRY_FIRST
+      if (retryTimer.current) clearTimeout(retryTimer.current)
       setStatus("synced")
       stamp()
+    } else if (r.reason === "too-large") {
+      // Nothing was sent and nothing here was touched. It is tried again whenever the data changes.
+      setStatus("too-large")
+      if (!warnedLarge.current) {
+        warnedLarge.current = true
+        notifyRef.current("Cloud backup is too large. Your data is safe on this device.")
+      }
     } else if (r.reason === "conflict") {
       // Another browser saved first. Merge its copy with ours instead of overwriting either; the merged result is pushed next.
       if ((await pull()) === "updated" && conflictsRef.current === 0) notifyRef.current("Updated from your other browser")
     } else {
+      // The write did not go through (it may or may not have reached the store). Changes stay here as unsent and are retried.
       setStatus("offline")
+      if (retryTimer.current) clearTimeout(retryTimer.current)
+      retryTimer.current = setTimeout(() => void pushRef.current(), retryWait.current)
+      retryWait.current = Math.min(retryWait.current * 2, RETRY_MAX)
     }
     if (missedRef.current) {
       missedRef.current = false
       void pull()
     }
   }, [pull])
+  const pushRef = useRef(push)
+  pushRef.current = push
+
+  useEffect(() => () => clearTimeout(retryTimer.current), [])
 
   // Who is signed in (Firebase restores the session on its own; the first answer may take a moment)
   useEffect(() => {
@@ -325,7 +379,7 @@ export function useCloudSync(opts: {
     if (!ready || !accountId || paused || ownerRef.current !== accountId) return
     const t = setTimeout(() => void push(), PUSH_DELAY)
     return () => clearTimeout(t)
-  }, [changed, ready, accountId, paused, status, push])
+  }, [changed, ready, accountId, paused, kick, push]) // not `status`: a failed send flips it, which would re-send every second
 
   // Catch up when the app comes back to the front
   useEffect(() => {
@@ -355,10 +409,14 @@ export function useCloudSync(opts: {
           if (r === "updated" && conflictsRef.current === 0) notifyRef.current("Updated from your other browser")
         })
       },
-      setRealtime,
+      (live) => {
+        realtimeRef.current = live
+        setRealtime(live)
+      },
     )
     return () => {
       stop()
+      realtimeRef.current = false
       setRealtime(false)
     }
   }, [ready, accountId, paused, ingest])
@@ -368,7 +426,12 @@ export function useCloudSync(opts: {
   useEffect(() => {
     if (!ready || !accountId) return
     const onOnline = () => {
-      if (!paused && ownerRef.current === accountId) void syncRef.current()
+      if (paused || ownerRef.current !== accountId) return
+      // With the live listener running it delivers anything new by itself, so only what was done offline is sent (no extra read)
+      if (realtimeRef.current) {
+        if (fingerprint(dataRef.current) === lastJson.current) setStatus((s) => (s === "offline" ? "synced" : s))
+        void pushRef.current()
+      } else void syncRef.current()
     }
     window.addEventListener("online", onOnline)
     return () => window.removeEventListener("online", onOnline)
@@ -387,11 +450,23 @@ export function useCloudSync(opts: {
       signInDev(devEmail)
       return null
     }
-    return signInWithGoogle()
+    const r = await signInWithGoogle()
+    if (r.kind === "confirm") setSwitchPlan(r.plan)
+    return r.kind === "error" ? r.message : null
   }
+
+  /** The person agreed to switch to the Google account's own profile and reconnect the mates made here */
+  const confirmSwitch = async (): Promise<string | null> => {
+    if (!switchPlan) return null
+    const problem = await confirmAccountSwitch(switchPlan)
+    if (!problem) setSwitchPlan(null)
+    return problem
+  }
+  const cancelSwitch = () => setSwitchPlan(null)
 
   /** Signs out of this browser. Nothing is deleted: the stored copy and this browser's data both stay. */
   const signOut = async () => {
+    clearTimeout(retryTimer.current)
     for (const k of [OWNER_KEY, REV_KEY, AT_KEY]) write(k, null)
     ownerRef.current = null
     revRef.current = null
@@ -412,7 +487,7 @@ export function useCloudSync(opts: {
   }
   syncRef.current = syncNow
 
-  return { kind: cloudKind(), account, ready, status, pending, realtime, lastAt, signIn, signOut, syncNow }
+  return { kind: cloudKind(), account, ready, status, pending, realtime, lastAt, switchPlan, confirmSwitch, cancelSwitch, signIn, signOut, syncNow }
 }
 
 export type CloudSync = ReturnType<typeof useCloudSync>

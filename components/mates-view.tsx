@@ -17,8 +17,6 @@ interface MatesViewProps {
   addOpen: boolean
   onCloseAdd: () => void
   onAdd: (name: string) => void
-  onFavour: (id: string) => void
-  onRepay: (id: string) => void
   onRemove: (id: string) => void
   /** Your subjects, so a ping can name the exact classes you were away for */
   subjects: Subject[]
@@ -374,7 +372,7 @@ function PingHistory({ sent, received, onClear }: { sent: Ping[]; received: Ping
 
 /* ---------- main view ---------- */
 
-export default function MatesView({ mates, social, subjects, addOpen, onCloseAdd, onAdd, onFavour, onRepay, onRemove, onOpenWrapped, onToast }: MatesViewProps) {
+export default function MatesView({ mates, social, subjects, addOpen, onCloseAdd, onAdd, onRemove, onOpenWrapped, onToast }: MatesViewProps) {
   const [name, setName] = useState("")
   // Removing a mate wipes their favour history (and ends a connection), so it needs a second tap
   const [removing, setRemoving] = useState<Mate | null>(null)
@@ -389,6 +387,9 @@ export default function MatesView({ mates, social, subjects, addOpen, onCloseAdd
   const daysLeft = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate() - now.getDate()
 
   const me = social.uid
+  // "Connected" means connected under the account that is signed in now, not merely having once been
+  const connectedUids = new Set(social.requests.filter((r) => r.status === "accepted").map((r) => r.participants.find((p) => p !== me)))
+  const isConnected = (m: Mate) => !!m.uid && connectedUids.has(m.uid)
   const incoming = social.requests.filter((r) => r.status === "pending" && r.to === me)
   const outgoing = social.requests.filter((r) => r.status === "pending" && r.from === me)
   const toAnswer = social.received.filter((p) => p.status === "asking" && !isExpired(p))
@@ -413,7 +414,7 @@ export default function MatesView({ mates, social, subjects, addOpen, onCloseAdd
                 key={p.id}
                 ping={p}
                 index={i}
-                onSend={(answers) => social.answerPing(p.id, answers).then(() => onToast(`Sent your answer to ${p.fromName}`))}
+                onSend={(answers) => social.answerPing(p.id, answers).then((r) => onToast(r.message))}
               />
             ))}
           </ul>
@@ -500,7 +501,8 @@ export default function MatesView({ mates, social, subjects, addOpen, onCloseAdd
                   <div className="min-w-0 flex-1">
                     <p className="text-[17px] font-semibold truncate leading-snug">
                       {m.name}
-                      {m.uid && <span className="ml-2 align-middle text-[10px] font-bold tracking-wide text-mute bg-ink/10 rounded px-1.5 py-0.5">CONNECTED</span>}
+                      {isConnected(m) && <span className="ml-2 align-middle text-[10px] font-bold tracking-wide text-mute bg-ink/10 rounded px-1.5 py-0.5">CONNECTED</span>}
+                      {m.uid && !isConnected(m) && <span className="ml-2 align-middle text-[10px] font-bold tracking-wide text-mute bg-ink/10 rounded px-1.5 py-0.5" title="Not connected under the account you are signed in with">NOT CONNECTED</span>}
                     </p>
                     <p className="text-[13px] text-mute">
                       <span className="whitespace-nowrap">Covered you {m.covered}×</span> · <span className="whitespace-nowrap">repaid {m.repaid}×</span>
@@ -537,16 +539,6 @@ export default function MatesView({ mates, social, subjects, addOpen, onCloseAdd
                   <button onClick={() => setPinging(m)} className={chip}>
                     Ping
                   </button>
-                  {!m.uid && (
-                    <button onClick={() => onFavour(m.id)} className={chip}>
-                      Covered me
-                    </button>
-                  )}
-                  {owed(m) > 0 && (
-                    <button onClick={() => onRepay(m.id)} className={chip}>
-                      Repaid
-                    </button>
-                  )}
                   <button onClick={() => setRemoving(m)} className="ml-auto text-[13px] text-mute hover:text-bad pl-1">
                     Remove
                   </button>
@@ -585,8 +577,8 @@ export default function MatesView({ mates, social, subjects, addOpen, onCloseAdd
 
       <p className="text-[13px] text-mute px-1 leading-snug -mt-2">
         Ping a connected mate to ask if they marked you present in the classes you missed. Their yes marks the class
-        present and adds a favour. For mates who aren&rsquo;t connected, Ping opens your share sheet and you tap
-        &ldquo;Covered me&rdquo; yourself. The favour count is private to you.
+        present and adds a favour automatically. For mates who aren&rsquo;t connected, Ping opens your share sheet.
+        The favour count is private to you.
       </p>
 
       <Sheet open={removing !== null} onClose={() => setRemoving(null)} title={removing ? `Remove ${removing.name}?` : "Remove mate"}>
@@ -617,7 +609,7 @@ export default function MatesView({ mates, social, subjects, addOpen, onCloseAdd
       <PingSheet
         open={pinging !== null}
         onClose={() => setPinging(null)}
-        mate={pinging}
+        mate={pinging && !isConnected(pinging) ? { ...pinging, uid: undefined } : pinging}
         subjects={subjects}
         waiting={pinging ? social.sent.filter((p) => p.status === "asking" && !isExpired(p) && (p.to === pinging.uid || p.toName === pinging.name)) : []}
         onAsk={(m, date, items) => social.sendPing({ uid: m.uid as string, name: m.name }, date, items)}

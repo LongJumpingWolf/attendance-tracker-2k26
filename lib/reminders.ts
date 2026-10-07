@@ -1,10 +1,9 @@
 /**
- * Class reminders: a small local schedule ("10 minutes before Biology on Mondays"). It lives in localStorage,
- * and each entry is also sent to the push server when the device has a push subscription.
+ * Class reminders: a small local schedule ("10 minutes before Biology on Mondays"). It lives in localStorage and is
+ * checked by the app itself (hooks/use-notifications.ts), so a reminder only appears while the app is open.
  */
 import type { Slot, Subject } from "./types"
 import { formatTime, toMin } from "./attendance"
-import { registerServiceWorker } from "./notifications"
 
 export interface ScheduleEntry {
   id: string
@@ -71,73 +70,4 @@ export function entriesFromTimetable(subjects: Subject[], existing: ScheduleEntr
     })
   })
   return out
-}
-
-/** VAPID public keys are url-safe base64; the push API wants raw bytes */
-function keyToBytes(base64: string) {
-  const padded = (base64 + "=".repeat((4 - (base64.length % 4)) % 4)).replace(/-/g, "+").replace(/_/g, "/")
-  const raw = atob(padded)
-  return Uint8Array.from(raw, (c) => c.charCodeAt(0))
-}
-
-/** This device's web-push subscription: the existing one, or a new one when notifications are allowed and a VAPID key is set */
-async function webPushSubscription(create: boolean): Promise<PushSubscription | null> {
-  const sw = await registerServiceWorker()
-  if (!sw?.pushManager) return null
-  const existing = await sw.pushManager.getSubscription()
-  if (existing || !create) return existing
-  const key = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY
-  if (!key || Notification.permission !== "granted") return null
-  try {
-    return await sw.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: keyToBytes(key) as BufferSource })
-  } catch {
-    return null
-  }
-}
-
-const post = (url: string, method: "POST" | "DELETE", body: unknown) =>
-  fetch(url, { method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) })
-
-/**
- * Saves the entry on the push server so it can remind this device while the app is closed.
- * The app's own id is the key, so editing a reminder updates it instead of adding a copy.
- * Returns "pushed" when the server has it, "local" when this device has no push subscription
- * (the reminder still fires while the app is open), and "failed" when the server couldn't be reached.
- */
-export async function syncPush(entry: ScheduleEntry): Promise<"pushed" | "local" | "failed"> {
-  try {
-    const subscription = await webPushSubscription(true)
-    if (!subscription) return "local"
-
-    await post("/api/notifications/subscribe", "POST", subscription)
-    await post("/api/notifications/schedule", "POST", {
-      subscriptionEndpoint: subscription.endpoint,
-      clientId: entry.id,
-      type: "subject",
-      day: entry.day,
-      startTime: entry.startTime,
-      endTime: entry.endTime,
-      notifyOffset: entry.notifyOffset,
-      notifyWhen: entry.notifyWhen,
-      payload: {
-        subject: entry.subjectName,
-        title: `Class reminder: ${entry.subjectName}`,
-        body: `${entry.subjectName} starts at ${formatTime(entry.startTime)}`,
-        data: { subject: entry.subjectName, day: entry.day, startTime: entry.startTime, endTime: entry.endTime },
-      },
-    })
-    return "pushed"
-  } catch {
-    return "failed"
-  }
-}
-
-/** Takes a deleted reminder off the push server too, so it stops firing */
-export async function removePush(entry: Pick<ScheduleEntry, "id">): Promise<void> {
-  try {
-    const subscription = await webPushSubscription(false)
-    if (subscription) await post("/api/notifications/schedule", "DELETE", { subscriptionEndpoint: subscription.endpoint, clientId: entry.id })
-  } catch {
-    /* the server copy is harmless if it can't be reached; it stops matching once the app is reinstalled */
-  }
 }

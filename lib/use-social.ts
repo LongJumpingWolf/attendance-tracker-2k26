@@ -9,10 +9,6 @@ import {
   getProfileName,
   watchRequests,
   watchPings,
-  sendPingDoc,
-  answerPingDoc,
-  claimPingDoc,
-  removePingDoc,
   savePushToken,
   sendRequest,
   respondToRequest,
@@ -22,19 +18,29 @@ import {
   magicLink,
 } from "./social"
 import { localDate } from "./attendance"
-import { PING_HISTORY_DAYS, daysSince } from "./pings"
+import { MAX_PING_ITEMS, PING_HISTORY_DAYS, daysSince, msOf } from "./pings"
 import { requestNotificationPermission } from "./notifications"
 import { requestFCMToken } from "./firebase"
+import { attempt } from "./ping-send"
+import { app, db } from "./firebase"
+import { getAuth } from "firebase/auth"
+import { followIdentity } from "./social-session"
+import { announceProfile, completeCarry } from "./identity"
+import { answerPing as answerPingOnServer, createPing, finalizePing as finalizeOnServer, leasePing as leaseOnServer, removePing, LEASE_MS } from "./ping-server"
+import { forget, idFor, logicalKey } from "./ping-id"
+import { deviceId } from "./device"
 
 /** Register this device for ping alerts. Only when notifications are allowed (or asked for), and never fatal. */
-async function registerPingAlerts(uid: string, ask: boolean) {
+async function registerPingAlerts(uid: string, ask: boolean): Promise<boolean> {
   try {
-    if (typeof Notification === "undefined") return
-    if (Notification.permission !== "granted" && !(ask && (await requestNotificationPermission()))) return
+    if (typeof Notification === "undefined") return false
+    if (Notification.permission !== "granted" && !(ask && (await requestNotificationPermission()))) return false
     const token = await requestFCMToken()
-    if (token) await savePushToken(uid, token)
+    if (!token) return false
+    await savePushToken(uid, token)
+    return true
   } catch {
-    /* alerts are a bonus: the in-app bubble still works */
+    return false /* alerts are a bonus: the Ping still shows when the app is opened */
   }
 }
 
@@ -52,6 +58,8 @@ export interface SocialApi {
   status: "off" | "idle" | "connecting" | "ready" | "error"
   error: string
   uid: string | null
+  /** Signed in only as this browser's own anonymous account (not with Google), so mates stay on this browser */
+  anonymous: boolean
   name: string
   requests: FriendRequest[]
   /** Pings you sent, asking a mate whether they marked you present */
@@ -71,10 +79,14 @@ export interface SocialApi {
   sendPing: (to: { uid: string; name: string }, date: string, items: PingInput[]) => Promise<ConnectResult>
   /** Take back a ping you sent (it disappears from the mate's list too) */
   cancelPing: (id: string) => Promise<void>
-  /** Answer a ping a mate sent you: item key -> yes / no */
-  answerPing: (id: string, answers: Record<string, "yes" | "no">) => Promise<void>
-  /** Claim an answered ping before applying it. True only for the one device that should apply it. */
-  claimPing: (id: string) => Promise<boolean>
+  /** Answer a ping a mate sent you: item key -> yes / no. `ok` is true only once the server has it. */
+  answerPing: (id: string, answers: Record<string, "yes" | "no">) => Promise<ConnectResult>
+  /** Ask this device to receive Ping alerts (asks for notification permission). Call it from a tap. */
+  enableAlerts: () => Promise<boolean>
+  /** Take the lease on an answered ping so this device can apply it. True only for the one device that holds it. */
+  leasePing: (id: string) => Promise<boolean>
+  /** The answer has been applied and saved here: mark the ping processed, for good */
+  finalizePing: (id: string) => Promise<void>
   /** Dummy trigger: a mate has answered a ping you sent (local only, nothing is sent) */
   simulateReply: (mateName: string, items: PingInput[], answer: "yes" | "no") => void
   /** Dummy trigger: a mate is asking you whether you marked them present (local only) */
@@ -152,12 +164,15 @@ function generateDummyRequests(myUid: string, myName: string): FriendRequest[] {
   }))
 }
 
-export function useSocial(): SocialApi {
+export function useSocial(onNotice?: (message: string) => void): SocialApi {
+  const noticeRef = useRef(onNotice)
+  noticeRef.current = onNotice
   const mockMode = !socialConfigured()
   const configured = true
   const [status, setStatus] = useState<SocialApi["status"]>(mockMode ? "idle" : "idle")
   const [error, setError] = useState("")
   const [uid, setUid] = useState<string | null>(null)
+  const [anonymous, setAnonymous] = useState(true)
   const [name, setNameState] = useState("")
   const [requests, setRequests] = useState<FriendRequest[]>([])
   const [remotePings, setRemotePings] = useState<Ping[]>([])
@@ -165,8 +180,7 @@ export function useSocial(): SocialApi {
   const [demoPings, setDemoPings] = useState<Ping[]>([])
   const [demoLoaded, setDemoLoaded] = useState(false)
   const started = useRef(false)
-  const unsub = useRef<(() => void) | null>(null)
-  const unsubPings = useRef<(() => void) | null>(null)
+  const stopFollowing = useRef<(() => void) | null>(null)
   const pingsRef = useRef<Ping[]>([])
 
   const me = useRef({ uid: null as string | null, name: "" })
@@ -225,34 +239,58 @@ export function useSocial(): SocialApi {
       return
     }
 
-    if (!configured || started.current) return
+    if (!configured) return
+    const signIn = () =>
+      ensureSignedIn()
+        .then(() => localStorage.setItem("socialOn", "1"))
+        .catch((e: Error) => {
+          setError(e.message.includes("admin-restricted") || e.message.includes("operation-not-allowed")
+            ? "Anonymous sign-in is switched off in your Firebase project."
+            : e.message)
+          setStatus("error")
+        })
+    if (started.current) {
+      // Already following the account. If it signed out meanwhile, a visit here gives this browser a fresh account.
+      if (me.current.uid === null) void signIn()
+      return
+    }
     started.current = true
     setStatus("connecting")
-    ensureSignedIn()
-      .then((user) => {
-        setUid(user.uid)
-        const saved = localStorage.getItem(NAME_KEY) || ""
-        setNameState(saved)
-        if (saved) saveProfile(user.uid, saved).catch(() => {})
-        unsub.current = watchRequests(user.uid, setRequests, (e) => setError(e.message))
-        unsubPings.current = watchPings(user.uid, setRemotePings, (e) => setError(e.message))
-        localStorage.setItem("socialOn", "1")
-        void registerPingAlerts(user.uid, false)
-        setStatus("ready")
-      })
-      .catch((e: Error) => {
-        started.current = false
-        setError(e.message.includes("admin-restricted") || e.message.includes("operation-not-allowed")
-          ? "Anonymous sign-in is switched off in your Firebase project."
-          : e.message)
-        setStatus("error")
-      })
+    // Whoever is signed in is who the mates, Pings and alerts belong to. When that changes (Google sign-in on a device
+    // that already had a profile, signing out) everything follows: the listeners move, the old account's data leaves
+    // the screen, and this device's alerts are registered for the new one.
+    stopFollowing.current = followIdentity(
+      { auth: getAuth(app), db },
+      {
+        onIdentity: (newUid, anon) => {
+          setUid(newUid)
+          setAnonymous(anon)
+          if (!newUid) {
+            setStatus("idle")
+            return
+          }
+          const saved = localStorage.getItem(NAME_KEY) || ""
+          setNameState(saved)
+          setError("")
+          void announceProfile(db, newUid, saved)
+          void registerPingAlerts(newUid, false)
+          // Mates carried over from an account this device left are asked to reconnect (see lib/identity.ts)
+          void completeCarry(db, newUid, saved).then((n) => {
+            if (n > 0) noticeRef.current?.(`Asked ${n} ${n === 1 ? "mate" : "mates"} to reconnect with your account.`)
+          })
+          setStatus("ready")
+        },
+        onRequests: setRequests,
+        onPings: setRemotePings,
+        onError: (e) => setError(e.message),
+      },
+    )
+    void signIn()
   }, [configured, mockMode])
 
   useEffect(
     () => () => {
-      unsub.current?.()
-      unsubPings.current?.()
+      stopFollowing.current?.()
     },
     [],
   )
@@ -415,31 +453,50 @@ export function useSocial(): SocialApi {
     return { link: magicLink(token), expiresAt }
   }, [mockMode])
 
+  // One send per request at a time: a second tap on the same request joins the first instead of starting another
+  const sending = useRef(new Map<string, Promise<ConnectResult>>())
+
   const sendPing = useCallback(
     async (to: { uid: string; name: string }, date: string, items: PingInput[]): Promise<ConnectResult> => {
       const { uid: myUid, name: myName } = me.current
       if (!myUid || !myName) return { ok: false, message: "Enter your name first." }
+      if (items.length === 0) return { ok: false, message: "Pick a class first." }
+      if (items.length > MAX_PING_ITEMS) return { ok: false, message: `A Ping can ask about up to ${MAX_PING_ITEMS} classes at a time.` }
       const asked: PingItem[] = items.map((i) => ({ key: i.key, subjectId: i.subjectId, name: i.name.slice(0, 60), ...(i.t ? { t: i.t } : {}), answer: null }))
       // Pings only go to accepted mates, and name the connection so the server rules can check it
       const requestId = reqs.current.find((r) => r.status === "accepted" && r.participants.includes(to.uid))?.id
       if (!requestId && !mockMode) return { ok: false, message: `You're not connected with ${to.name} yet.` }
-      const done = { ok: true, message: `Asked ${to.name}. You'll get a bubble when they reply.` }
-      if (mockMode) {
-        // No second device to receive it, so the mock only records it
-        const ping: Ping = { id: makeId(), from: myUid, to: to.uid, fromName: myName, toName: to.name, participants: [myUid, to.uid], ...(requestId ? { requestId } : {}), date, items: asked, status: "asking" }
-        const next = [ping, ...readMockPings()]
-        writeMockPings(next)
-        setRemotePings(next)
-        return done
-      }
-      try {
-        await sendPingDoc({ uid: myUid, name: myName }, to, date, asked, requestId as string)
+
+      const key = logicalKey(myUid, to.uid, date, asked.map((i) => i.key))
+      const running = sending.current.get(key)
+      if (running) return running
+
+      const run = (async (): Promise<ConnectResult> => {
+        // The same request always gets the same id until the send is confirmed, so any retry (after a timeout, a reload,
+        // a dropped connection) can only ever resolve to the one Ping
+        const id = idFor(key)
+        const done = { ok: true, message: `Asked ${to.name}. You'll see their answer here as soon as they reply.` }
+        if (mockMode) {
+          // No second device to receive it, so the mock only records it (once per id, like the server)
+          const have = readMockPings()
+          if (!have.some((p) => p.id === id)) {
+            const ping: Ping = { id, from: myUid, to: to.uid, fromName: myName, toName: to.name, participants: [myUid, to.uid], ...(requestId ? { requestId } : {}), date, items: asked, status: "asking", createdAt: Date.now() }
+            writeMockPings([ping, ...have])
+            setRemotePings([ping, ...have])
+          }
+          forget(key)
+          return done
+        }
+        // Offline returns at once and sends nothing; a write the server hasn't confirmed is reported as not confirmed
+        const r = await attempt(() => createPing(db, { id, from: { uid: myUid, name: myName }, to, date, items: asked, requestId: requestId as string }))
+        if (!r.ok) return { ok: false, message: r.message } // the id is kept, so trying again cannot make a second Ping
+        forget(key)
         // First ping is the natural moment to ask: the reply will arrive as an alert
         void registerPingAlerts(myUid, true)
         return done
-      } catch {
-        return { ok: false, message: "Couldn't send that. Try again." }
-      }
+      })().finally(() => sending.current.delete(key))
+      sending.current.set(key, run)
+      return run
     },
     [mockMode],
   )
@@ -447,40 +504,72 @@ export function useSocial(): SocialApi {
   const answerPing = useCallback(
     async (id: string, answers: Record<string, "yes" | "no">) => {
       const cur = pingsRef.current.find((p) => p.id === id)
-      if (!cur) return
+      if (!cur) return { ok: false, message: "That Ping isn't available any more." }
       const items = cur.items.map((i) => ({ ...i, answer: answers[i.key] ?? ("no" as const) }))
-      const apply = (p: Ping): Ping => (p.id === id ? { ...p, items, status: "answered" } : p)
+      const apply = (p: Ping): Ping => (p.id === id ? { ...p, items, status: "answered", respondedAt: Date.now() } : p)
+      const done = { ok: true, message: `Sent your answer to ${cur.fromName}` }
       if (id.startsWith("demo-")) {
         setDemoPings((prev) => prev.map(apply))
-        return
+        return done
       }
       if (mockMode) {
         const updated = readMockPings().map(apply)
         writeMockPings(updated)
         setRemotePings(updated)
-        return
+        return done
       }
-      await answerPingDoc(id, items)
+      const r = await attempt(() => answerPingOnServer(db, id, items))
+      return r.ok ? done : { ok: false, message: r.message }
     },
     [mockMode],
   )
 
-  const claimPing = useCallback(
+  const enableAlerts = useCallback(async () => {
+    const { uid: myUid } = me.current
+    return myUid && !mockMode ? registerPingAlerts(myUid, true) : false
+  }, [mockMode])
+
+  const leasePing = useCallback(
     async (id: string) => {
-      const mark = (p: Ping): Ping => (p.id === id ? { ...p, status: "processed" } : p)
+      const dev = deviceId()
+      const free = (p?: Ping) => {
+        if (!p || p.status !== "answered") return false
+        const at = msOf(p.claimedAt)
+        return !(at !== null && Date.now() - at < LEASE_MS && p.claimedBy !== dev)
+      }
+      const take = (p: Ping): Ping => (p.id === id ? { ...p, claimedBy: dev, claimedAt: Date.now() } : p)
       if (id.startsWith("demo-")) {
-        setDemoPings((prev) => prev.map(mark))
-        return true
+        const ok = free(pingsRef.current.find((p) => p.id === id))
+        if (ok) setDemoPings((prev) => prev.map(take))
+        return ok
       }
       if (mockMode) {
         const cur = readMockPings()
-        if (cur.find((p) => p.id === id)?.status !== "answered") return false
-        const updated = cur.map(mark)
+        if (!free(cur.find((p) => p.id === id))) return false
+        const updated = cur.map(take)
         writeMockPings(updated)
         setRemotePings(updated)
         return true
       }
-      return claimPingDoc(id)
+      return leaseOnServer(db, id, dev)
+    },
+    [mockMode],
+  )
+
+  const finalizePing = useCallback(
+    async (id: string) => {
+      const done = (p: Ping): Ping => (p.id === id ? { ...p, status: "processed" } : p)
+      if (id.startsWith("demo-")) {
+        setDemoPings((prev) => prev.map(done))
+        return
+      }
+      if (mockMode) {
+        const updated = readMockPings().map(done)
+        writeMockPings(updated)
+        setRemotePings(updated)
+        return
+      }
+      await finalizeOnServer(db, id)
     },
     [mockMode],
   )
@@ -497,7 +586,7 @@ export function useSocial(): SocialApi {
         setRemotePings(kept)
         return
       }
-      await removePingDoc(id)
+      await removePing(db, id)
     },
     [mockMode],
   )
@@ -505,7 +594,7 @@ export function useSocial(): SocialApi {
   // Keep history short: pings you sent that are older than a month are deleted
   useEffect(() => {
     if (mockMode || !uid) return
-    for (const p of remotePings) if (p.from === uid && daysSince(p.date) > PING_HISTORY_DAYS) removePingDoc(p.id).catch(() => {})
+    for (const p of remotePings) if (p.from === uid && daysSince(p.date) > PING_HISTORY_DAYS) removePing(db, p.id).catch(() => {})
   }, [remotePings, uid, mockMode])
 
   const simulateReply = useCallback((mateName: string, items: PingInput[], answer: "yes" | "no") => {
@@ -547,6 +636,7 @@ export function useSocial(): SocialApi {
     status,
     error,
     uid,
+    anonymous,
     name,
     requests,
     sent,
@@ -562,7 +652,9 @@ export function useSocial(): SocialApi {
     sendPing,
     cancelPing,
     answerPing,
-    claimPing,
+    enableAlerts,
+    leasePing,
+    finalizePing,
     simulateReply,
     simulateIncoming,
   }

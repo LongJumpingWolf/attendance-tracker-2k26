@@ -27,3 +27,7 @@ yarn-error.log*
 next-env.d.ts
 .vercel
 .env*
+
+firestore-debug.log
+firebase-debug.log
+ui-debug.log

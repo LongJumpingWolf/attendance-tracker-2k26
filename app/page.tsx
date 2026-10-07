@@ -10,11 +10,14 @@ import {
   onMessageListener,
 } from "@/lib/notifications"
 import { getClientMessaging } from "@/lib/firebase"
-import type { Subject, Task, Mate, Ping } from "@/lib/types"
+import type { Subject, Task, Mate, Ping, LogEntry } from "@/lib/types"
 import {
   getAttendance,
   localDate,
-  withMark,
+  formatDayMonth,
+  entryFor,
+  restoreMark,
+  markWithUndo,
   withSet,
   daysUntil,
   classesOn,
@@ -25,10 +28,14 @@ import {
 } from "@/lib/attendance"
 import { applyImport, type FinalSubject } from "@/lib/timetable-import"
 import { lastWeekInfo } from "@/lib/wrapped"
-import { isAnswered, isExpired } from "@/lib/pings"
 import { dbDel, dbGet, dbSet, protectStorage } from "@/lib/db"
 import { newId } from "@/lib/ids"
 import { saveRestorePoint } from "@/lib/restore-points"
+import { adoptConnections } from "@/lib/identity"
+import { usePingEvents } from "@/lib/use-ping-events"
+import { usePingProcessing } from "@/lib/use-ping-processing"
+import { applyPingResult, resultIsSaved } from "@/lib/ping-apply"
+import PingEventView from "@/components/ping-event"
 import { loadSchedule } from "@/lib/reminders"
 import { useSocial } from "@/lib/use-social"
 import { useCloudSync } from "@/hooks/use-cloud-sync"
@@ -87,7 +94,7 @@ export default function Home() {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false)
   const [isImportOpen, setIsImportOpen] = useState(false)
   const [scan, setScan] = useState<ScanState | null>(null)
-  const scanBefore = useRef<Subject | null>(null) // the subject as it was before a scan marked it, for Undo
+  const scanBefore = useRef<{ id: string; date: string; t: string; prev: LogEntry | null } | null>(null) // the class a scan marked and what it was before, for Undo
   const [demoActive, setDemoActive] = useState(false)
   const [demoTourOpen, setDemoTourOpen] = useState(false)
   const demoSnapshot = useRef<{ subjects: Subject[]; tasks: Task[]; tags: string[]; mates: Mate[] } | null>(null)
@@ -146,19 +153,20 @@ export default function Home() {
     ).catch(() => console.warn("Push notifications are off: Firebase environment variables are not set."))
   }, [])
 
-  // Only write after the initial load so we never overwrite saved data with empty state
+  // Only write after the initial load so we never overwrite saved data with empty state. Never while the demo is on
+  // screen: demo data lives in memory only, so closing the tab mid-demo leaves your own data exactly as it was.
   useEffect(() => {
-    if (loaded) void dbSet("subjects", subjects)
-  }, [subjects, loaded])
+    if (loaded && !demoActive) void dbSet("subjects", subjects)
+  }, [subjects, loaded, demoActive])
   useEffect(() => {
-    if (loaded) void dbSet("tasks", tasks)
-  }, [tasks, loaded])
+    if (loaded && !demoActive) void dbSet("tasks", tasks)
+  }, [tasks, loaded, demoActive])
   useEffect(() => {
-    if (loaded) void dbSet("tags", allTags)
-  }, [allTags, loaded])
+    if (loaded && !demoActive) void dbSet("tags", allTags)
+  }, [allTags, loaded, demoActive])
   useEffect(() => {
-    if (loaded) void dbSet("mates", mates)
-  }, [mates, loaded])
+    if (loaded && !demoActive) void dbSet("mates", mates)
+  }, [mates, loaded, demoActive])
 
   // ---------- friend connections ----------
   // Opening someone's QR code or link lands here as ?add=<id> or ?invite=<token>
@@ -191,7 +199,13 @@ export default function Home() {
     setPendingLink(null)
     const run = link.kind === "add" ? social.connectViaUid(link.value) : social.connectViaInvite(link.value)
     run
-      .then((r) => setToast({ id: Date.now(), message: r.message }))
+      .then((r) =>
+        setToast({
+          id: Date.now(),
+          // A browser with no Google account keeps this connection on this browser only
+          message: r.ok && social.anonymous && social.uid && !social.uid.startsWith("mock-") ? `${r.message} Sign in with Google in Settings to keep your mates on all your devices.` : r.message,
+        }),
+      )
       .catch(() => setToast({ id: Date.now(), message: "Couldn't send the request. Try again." }))
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pendingLink, social.status, social.name])
@@ -201,105 +215,48 @@ export default function Home() {
     if (!loaded || !social.uid) return
     const accepted = social.requests.filter((r) => r.status === "accepted")
     if (accepted.length === 0) return
-    setMates((prev) => {
-      let next = prev
-      for (const r of accepted) {
-        const other = r.participants.find((p) => p !== social.uid)
-        if (other && !next.some((m) => m.uid === other)) {
-          next = [...next, { id: other, uid: other, name: r.from === social.uid ? r.toName : r.fromName, covered: 0, repaid: 0 }]
-        }
-      }
-      return next
-    })
+    // A mate who reconnected under a new account id is the same person: their old row takes the new id and keeps its history
+    setMates((prev) =>
+      adoptConnections(
+        prev,
+        accepted.flatMap((r) => {
+          const other = r.participants.find((p) => p !== social.uid)
+          return other ? [{ uid: other, name: r.from === social.uid ? r.toName : r.fromName }] : []
+        }),
+      ),
+    )
   }, [social.requests, social.uid, loaded])
 
   const incomingRequests = social.requests.filter((r) => r.status === "pending" && r.to === social.uid)
 
   // ---------- pings: "did you mark me present?" ----------
-  // Replies to pings you sent, and pings mates sent you that wait for your answer.
-  const answeredPings = social.sent.filter(isAnswered)
-  const incomingPings = social.received.filter((p) => p.status === "asking" && !isExpired(p))
+  // What is put in front of you (a request to answer, or the answer to your own) is decided by the Ping events further
+  // down. Here the answers you receive are applied to your own data, safely: see lib/ping-processing.ts.
+  const demoActiveRef = useRef(false)
+  demoActiveRef.current = demoActive
 
-  // A yes marks the class present and counts as a favour. Every answered ping is applied exactly once.
-  const appliedPings = useRef<Set<string> | null>(null)
-  const answeredKey = answeredPings.map((p) => p.id).join(",")
-  useEffect(() => {
-    if (!loaded) return
-    if (!appliedPings.current) {
-      try {
-        appliedPings.current = new Set(JSON.parse(localStorage.getItem("appliedPings") || "[]") as string[])
-      } catch {
-        appliedPings.current = new Set()
-      }
+  /**
+   * Applies an answer to this device's data and confirms it is really saved before saying so. It may run more than once
+   * for the same Ping (after a crash, a reload, or on another device) and the second time changes nothing.
+   */
+  const applyDurably = async (p: Ping): Promise<boolean> => {
+    if (demoActiveRef.current) return false // demo data is never saved, so there is nothing safe to confirm
+    const r = applyPingResult(latestSubjects.current, latestMates.current, p)
+    if (r.helped.length > 0) {
+      latestSubjects.current = r.subjects
+      latestMates.current = r.mates
+      setSubjects(r.subjects)
+      setMates(r.mates)
+      await Promise.all([dbSet("subjects", r.subjects), dbSet("mates", r.mates)])
     }
-    const applied = appliedPings.current
-    // Only "answered" pings are new: "processed" ones were already applied, here or on another device
-    const fresh = answeredPings.filter((p) => p.status === "answered" && !applied.has(p.id))
-    if (fresh.length === 0) return
-    for (const p of fresh) applied.add(p.id)
-    localStorage.setItem("appliedPings", JSON.stringify([...applied]))
-    // Claim each one first (only one device wins), then apply. If the claim can't be made, try again later.
-    for (const p of fresh) {
-      social
-        .claimPing(p.id)
-        .then((won) => {
-          if (won) applyPingAnswers([p])
-        })
-        .catch(() => {
-          applied.delete(p.id)
-          localStorage.setItem("appliedPings", JSON.stringify([...applied]))
-        })
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [loaded, answeredKey])
-
-  // The bubble plays on every app open until you have visited Mates, which counts as having seen them.
-  const [seenPings, setSeenPings] = useState<string[] | null>(null)
-  useEffect(() => {
-    if (!loaded) return
-    try {
-      const raw = localStorage.getItem("pingSeenIds")
-      setSeenPings(raw ? (JSON.parse(raw) as string[]) : [])
-    } catch {
-      setSeenPings([])
-    }
-  }, [loaded])
-
-  useEffect(() => {
-    if (currentPage !== "mates" || !seenPings) return
-    const fresh = [...answeredPings, ...incomingPings].map((p) => p.id).filter((id) => !seenPings.includes(id))
-    if (fresh.length) setSeenPings([...seenPings, ...fresh])
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentPage, social.sent, social.received, seenPings])
-
-  useEffect(() => {
-    if (seenPings) localStorage.setItem("pingSeenIds", JSON.stringify(seenPings))
-  }, [seenPings])
-
-  const unseenReplies = seenPings ? answeredPings.filter((p) => !seenPings.includes(p.id)) : []
-  const unseenIncoming = seenPings ? incomingPings.filter((p) => !seenPings.includes(p.id)) : []
-  const replyText = (p: Ping) => {
-    const yes = p.items.filter((i) => i.answer === "yes").length
-    if (yes === p.items.length) return `${p.toName} covered you`
-    if (yes === 0) return `${p.toName} says they didn't cover you`
-    return `${p.toName} replied to your ping`
+    const saved = { subjects: (await dbGet<Subject[]>("subjects")) ?? [], mates: (await dbGet<Mate[]>("mates")) ?? [] }
+    return resultIsSaved(saved, r, p)
   }
-  const pingNotice =
-    currentPage === "mates"
-      ? null
-      : unseenReplies.length > 0
-        ? {
-            key: unseenReplies.map((p) => p.id).join(","),
-            initial: (unseenReplies[0].toName.trim()[0] ?? "?").toUpperCase(),
-            text: unseenReplies.length === 1 ? replyText(unseenReplies[0]) : `${unseenReplies.length} mates replied to your pings`,
-          }
-        : unseenIncoming.length > 0
-          ? {
-              key: unseenIncoming.map((p) => p.id).join(","),
-              initial: (unseenIncoming[0].fromName.trim()[0] ?? "?").toUpperCase(),
-              text: unseenIncoming.length === 1 ? `${unseenIncoming[0].fromName} pinged you` : `${unseenIncoming.length} mates pinged you`,
-            }
-          : null
+  usePingProcessing({
+    pings: social.sent,
+    enabled: loaded && !demoActive,
+    deps: { lease: social.leasePing, apply: applyDurably, finalize: social.finalizePing },
+  })
 
   // ---------- weekly wrapped ----------
   // From each Monday the previous week's wrapped is "due" (if you marked anything in it), until you open it.
@@ -355,20 +312,35 @@ export default function Home() {
   const patchSubject = (id: string, fn: (s: Subject) => Subject) =>
     setSubjects((prev) => prev.map((s) => (s.id === id ? fn(s) : s)))
 
-  /** Change a subject and offer Undo, which restores the exact previous state */
-  const changeSubject = (id: string, fn: (s: Subject) => Subject, message: string) => {
-    const before = subjects.find((s) => s.id === id)
-    if (!before) return
-    patchSubject(id, fn)
-    showToast(message, () => patchSubject(id, () => before))
-  }
+  // A Ping to put in front of you: someone asking for attendance help, or the answer to your own request.
+  // Shown wherever you are in the app, on opening it, and when a notification is tapped (/?ping=<id>).
+  const pingEvents = usePingEvents({
+    social,
+    enabled: loaded && !demoActive,
+    onNotice: (m) => showToast(m),
+  })
 
-  const quickMark = (s: Subject, kind: "attended" | "missed") =>
-    changeSubject(s.id, (x) => withMark(x, kind, localDate()), `${kind === "attended" ? "Present" : "Absent"} · ${s.name}`)
+  // The newest subjects, kept in step synchronously, so two quick taps each see the other's result
+  const latestSubjects = useRef(subjects)
+  latestSubjects.current = subjects
+  const latestMates = useRef(mates)
+  latestMates.current = mates
 
+  /**
+   * Mark (or change, or clear) one class on any date. The toast shows the resulting percentage, and its Undo puts back
+   * exactly this class's previous record, never the whole subject: other classes of the same subject stay as they are.
+   */
   const setToday = (id: string, date: string, status: "P" | "A" | null, meta?: MarkMeta) => {
-    const s = subjects.find((x) => x.id === id)
-    if (s) changeSubject(id, (x) => withSet(x, date, status, meta), `${status === "P" ? "Present" : status === "A" ? "Absent" : "Cleared"} · ${s.name}`)
+    const s = latestSubjects.current.find((x) => x.id === id)
+    if (!s) return
+    if (markFor(s, date, meta?.t ?? "") === status) return // already in that state: nothing to count, nothing to announce
+    const { next, undo } = markWithUndo(s, date, status, meta)
+    latestSubjects.current = latestSubjects.current.map((x) => (x.id === id ? next : x))
+    patchSubject(id, (x) => markWithUndo(x, date, status, meta).next)
+    const now = getAttendance(next.attended, next.missed, next.requirement)
+    const verb = status === "P" ? "Present" : status === "A" ? "Absent" : "Cleared"
+    const when = date === localDate() ? "" : ` · ${formatDayMonth(date)}`
+    showToast(`${verb} · ${s.name}${when}${now.total ? ` · now ${now.pct}%` : ""}`, () => patchSubject(id, undo))
   }
 
   // A scanned QR code or tapped NFC tag opens the app at /scan (see next.config.mjs). Marking present here, and only
@@ -376,7 +348,7 @@ export default function Home() {
   const scanMark = (target: ClassSlot, result: ScanState["result"], from: Subject[] = subjects) => {
     const before = from.find((x) => x.id === target.subject.id)
     if (!before) return
-    scanBefore.current = before
+    scanBefore.current = { id: before.id, date: localDate(), t: target.slot.start, prev: entryFor(before, localDate(), target.slot.start) }
     scanMarks.current.push({ id: before.id, date: localDate(), t: target.slot.start, k: target.slot.kind })
     patchSubject(before.id, (x) => withSet(x, localDate(), "P", { t: target.slot.start, k: target.slot.kind }))
     setScan({ result, marked: target })
@@ -385,7 +357,7 @@ export default function Home() {
   const scanUndo = () => {
     if (scan?.preview) return setScan(null)
     const before = scanBefore.current
-    if (before) patchSubject(before.id, () => before)
+    if (before) patchSubject(before.id, (x) => restoreMark(x, before.date, before.t, before.prev)) // only the scanned class goes back
     scanMarks.current = scanMarks.current.filter((m) => m.id !== before?.id)
     scanBefore.current = null
     setScan(null)
@@ -511,21 +483,20 @@ export default function Home() {
     setSubjects(subjects.map((s) => ({ ...s, tags: s.tags.filter((tag) => tag !== tagToDelete) })))
   }
 
-  const handleResetAllData = () => {
+  const handleResetAllData = async () => {
     // A reset is deliberate, but a copy is kept under Settings > Backup & restore in case it was a slip
-    void saveRestorePoint("Before reset", { subjects, tasks, tags: allTags, mates, reminders: loadSchedule() })
+    await saveRestorePoint("Before reset", { subjects, tasks, tags: allTags, mates, reminders: loadSchedule() })
     setSubjects([])
     setTasks([])
     setAllTags([])
     setMates([])
-    setSeenPings([])
     demoSnapshot.current = null
     setDemoActive(false)
     setDemoTourOpen(false)
     void sync.signOut() // a reset must not wipe the copy your other browsers rely on
     // Everything this device keeps: data, reminders, ping records, seen-bubbles and the first-run flag (the theme stays)
     for (const key of [
-      "subjects", "tasks", "tags", "mates", "notificationSchedule", "pingSeenIds", "appliedPings",
+      "subjects", "tasks", "tags", "mates", "notificationSchedule", "pingSeenIds", "appliedPings", "pingPresented", "pingSendKeys",
       "wrappedSeenWeek", "demo-pings", "mock-pings", "subjectsView", "onboardingDone",
     ])
       localStorage.removeItem(key)
@@ -563,37 +534,6 @@ export default function Home() {
     showToast(done ? `Done · ${task.title}` : `Back on your list · ${task.title}`, () =>
       setTasks((prev) => prev.map((t) => (t.id === task.id ? { ...t, done: !done } : t))),
     )
-  }
-
-  const changeMate = (id: string, fn: (m: Mate) => Mate, message: string) => {
-    const before = mates.find((m) => m.id === id)
-    if (!before) return
-    setMates((prev) => prev.map((m) => (m.id === id ? fn(m) : m)))
-    showToast(message, () => setMates((prev) => prev.map((m) => (m.id === id ? before : m))))
-  }
-
-  const handleBackupData = async () => {
-    try {
-      const response = await fetch("/api/export-xlsx", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ subjects, tasks, tags: allTags }),
-      })
-      if (!response.ok) throw new Error("Backup failed")
-
-      const blob = await response.blob()
-      const link = document.createElement("a")
-      const url = URL.createObjectURL(blob)
-      link.href = url
-      link.download = `college-tracker-backup-${new Date().toISOString().split("T")[0]}.zip`
-      document.body.appendChild(link)
-      link.click()
-      document.body.removeChild(link)
-      URL.revokeObjectURL(url)
-    } catch (error) {
-      console.error("Backup error:", error)
-      alert("Failed to backup data")
-    }
   }
 
   // ---------- developer tools (in Settings) ----------
@@ -687,32 +627,6 @@ export default function Home() {
   const detailSubject = subjects.find((s) => s.id === detailId) ?? null
   const editingSubject = subjects.find((s) => s.id === editingSubjectId) ?? null
 
-  /** Apply mates' answers: a yes marks that exact class present (chosen from your own subject list) and adds a favour */
-  const applyPingAnswers = (pings: Ping[]) => {
-    for (const p of pings) {
-      const yes = p.items.filter((i) => i.answer === "yes")
-      if (yes.length === 0) continue
-      setSubjects((prev) =>
-        prev.map((s) => {
-          let next = s
-          for (const it of yes) {
-            if (it.subjectId !== s.id) continue
-            const kind = s.slots?.find((x) => x.start === it.t)?.kind
-            next = withSet(next, p.date, "P", { by: p.toName, ...(it.t ? { t: it.t } : {}), ...(kind ? { k: kind } : {}) })
-          }
-          return next
-        }),
-      )
-      const demo = p.to.startsWith("demo-")
-      setMates((prev) => {
-        const at = prev.findIndex((m) => (m.uid && m.uid === p.to) || m.name.trim().toLowerCase() === p.toName.trim().toLowerCase())
-        const bump = (m: Mate): Mate => ({ ...m, covered: m.covered + yes.length, coveredLog: [...(m.coveredLog ?? []), ...yes.map(() => p.date)] })
-        if (at === -1) return [...prev, bump({ id: demo ? newId() : p.to, ...(demo ? {} : { uid: p.to }), name: p.toName, covered: 0, repaid: 0 })]
-        return prev.map((m, i) => (i === at ? bump(m) : m))
-      })
-    }
-  }
-
   /** Something to ping about for the simulators: today's first class, else the first subject */
   const demoItems = () => {
     const pick = classesOn(subjects, new Date())[0]
@@ -740,10 +654,7 @@ export default function Home() {
     setCurrentPage((p) => (p === "mates" ? "today" : p))
   }
 
-  const logFavour = (id: string) =>
-    changeMate(id, (m) => ({ ...m, covered: m.covered + 1, coveredLog: [...(m.coveredLog ?? []), localDate()] }), "Favour logged")
   const repayMate = (m: Mate): Mate => ({ ...m, repaid: Math.min(m.covered, m.repaid + 1), repaidLog: [...(m.repaidLog ?? []), localDate()] })
-  const logRepay = (id: string) => changeMate(id, repayMate, "Marked as repaid")
   /** Used from the wrapped story, where a toast would be hidden behind it */
   const repayQuiet = (id: string) => setMates((prev) => prev.map((m) => (m.id === id ? repayMate(m) : m)))
 
@@ -764,7 +675,8 @@ export default function Home() {
   }
 
   /** Settings > "Try a demo": swaps in a full sample term so every screen has something worth looking at. Your own
-   *  data is snapshotted first and put back exactly as it was on Exit demo; nothing here ever reaches sync. */
+   *  data is snapshotted first and put back exactly as it was on Exit demo. Demo data is never written to storage
+   *  (see the persistence effects) and sync is paused, so it reaches neither this device's saved data nor the cloud. */
   const startDemo = () => {
     demoSnapshot.current = { subjects, tasks, tags: allTags, mates }
     const demo = buildDemoData(new Date())
@@ -894,8 +806,7 @@ export default function Home() {
               <SubjectDetail
                 subject={detailSubject}
                 onBack={() => setDetailId(null)}
-                onPresent={() => quickMark(detailSubject, "attended")}
-                onAbsent={() => quickMark(detailSubject, "missed")}
+                onSet={(date, status, meta) => setToday(detailSubject.id, date, status, meta)}
                 onEdit={() => setEditingSubjectId(detailSubject.id)}
                 onPlan={(date, value) => setPlan(detailSubject.id, date, value)}
               />
@@ -905,6 +816,7 @@ export default function Home() {
 
           {currentPage === "calendar" && (
             <CalendarView
+              onSet={setToday}
               tasks={tasks}
               subjects={subjects}
               onAdd={(date) => openDeadline(null, date)}
@@ -922,8 +834,6 @@ export default function Home() {
               addOpen={isMateOpen}
               onCloseAdd={() => setIsMateOpen(false)}
               onAdd={(name) => setMates((prev) => [...prev, { id: newId(), name, covered: 0, repaid: 0 }])}
-              onFavour={logFavour}
-              onRepay={logRepay}
               subjects={subjects}
               onOpenWrapped={openWrapped}
               onRemove={(id) => {
@@ -944,8 +854,8 @@ export default function Home() {
       <BottomNav
         currentPage={currentPage}
         onPageChange={goto}
-        badges={{ mates: incomingRequests.length + incomingPings.length + unseenReplies.length + (wrappedDue ? 1 : 0) }}
-        cover={pingNotice ?? wrappedNotice}
+        badges={{ mates: incomingRequests.length + pingEvents.pending + (wrappedDue ? 1 : 0) }}
+        cover={wrappedNotice}
       />
       <UndoToast toast={toast} onClose={closeToast} />
 
@@ -959,24 +869,13 @@ export default function Home() {
         onAddTag={(tag) => mergeTags([tag])}
         onDeleteTag={handleDeleteTag}
         onResetAllData={handleResetAllData}
-        onExportData={handleBackupData}
-        onImportData={(data) => {
-          void saveRestorePoint("Before restoring a backup", { subjects, tasks, tags: allTags, mates, reminders: loadSchedule() })
+        onImportData={async (data) => {
+          await saveRestorePoint("Before restoring a backup", { subjects, tasks, tags: allTags, mates, reminders: loadSchedule() })
           setTasks(data.tasks)
           setAllTags(data.tags)
-          if (data.full) {
-            // Full backup: everything comes back exactly as saved
-            setSubjects(data.subjects)
-            setMates(data.mates ?? [])
-          } else {
-            // Older spreadsheet backup: keep class days, history and tags of subjects that already exist
-            setSubjects((prev) =>
-              data.subjects.map((imp) => {
-                const old = prev.find((s) => s.name.trim().toLowerCase() === imp.name.trim().toLowerCase())
-                return old ? { ...imp, id: old.id, slots: old.slots, log: old.log, plan: old.plan, glowColor: old.glowColor, tags: old.tags?.length ? old.tags : imp.tags } : imp
-              }),
-            )
-          }
+          // A JSON backup: everything comes back exactly as saved
+          setSubjects(data.subjects)
+          setMates(data.mates ?? [])
         }}
         notificationSupported={notificationSupported}
         notificationPermission={notificationPermission}
@@ -1027,6 +926,17 @@ export default function Home() {
         onUndo={scanUndo}
         onClose={() => setScan(null)}
       />
+      {pingEvents.event && (
+        <PingEventView
+          event={pingEvents.event}
+          onAnswer={pingEvents.answer}
+          onFinish={pingEvents.finish}
+          onLater={pingEvents.later}
+          onAcknowledge={pingEvents.acknowledge}
+          alertsOffer={pingEvents.alertsOffer}
+          onEnableAlerts={pingEvents.enableAlerts}
+        />
+      )}
       <ScanGate open={scanGate} link={typeof window === "undefined" ? "" : `${window.location.origin}/scan`} onContinue={() => setScanGate(false)} />
       <DemoTour open={demoTourOpen} onGoto={goto} onOpenWrapped={openWrapped} onEnd={() => setDemoTourOpen(false)} />
       <WrappedStory open={isWrappedOpen} onClose={() => setIsWrappedOpen(false)} subjects={subjects} mates={mates} onRepay={repayQuiet} />

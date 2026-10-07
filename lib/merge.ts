@@ -198,9 +198,34 @@ function mergeSubject(base: Subject | undefined, local: Subject, remote: Subject
 
 function mergeMate(base: Mate | undefined, local: Mate, remote: Mate, t: Tally): Mate {
   const hasBase = base !== undefined
-  const num = (b: unknown, l: unknown, r: unknown) => mergeCount(b as number | undefined, l as number, r as number)
-  const dates = (b: unknown, l: unknown, r: unknown) => mergeMultiset(b as string[], l as string[], r as string[], hasBase)
-  return mergeObject(base, local, remote, t, { covered: num, repaid: num, coveredLog: dates, repaidLog: dates })
+  // A favour that came from a Ping carries the Ping's id. If both devices applied the same Ping (say, after one of them
+  // crashed and the other took over), each added a favour for it: count it once.
+  const b = new Set(base?.coveredPings ?? [])
+  const l = local.coveredPings ?? []
+  const r = new Set(remote.coveredPings ?? [])
+  const both = hasBase ? l.filter((id) => r.has(id) && !b.has(id)) : []
+  const num = (bb: unknown, ll: unknown, rr: unknown) => mergeCount(bb as number | undefined, ll as number, rr as number)
+  const dates = (bb: unknown, ll: unknown, rr: unknown) => mergeMultiset(bb as string[], ll as string[], rr as string[], hasBase)
+  const merged = mergeObject(base, local, remote, t, {
+    covered: (bb, ll, rr) => Math.max(0, num(bb, ll, rr) - both.length),
+    repaid: num,
+    coveredLog: (bb, ll, rr) => {
+      const log = dates(bb, ll, rr)
+      if (!log || both.length === 0) return log
+      const out = [...log]
+      for (const id of both) {
+        const at = out.indexOf(id.split("|")[0]) // the day this favour was logged under
+        if (at !== -1) out.splice(at, 1)
+      }
+      return out
+    },
+    repaidLog: dates,
+    coveredPings: (bb, ll, rr) => {
+      const union = Array.from(new Set([...((rr as string[] | undefined) ?? []), ...((ll as string[] | undefined) ?? [])]))
+      return union.length ? union : undefined
+    },
+  })
+  return merged
 }
 
 /** With no shared base, treat the same subject / mate on both sides as one thing even if its id differs */

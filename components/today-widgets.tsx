@@ -3,7 +3,7 @@
 import { useRef, useState } from "react"
 import { PencilSimple, Plus } from "@phosphor-icons/react"
 import Sheet, { primaryButton } from "./sheet"
-import { classesOn, daysUntil, formatShortDate, formatTime, getAttendance } from "@/lib/attendance"
+import { classesOn, daysUntil, formatShortDate, formatTime, getAttendance, skipVerdict } from "@/lib/attendance"
 import { loadWidgets, saveWidgets, WIDGETS, type WidgetId } from "@/lib/today-widgets"
 import type { Subject, Task } from "@/lib/types"
 
@@ -23,7 +23,7 @@ function SkipTomorrow({ subjects, now }: Data) {
   const rows = classesOn(subjects, tomorrow).map(({ subject, slot }) => {
     const info = getAttendance(subject.attended, subject.missed, subject.requirement)
     const after = Math.round((subject.attended / (info.total + 1)) * 100)
-    const verdict = info.total === 0 ? "nodata" : info.status !== "risk" && (info.canSkip === null || info.canSkip > 0) ? "skip" : "attend"
+    const verdict = skipVerdict(info)
     return { subject, slot, info, after, verdict }
   })
   const shown = rows.slice(0, 3)

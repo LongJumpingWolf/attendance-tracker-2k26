@@ -10,6 +10,12 @@ import {
   localDate,
   DAY_SHORT,
   formatTime,
+  classesOn,
+  markFor,
+  slotMeta,
+  recentMarks,
+  formatShortDate,
+  type MarkMeta,
 } from "@/lib/attendance"
 import ProgressRing from "./progress-ring"
 import { SectionHeader } from "./sheet"
@@ -17,15 +23,15 @@ import { SectionHeader } from "./sheet"
 interface SubjectDetailProps {
   subject: Subject
   onBack: () => void
-  onPresent: () => void
-  onAbsent: () => void
+  /** The same call Today makes, so both screens write the same record for the same class */
+  onSet: (date: string, status: "P" | "A" | null, meta?: MarkMeta) => void
   onEdit: () => void
   onPlan: (date: string, value: "attend" | "skip" | null) => void
 }
 
 const WEEKDAYS = ["S", "M", "T", "W", "T", "F", "S"]
 
-export default function SubjectDetail({ subject, onBack, onPresent, onAbsent, onEdit, onPlan }: SubjectDetailProps) {
+export default function SubjectDetail({ subject, onBack, onSet, onEdit, onPlan }: SubjectDetailProps) {
   const info = getAttendance(subject.attended, subject.missed, subject.requirement)
   const st = STATUS_STYLES[info.status]
   const dates = futureClassDates(subject, 35)
@@ -42,6 +48,11 @@ export default function SubjectDetail({ subject, onBack, onPresent, onAbsent, on
     const d = new Date(start.getFullYear(), start.getMonth(), start.getDate() + i)
     return { date: localDate(d), day: d.getDate() }
   })
+
+  // Today's real classes of this subject. A subject with no timetable at all has a single "any time" class a day.
+  const today = localDate()
+  const todays = classesOn([subject], new Date())
+  const noTimetable = !(subject.slots && subject.slots.length > 0)
 
   const cycle = (date: string) => {
     const cur = plan[date]
@@ -89,20 +100,74 @@ export default function SubjectDetail({ subject, onBack, onPresent, onAbsent, on
         </p>
       )}
 
-      <div className="grid grid-cols-2 gap-3 mt-5">
-        <button
-          onClick={onPresent}
-          className="h-[52px] rounded-2xl bg-good/10 text-good text-[17px] font-semibold flex items-center justify-center gap-2"
-        >
-          <Check weight="bold" className="w-5 h-5" /> Present
-        </button>
-        <button
-          onClick={onAbsent}
-          className="h-[52px] rounded-2xl bg-bad/10 text-bad text-[17px] font-semibold flex items-center justify-center gap-2"
-        >
-          <X weight="bold" className="w-5 h-5" /> Absent
-        </button>
-      </div>
+      {/* Today's class(es): the same marks Today shows. Marked already means it shows that state, never a second count. */}
+      <section className="mt-5" aria-label="Today">
+        {noTimetable || todays.length > 0 ? (
+          <div className="space-y-3">
+            {(noTimetable ? [{ slot: null as null | (typeof todays)[number]["slot"] }] : todays).map((c) => {
+              const slot = c.slot
+              const state = markFor(subject, today, slot?.start ?? "")
+              const meta = slotMeta(slot)
+              return (
+                <div key={slot?.start ?? "any"} data-testid="today-class">
+                  <p className="text-[13px] text-mute mb-1.5 px-1">
+                    {slot ? `Today · ${formatTime(slot.start)} – ${formatTime(slot.end)}${slot.kind ? ` · ${slot.kind}` : ""}` : "Today · any time"}
+                    {state && <span data-testid="today-state">{state === "P" ? " · Marked present" : " · Marked absent"}</span>}
+                  </p>
+                  <div className="grid grid-cols-2 gap-3">
+                    <button
+                      onClick={() => onSet(today, "P", meta)}
+                      aria-pressed={state === "P"}
+                      className={`h-[52px] rounded-2xl text-[17px] font-semibold flex items-center justify-center gap-2 ${
+                        state === "P" ? "bg-good text-paper" : "bg-good/10 text-good"
+                      }`}
+                    >
+                      <Check weight="bold" className="w-5 h-5" /> Present
+                    </button>
+                    <button
+                      onClick={() => onSet(today, "A", meta)}
+                      aria-pressed={state === "A"}
+                      className={`h-[52px] rounded-2xl text-[17px] font-semibold flex items-center justify-center gap-2 ${
+                        state === "A" ? "bg-bad text-paper" : "bg-bad/10 text-bad"
+                      }`}
+                    >
+                      <X weight="bold" className="w-5 h-5" /> Absent
+                    </button>
+                  </div>
+                  {state && (
+                    <button onClick={() => onSet(today, null, meta)} className="block mx-auto mt-2 text-[13px] text-mute">
+                      Clear today&rsquo;s mark
+                    </button>
+                  )}
+                </div>
+              )
+            })}
+          </div>
+        ) : (
+          <p className="rounded-2xl bg-card px-4 py-4 text-[15px] text-mute text-center">No class scheduled today.</p>
+        )}
+      </section>
+
+      {/* History: the latest marks for this subject. Fix an older day from the Calendar. */}
+      {(subject.log?.length ?? 0) > 0 && (
+        <section className="mt-9" data-testid="history">
+          <SectionHeader>Recent marks</SectionHeader>
+          <ul className="rounded-2xl bg-card divide-y divide-ink/[0.08] overflow-hidden">
+            {recentMarks(subject, 6).map((e, i) => (
+              <li key={`${e.d}-${e.t ?? ""}-${i}`} className="flex items-center justify-between gap-3 px-4 py-3">
+                <span className="min-w-0">
+                  <span className="block text-[15px] font-medium">{formatShortDate(e.d)}</span>
+                  <span className="block text-[12px] text-mute">{[e.t ? formatTime(e.t) : "No class time", e.k].filter(Boolean).join(" · ")}</span>
+                </span>
+                <span className={`rounded-full px-2.5 py-1 text-[12px] font-bold whitespace-nowrap ${e.s === "P" ? "bg-good/15 text-good" : "bg-bad/10 text-bad"}`}>
+                  {e.s === "P" ? "Present" : "Absent"}
+                </span>
+              </li>
+            ))}
+          </ul>
+          <p className="text-[12px] text-mute mt-2 px-1">To correct an older day, pick it in the Calendar.</p>
+        </section>
+      )}
 
       {/* Planner */}
       <section className="mt-9">

@@ -589,6 +589,16 @@ button:active:not(:disabled) {
   .scan-tick { animation: none; stroke-dashoffset: 0; }
 }
 
+/* Ping event: the full-screen moment for an incoming request or an answer. Quick in, quicker out. */
+@keyframes ping-event-in { from { opacity: 0; transform: scale(1.035) } to { opacity: 1; transform: none } }
+@keyframes ping-event-out { from { opacity: 1; transform: none } to { opacity: 0; transform: scale(0.98) } }
+.ping-event-in { animation: ping-event-in 0.26s ease-out both; }
+.ping-event-out { animation: ping-event-out 0.18s ease-in both; }
+@media (prefers-reduced-motion: reduce) {
+  .ping-event-in { animation: scan-fade 0.15s both; }
+  .ping-event-out { animation: none; opacity: 0; }
+}
+
 /* Desktop density. Everything is sized in CSS pixels, and a laptop with Windows display scaling gives Chrome only
    ~1536 of them, so the app looked oversized and edge-to-edge there while a zoomed-out tab looked compact and
    centred. On desktop-sized windows the whole interface is drawn at 80%, so every screen gets the same look. */

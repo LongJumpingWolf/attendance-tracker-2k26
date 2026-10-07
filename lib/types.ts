@@ -64,6 +64,12 @@ export interface Mate {
   /** Dates (YYYY-MM-DD) each favour happened, so the monthly wrap-up can count them */
   coveredLog?: string[]
   repaidLog?: string[]
+  /**
+   * The favours that came from a Ping, one entry per class it helped, as "YYYY-MM-DD|<pingId>:<classKey>". This is
+   * what makes a favour happen once: the same Ping applied again (after a crash, or on another device) finds its
+   * entry and does nothing.
+   */
+  coveredPings?: string[]
 }
 
 /** One class you are asking a mate about. `key` is unique per class per day (subject + start time). */
@@ -97,6 +103,13 @@ export interface Ping {
   items: PingItem[]
   /** asking -> answered (by the mate) -> processed (the asker's device applied the answer, exactly once) */
   status: "asking" | "answered" | "processed"
+  /** When the mate answered. A Firestore timestamp from the server (null while pending), a number elsewhere. */
+  respondedAt?: unknown
+  /** When the server created it (its own clock). A Ping lives 3 days from this. */
+  createdAt?: unknown
+  /** The device of the asker that is applying the answer, and since when (a lease that runs out) */
+  claimedBy?: string
+  claimedAt?: unknown
 }
 
 /** A connection request between two accounts. Accepted requests are the mate connections. */

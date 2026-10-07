@@ -83,7 +83,7 @@ export function buildDemoData(now: Date): DemoBundle {
     log: history(pastWeekdays(now, today, 3), hm(nowMin + 70), "Practical", [false, true, false, true, false, false, true]),
   }
 
-  // Two more on other days, so Subjects' by-timetable view and the week strip have more than one day on them
+  // Two more on other days, so the Subjects list and the week strip have more than one day on them
   const pharmacology: Subject = {
     id: id("pharmacology"),
     name: "Pharmacology",

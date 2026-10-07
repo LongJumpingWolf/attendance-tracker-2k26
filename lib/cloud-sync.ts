@@ -39,7 +39,21 @@ export interface CloudDoc {
   updatedAt: number
 }
 
-export type PutResult = { ok: true; rev: number } | { ok: false; reason: "conflict" | "unavailable" }
+export type PutResult = { ok: true; rev: number } | { ok: false; reason: "conflict" | "unavailable" | "too-large" }
+
+/** Firestore refuses documents over 1 MiB (1,048,576 bytes). Stay well under it, and under the 900,000-character cap in firestore.rules. */
+export const DOC_LIMIT_BYTES = 800_000
+
+/**
+ * The size Firestore counts for the stored document: its name (each path part plus 1, plus 16), every field name (+1)
+ * with its value (a string is its UTF-8 bytes + 1, a number is 8), and 32 for the document itself.
+ */
+export function firestoreDocBytes(owner: string, data: string): number {
+  const utf8 = (s: string) => new TextEncoder().encode(s).length
+  const name = utf8("syncs") + 1 + utf8(owner) + 1 + 16
+  const fields = utf8("data") + 1 + utf8(data) + 1 + (utf8("rev") + 1 + 8) + (utf8("updatedAt") + 1 + 8)
+  return name + fields + 32
+}
 
 export type CloudKind = "firebase" | "dev" | "none"
 
@@ -70,6 +84,8 @@ export async function cloudPut(owner: string, text: string, expectedRev: number 
   const kind = cloudKind()
   try {
     const data = await pack(text)
+    // Checked before any network call. Nothing is sent, and nothing on this device is touched.
+    if (firestoreDocBytes(owner, data) > DOC_LIMIT_BYTES) return { ok: false, reason: "too-large" }
     if (kind === "firebase") {
       await ensureSignedIn()
       const ref = doc(db, "syncs", owner)

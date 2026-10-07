@@ -10,7 +10,7 @@ import RestorePoints from "./restore-points"
 import type { CloudSync } from "@/hooks/use-cloud-sync"
 import { isTestSubject } from "@/lib/scan-test"
 import { BackupPanel, NotificationsPanel, ResetPanel, TagsPanel } from "./settings-panels"
-import { entriesFromTimetable, loadSchedule, removePush, saveSchedule, syncPush, type ScheduleEntry } from "@/lib/reminders"
+import { entriesFromTimetable, loadSchedule, saveSchedule, type ScheduleEntry } from "@/lib/reminders"
 import type { BackupData } from "@/lib/backup-import"
 import { buildBackup, downloadText } from "@/lib/backup"
 import { localDate } from "@/lib/attendance"
@@ -41,7 +41,6 @@ interface SettingsSheetProps {
   onAddTag: (tag: string) => void
   onDeleteTag: (tag: string) => void
   onResetAllData: () => void
-  onExportData: () => Promise<void>
   onImportData: (data: BackupData) => void
   notificationSupported: boolean
   notificationPermission: NotificationPermission | null
@@ -152,8 +151,6 @@ export default function SettingsSheet(p: SettingsSheetProps) {
       }
       return next
     })
-    // Best effort: also register with the push server so it can remind you when the app is closed
-    entries.forEach((e) => void syncPush(e))
   }
 
   const saveReminders = (entries: ScheduleEntry[]) => {
@@ -167,14 +164,12 @@ export default function SettingsSheet(p: SettingsSheetProps) {
   const deleteReminder = (id: string) => {
     const gone = schedule.find((e) => e.id === id)
     setSchedule((prev) => prev.filter((e) => e.id !== id))
-    if (gone) void removePush(gone)
     setPanel("reminders")
     p.onToast(
       "Reminder deleted",
       gone
         ? () => {
             setSchedule((prev) => [...prev, gone])
-            void syncPush(gone)
           }
         : undefined,
     )
@@ -262,7 +257,7 @@ export default function SettingsSheet(p: SettingsSheetProps) {
               <Row
                 icon={<BellRinging weight="duotone" className={icon} />}
                 title="Class reminders"
-                hint={schedule.length ? `${schedule.length} ${schedule.length === 1 ? "reminder" : "reminders"} set` : "Get a nudge around your classes"}
+                hint={schedule.length ? `${schedule.length} ${schedule.length === 1 ? "reminder" : "reminders"} set` : "A nudge around your classes while the app is open"}
                 onClick={() => setPanel("reminders")}
               />
               <Row
@@ -397,7 +392,6 @@ export default function SettingsSheet(p: SettingsSheetProps) {
         <div className="space-y-6">
           <BackupPanel
             onSaveFull={saveFullBackup}
-            onExport={p.onExportData}
             onImportData={(d) => {
               if (d.full && d.reminders) setSchedule(d.reminders)
               p.onImportData(d)

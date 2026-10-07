@@ -20,12 +20,6 @@ const STEPS: Step[] = [
   },
   {
     page: "today",
-    selector: "today-strip",
-    title: "Your day at a glance",
-    body: "Every class today, in order. Tap one to jump straight to it below, without hunting for it.",
-  },
-  {
-    page: "today",
     selector: "today-carousel",
     title: "Mark as you go",
     body: "Swipe between today's classes. One's ended without a mark, one's happening right now, one's still ahead — the app always knows which is which.",
@@ -34,7 +28,7 @@ const STEPS: Step[] = [
     page: "subjects",
     selector: "subjects-list",
     title: "Every subject, one place",
-    body: "Attendance percentage, colour-coded by how safe you are. Switch to the tag or timetable view with the icons above.",
+    body: "Every subject with its attendance percentage and what it needs, least safe first. Tap one for its history and plan.",
   },
   {
     page: "calendar",

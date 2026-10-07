@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react"
 import { Check, ShareNetwork } from "@phosphor-icons/react"
 import Sheet, { Segmented, primaryButton } from "./sheet"
 import { classesOn, formatTime, localDate, markFor } from "@/lib/attendance"
+import { MAX_PING_ITEMS } from "@/lib/pings"
 import type { Mate, Ping, Subject } from "@/lib/types"
 import type { PingInput } from "@/lib/use-social"
 
@@ -57,7 +58,7 @@ export default function PingSheet({ open, onClose, mate, subjects, waiting, onAs
   }, [open])
   useEffect(() => {
     if (!open) return
-    setPicked(new Set(scheduled.filter((r) => r.mark !== "P" && !r.waiting).map((r) => r.key)))
+    setPicked(new Set(scheduled.filter((r) => r.mark !== "P" && !r.waiting).map((r) => r.key).slice(0, MAX_PING_ITEMS)))
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, offset])
   useEffect(() => () => {
@@ -72,6 +73,7 @@ export default function PingSheet({ open, onClose, mate, subjects, waiting, onAs
     setPicked((prev) => {
       const next = new Set(prev)
       if (next.has(key)) next.delete(key)
+      else if (next.size >= MAX_PING_ITEMS) onToast(`A Ping can ask about up to ${MAX_PING_ITEMS} classes at a time.`)
       else next.add(key)
       return next
     })

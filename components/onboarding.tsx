@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react"
 import { BellRinging, CalendarPlus, Check, PencilSimple, UsersThree } from "@phosphor-icons/react"
 import Sheet, { inputClass, primaryButton, tintButton, fieldLabel } from "./sheet"
-import { entriesFromTimetable, loadSchedule, saveSchedule, syncPush } from "@/lib/reminders"
+import { entriesFromTimetable, loadSchedule, saveSchedule } from "@/lib/reminders"
 import type { Subject } from "@/lib/types"
 
 interface Props {
@@ -73,7 +73,6 @@ export default function Onboarding(p: Props) {
     const made = entriesFromTimetable(p.subjects, existing)
     if (made.length === 0) return p.onToast("Add your class times first")
     saveSchedule([...existing, ...made])
-    made.forEach((e) => void syncPush(e))
     setRemindersMade(made.length)
   }
 

@@ -7,14 +7,14 @@ import {
   getAttendance,
   STATUS_STYLES,
   localDate,
-  classesOn,
-  markFor,
+  dayClasses,
+  dayProgress,
+  slotMeta,
+  classVerdict,
   coveredBy,
   toMin,
   formatTime,
-  formatDayMonth,
-  timeParts,
-  type ClassSlot,
+  type DayClass,
   type MarkMeta,
 } from "@/lib/attendance"
 import ProgressRing from "./progress-ring"
@@ -48,13 +48,21 @@ const BANNER_TONE = {
 }
 
 const divide = "divide-y divide-ink/10"
+
+/** Colour carries the answer: green = fine to skip, orange = no skips left, red = below the target */
+const VERDICT_TONE = {
+  skip: "bg-good/15 text-good",
+  must: "bg-warn/15 text-warn",
+  reach: "bg-bad/15 text-bad",
+  nodata: "bg-ink/10 text-mute",
+} as const
 const GUTTER = 16
 
-/** A card in the carousel: a timed class, a subject with no timetable, or one that just isn't on today */
-type Card = { subject: Subject; slot: ClassSlot["slot"] | null; elsewhere?: boolean }
+/** A card in the carousel is one real class on today's timetable */
+type Card = DayClass
 
-const keyOf = (c: Card) => `${c.subject.id}-${c.slot?.start ?? "anytime"}`
-const metaOf = (c: Card): MarkMeta => ({ t: c.slot?.start, k: c.slot?.kind })
+const keyOf = (c: Card) => c.key
+const metaOf = (c: Card): MarkMeta => slotMeta(c.slot) ?? {}
 
 function duration(mins: number) {
   const m = Math.max(1, Math.round(mins))
@@ -111,27 +119,22 @@ function TodayContent({
   const today = localDate(now)
   const nowMin = now.getHours() * 60 + now.getMinutes()
 
-  // Every subject is a card: today's timed classes, then subjects with no time, then the rest
-  const timed: Card[] = classesOn(subjects, now)
-  const untimed: Card[] = subjects.filter((s) => !s.slots?.length).map((s) => ({ subject: s, slot: null }))
-  const timedIds = new Set(timed.map((c) => c.subject.id))
-  const elsewhere: Card[] = subjects
-    .filter((s) => s.slots?.length && !timedIds.has(s.id))
-    .map((s) => ({ subject: s, slot: null, elsewhere: true }))
-  const classes: Card[] = [...timed, ...untimed, ...elsewhere]
+  // Only classes that are really on today's timetable. A subject with no timetable, or none today, has no card.
+  const classes: Card[] = dayClasses(subjects, now)
+  const unscheduled = subjects.filter((s) => !s.slots?.length).length
 
-  const stateOf = (c: Card) => markFor(c.subject, today, c.slot?.start ?? "")
+  const stateOf = (c: Card) => c.state
 
   // Resolved cards dissolve out of the carousel
   const pending = classes.filter((c) => stateOf(c) === null || leaving.has(keyOf(c)))
   const live = pending.filter((c) => !leaving.has(keyOf(c)))
   const done = classes.filter((c) => stateOf(c) !== null && !leaving.has(keyOf(c)))
   // Nothing left to answer: the screen shows the evening scene instead of the carousel
-  const allDone = pending.length === 0 && classes.length > 0
+  const allDone = dayProgress(classes).allDone && pending.length === 0
 
-  const isOngoing = (c: Card) => !!c.slot && toMin(c.slot.start) <= nowMin && nowMin < toMin(c.slot.end)
-  const hasEnded = (c: Card) => !!c.slot && toMin(c.slot.end) <= nowMin
-  const startsLater = (c: Card) => !!c.slot && toMin(c.slot.start) > nowMin
+  const isOngoing = (c: Card) => toMin(c.slot.start) <= nowMin && nowMin < toMin(c.slot.end)
+  const hasEnded = (c: Card) => toMin(c.slot.end) <= nowMin
+  const startsLater = (c: Card) => toMin(c.slot.start) > nowMin
   // The carousel sits on whatever is happening now, else what is next, else the oldest unresolved card
   const ongoingCard = live.find(isOngoing)
   const firstUpcoming = live.find(startsLater)
@@ -176,6 +179,9 @@ function TodayContent({
 
   const onPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
     if (!scroller.current) return
+    // A press that starts on a button is a tap, not a drag. Capturing the pointer here would redirect the click away
+    // from the button, so on a desktop mouse Present and Absent did nothing.
+    if ((e.target as HTMLElement).closest("button, a")) return
     dragStart.current = { x: e.clientX, scrollLeft: scroller.current.scrollLeft }
     scroller.current.setPointerCapture(e.pointerId)
   }
@@ -213,6 +219,7 @@ function TodayContent({
 
   const resolve = (c: Card, status: "P" | "A") => {
     const k = keyOf(c)
+    if (leaving.has(k)) return // a second tap on the same card while it is leaving does nothing
     setLeaving((s) => new Set(s).add(k))
     onSet(c.subject.id, today, status, metaOf(c))
     setTimeout(
@@ -246,28 +253,26 @@ function TodayContent({
   let subline: string
   if (ongoingCard) {
     headline = `${ongoingCard.subject.name} is on now`
-    subline = `Ends in ${duration(toMin(ongoingCard.slot!.end) - nowMin)}`
+    subline = `Ends in ${duration(toMin(ongoingCard.slot.end) - nowMin)}`
   } else if (firstUpcoming) {
     headline = `${firstUpcoming.subject.name} is next`
-    subline = `At ${formatTime(firstUpcoming.slot!.start)}, in ${duration(toMin(firstUpcoming.slot!.start) - nowMin)}`
+    subline = `At ${formatTime(firstUpcoming.slot.start)}, in ${duration(toMin(firstUpcoming.slot.start) - nowMin)}`
   } else if (live.length > 0) {
     headline = `${live.length} to mark today`
     subline = "Tap Present or Absent on each card"
+  } else if (classes.length === 0) {
+    headline = "No classes today"
+    subline = unscheduled > 0 ? `${unscheduled} ${unscheduled === 1 ? "subject has" : "subjects have"} no timetable yet` : "Nothing is on your timetable"
   } else {
     headline = "You're all caught up"
     subline = "Every class today is marked"
   }
 
-  const missed = subjects
-    .flatMap((s) => (s.log || []).filter((e) => e.s === "A").map((e) => ({ id: s.id, name: s.name, ...e })))
-    .sort((a, b) => (a.d === b.d ? (b.t ?? "").localeCompare(a.t ?? "") : a.d < b.d ? 1 : -1))
-    .slice(0, 4)
-
   // One notice at a time. An unmarked class that has already ended comes first.
   let notice: { text: string; tone: Banner["tone"]; onClick: () => void } | null = null
   if (overdue.length > 0) {
     const first = overdue[0]
-    const ago = duration(nowMin - toMin(first.slot!.end))
+    const ago = duration(nowMin - toMin(first.slot.end))
     notice = {
       text:
         overdue.length === 1
@@ -299,46 +304,6 @@ function TodayContent({
           </button>
         )}
 
-        {/* Day strip: the whole timetable at a glance */}
-        {timed.length > 0 && !allDone && (
-          <section aria-label="Today's timetable" data-tour="today-strip">
-            <div className="flex gap-2 overflow-x-auto -mx-4 px-4 lg:mx-0 lg:px-0 no-scrollbar">
-              {timed.map((c) => {
-                const st = stateOf(c)
-                const ongoing = isOngoing(c)
-                const late = hasEnded(c) && st === null
-                const tone =
-                  st === "P"
-                    ? "bg-good/10 text-good"
-                    : st === "A"
-                      ? "bg-bad/10 text-bad"
-                      : ongoing
-                        ? "bg-ink text-paper"
-                        : late
-                          ? "bg-bad/10 text-bad"
-                          : "bg-card text-ink"
-                return (
-                  <button
-                    key={keyOf(c)}
-                    onClick={() => (st === null ? jumpTo(c) : onOpenSubject(c.subject.id))}
-                    aria-label={`${c.subject.name} at ${formatTime(c.slot!.start)}${st ? (st === "P" ? ", present" : ", absent") : late ? ", not marked" : ""}`}
-                    className={`shrink-0 h-10 pl-3.5 pr-4 rounded-full flex items-center gap-2 text-[13px] font-semibold ${tone}`}
-                  >
-                    {st === "P" ? (
-                      <Check weight="bold" className="w-4 h-4" />
-                    ) : st === "A" ? (
-                      <X weight="bold" className="w-4 h-4" />
-                    ) : (
-                      <span className="num">{timeParts(c.slot!.start).time}</span>
-                    )}
-                    <span className="max-w-[104px] truncate">{c.subject.name}</span>
-                  </button>
-                )
-              })}
-            </div>
-          </section>
-        )}
-
         {/* The person's own widgets, or an invitation to choose some the first time */}
         {allDone && <TodayWidgets subjects={subjects} tasks={tasks} now={now} />}
 
@@ -358,8 +323,14 @@ function TodayContent({
                   <Check weight="bold" className="w-6 h-6" />
                 </span>
                 <div>
-                  <p className="text-[17px] font-semibold">All done for today</p>
-                  <p className="text-[15px] text-mute">Every class is marked.</p>
+                  <p className="text-[17px] font-semibold">{classes.length === 0 ? "No classes today" : "All done for today"}</p>
+                  <p className="text-[15px] text-mute">
+                    {classes.length === 0
+                      ? unscheduled > 0
+                        ? "Subjects without a timetable can be marked from their own page."
+                        : "Nothing is scheduled on your timetable."
+                      : "Every class is marked."}
+                  </p>
                 </div>
               </article>
             </div>
@@ -376,32 +347,27 @@ function TodayContent({
               >
                 {pending.map((c) => {
                   const k = keyOf(c)
-                  const start = c.slot ? toMin(c.slot.start) : 0
-                  const end = c.slot ? toMin(c.slot.end) : 0
+                  const start = toMin(c.slot.start)
+                  const end = toMin(c.slot.end)
                   const ongoing = isOngoing(c)
                   const ended = hasEnded(c)
                   const info = getAttendance(c.subject.attended, c.subject.missed, c.subject.requirement)
                   const st = STATUS_STYLES[info.status]
+                  const verdict = classVerdict(c.subject)
                   const gone = leaving.has(k)
 
-                  const badge = !c.slot
-                    ? { text: c.elsewhere ? "NOT TODAY" : "ANY TIME", cls: "bg-card text-mute" }
-                    : ongoing
-                      ? { text: "NOW", cls: "bg-ink text-paper" }
-                      : ended
-                        ? { text: "ENDED", cls: "bg-card text-bad" }
-                        : c === firstUpcoming
-                          ? { text: "UP NEXT", cls: "bg-card text-ink" }
-                          : { text: "LATER", cls: "bg-card text-mute" }
-                  const timing = !c.slot
-                    ? c.elsewhere
-                      ? "Not on today's timetable"
-                      : "No class time set"
-                    : ongoing
-                      ? `Ends in ${duration(end - nowMin)}`
-                      : ended
-                        ? `Ended ${duration(nowMin - end)} ago`
-                        : `Starts in ${duration(start - nowMin)}`
+                  const badge = ongoing
+                    ? { text: "NOW", cls: "bg-ink text-paper" }
+                    : ended
+                      ? { text: "ENDED", cls: "bg-card text-bad" }
+                      : c.key === firstUpcoming?.key
+                        ? { text: "UP NEXT", cls: "bg-card text-ink" }
+                        : { text: "LATER", cls: "bg-card text-mute" }
+                  const timing = ongoing
+                    ? `Ends in ${duration(end - nowMin)}`
+                    : ended
+                      ? `Ended ${duration(nowMin - end)} ago`
+                      : `Starts in ${duration(start - nowMin)}`
 
                   return (
                     <article
@@ -414,7 +380,7 @@ function TodayContent({
                     >
                       <div className="flex items-center justify-between">
                         <span className="num text-[13px] text-mute">
-                          {c.slot ? `${formatTime(c.slot.start)} – ${formatTime(c.slot.end)}` : "Any time today"}
+                          {`${formatTime(c.slot.start)} – ${formatTime(c.slot.end)}`}
                         </span>
                         <span className={`rounded-md px-2 py-0.5 text-[10px] font-bold tracking-wide ${badge.cls}`}>
                           {badge.text}
@@ -426,10 +392,18 @@ function TodayContent({
                           <h3 className="text-[clamp(20px,5.6vw,28px)] leading-[1.1] font-bold tracking-tight line-clamp-3 break-words hyphens-auto">
                             {c.subject.name}
                           </h3>
-                          <p className={`text-[13.5px] sm:text-[15px] mt-1.5 sm:mt-2 font-medium ${st.text}`}>{info.short}</p>
-                          {(c.slot?.kind || c.subject.tags?.[0]) && (
+                          <span
+                            data-testid="verdict"
+                            className={`inline-block rounded-md px-2 py-0.5 mt-1.5 sm:mt-2 text-[11px] font-extrabold tracking-wide ${VERDICT_TONE[verdict.kind]}`}
+                          >
+                            {verdict.label}
+                          </span>
+                          <p data-testid="verdict-detail" className="text-[13px] text-mute mt-1 leading-snug">
+                            {verdict.pct === null ? verdict.detail : `${verdict.pct}% now · ${c.subject.requirement}% needed · ${verdict.detail}`}
+                          </p>
+                          {(c.slot.kind || c.subject.tags?.[0]) && (
                             <p className="text-[13px] text-mute mt-0.5">
-                              {[c.slot?.kind, c.subject.tags?.[0]].filter(Boolean).join(" · ")}
+                              {[c.slot.kind, c.subject.tags?.[0]].filter(Boolean).join(" · ")}
                             </p>
                           )}
                         </button>
@@ -443,7 +417,7 @@ function TodayContent({
 
                       {/* Time bar: how far through the class we are */}
                       <div className="mt-4 sm:mt-5">
-                        <div className={`h-1 rounded-full bg-ink/10 overflow-hidden ${c.slot ? "" : "opacity-40"}`}>
+                        <div className="h-1 rounded-full bg-ink/10 overflow-hidden">
                           <div
                             className="h-full rounded-full bg-ink/70 transition-all duration-1000"
                             style={{ width: `${ongoing ? ((nowMin - start) / (end - start)) * 100 : ended ? 100 : 0}%` }}
@@ -482,9 +456,10 @@ function TodayContent({
                   ))}
                 </div>
               )}
-              {untimed.length > 0 && live.some((c) => !c.slot && !c.elsewhere) && (
+              {unscheduled > 0 && (
                 <p className="text-[13px] text-mute text-center mt-3 px-4 leading-snug">
-                  Add class days and times to a subject and its card will follow the clock.
+                  {unscheduled} {unscheduled === 1 ? "subject has" : "subjects have"} no class days yet, so {unscheduled === 1 ? "it isn't" : "they aren't"} listed here.
+                  Add days and times, or mark {unscheduled === 1 ? "it" : "them"} from the subject page.
                 </p>
               )}
             </>
@@ -510,6 +485,7 @@ function TodayContent({
             <ul className={`${cardClass} ${divide}`}>
               {done.map((c) => {
                 const state = stateOf(c)
+                const after = classVerdict(c.subject) // the result of the mark, straight from the same marks
                 return (
                   <li key={keyOf(c)} className="flex items-center gap-3 px-4 py-3 min-h-[64px]">
                     <span
@@ -522,8 +498,9 @@ function TodayContent({
                     <div className="min-w-0 flex-1">
                       <p className="text-[15px] font-semibold truncate">{c.subject.name}</p>
                       <p className="num text-[12px] text-mute">
-                        {c.slot ? formatTime(c.slot.start) : "Any time"}
-                        {coveredBy(c.subject, today, c.slot?.start ?? "") && ` · Covered by ${coveredBy(c.subject, today, c.slot?.start ?? "")}`}
+                        {formatTime(c.slot.start)}
+                        {after.pct !== null && <span data-testid="marked-pct"> · {after.pct}% · {after.label.toLowerCase()}</span>}
+                        {coveredBy(c.subject, today, c.slot.start) && ` · Covered by ${coveredBy(c.subject, today, c.slot.start)}`}
                       </p>
                     </div>
                     <button
@@ -536,33 +513,6 @@ function TodayContent({
                   </li>
                 )
               })}
-            </ul>
-          </section>
-        )}
-
-        {/* Missed classes */}
-        {missed.length > 0 && (
-          <section>
-            <SectionHeader>Recently missed</SectionHeader>
-            <ul className={`${cardClass} ${divide}`}>
-              {missed.map((m, i) => (
-                <li key={`${m.id}-${m.d}-${m.t ?? ""}-${i}`}>
-                  <button
-                    onClick={() => onOpenSubject(m.id)}
-                    className="w-full flex items-center justify-between px-4 py-3 min-h-[56px] text-left"
-                  >
-                    <span className="min-w-0">
-                      <span className="block text-[15px] font-medium truncate">{m.name}</span>
-                      {(m.k || m.t) && (
-                        <span className="block text-[12px] text-mute">
-                          {[m.k, m.t ? formatTime(m.t) : null].filter(Boolean).join(" · ")}
-                        </span>
-                      )}
-                    </span>
-                    <span className="text-[13px] text-mute whitespace-nowrap ml-3">{formatDayMonth(m.d)}</span>
-                  </button>
-                </li>
-              ))}
             </ul>
           </section>
         )}

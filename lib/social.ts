@@ -7,7 +7,7 @@
  *   users/{uid}        { name }
  *   invites/{token}    { owner, ownerName, expiresAt }     short-lived magic links
  *   requests/{id}      { from, to, fromName, toName, participants, status }
- *   pings/{id}         { from, to, fromName, toName, participants, date, items[], status }   "did you mark me present?"
+ *   pings/{id}         "did you mark me present?" (see lib/ping-server.ts and firestore.rules)
  *   pushTokens/{uid}   { token }   this account's device token; Cloud Functions use it to alert about pings
  */
 import { getAuth, signInAnonymously, onAuthStateChanged, type User } from "firebase/auth"
@@ -19,7 +19,6 @@ import {
   addDoc,
   updateDoc,
   deleteDoc,
-  runTransaction,
   query,
   where,
   onSnapshot,
@@ -27,6 +26,7 @@ import {
   Timestamp,
 } from "firebase/firestore"
 import { app, db } from "./firebase"
+import type { Firestore } from "firebase/firestore"
 import type { FriendRequest, Ping, PingItem } from "./types"
 import { resilient } from "./realtime"
 
@@ -61,8 +61,8 @@ export function ensureSignedIn(): Promise<User> {
   return signingIn
 }
 
-export const saveProfile = (uid: string, name: string) =>
-  setDoc(doc(db, "users", uid), { name, updatedAt: serverTimestamp() })
+export const saveProfile = (uid: string, name: string, database: Firestore = db) =>
+  setDoc(doc(database, "users", uid), { name, updatedAt: serverTimestamp() })
 
 export async function getProfileName(uid: string): Promise<string | null> {
   const snap = await getDoc(doc(db, "users", uid))
@@ -70,8 +70,8 @@ export async function getProfileName(uid: string): Promise<string | null> {
 }
 
 /** Live list of every request that involves this user (incoming, outgoing, accepted) */
-export function watchRequests(uid: string, onData: (r: FriendRequest[]) => void, onError: (e: Error) => void) {
-  const q = query(collection(db, "requests"), where("participants", "array-contains", uid))
+export function watchRequests(uid: string, onData: (r: FriendRequest[]) => void, onError: (e: Error) => void, database: Firestore = db) {
+  const q = query(collection(database, "requests"), where("participants", "array-contains", uid))
   return resilient(
     ({ ok, fail }) =>
       onSnapshot(
@@ -88,8 +88,8 @@ export function watchRequests(uid: string, onData: (r: FriendRequest[]) => void,
   )
 }
 
-export const sendRequest = (me: { uid: string; name: string }, to: { uid: string; name: string }) =>
-  addDoc(collection(db, "requests"), {
+export const sendRequest = (me: { uid: string; name: string }, to: { uid: string; name: string }, database: Firestore = db) =>
+  addDoc(collection(database, "requests"), {
     from: me.uid,
     to: to.uid,
     fromName: me.name,
@@ -135,8 +135,8 @@ export const permanentLink = (uid: string) => `${location.origin}/?add=${uid}`
 export const magicLink = (token: string) => `${location.origin}/?invite=${token}`
 
 /** Live list of pings that involve this user (ones they sent and ones sent to them) */
-export function watchPings(uid: string, onData: (p: Ping[]) => void, onError: (e: Error) => void) {
-  const q = query(collection(db, "pings"), where("participants", "array-contains", uid))
+export function watchPings(uid: string, onData: (p: Ping[]) => void, onError: (e: Error) => void, database: Firestore = db) {
+  const q = query(collection(database, "pings"), where("participants", "array-contains", uid))
   return resilient(
     ({ ok, fail }) =>
       onSnapshot(
@@ -153,41 +153,9 @@ export function watchPings(uid: string, onData: (p: Ping[]) => void, onError: (e
   )
 }
 
-/** Ask a mate whether they marked you present in these classes */
-export const sendPingDoc = (me: { uid: string; name: string }, to: { uid: string; name: string }, date: string, items: PingItem[], requestId: string) =>
-  addDoc(collection(db, "pings"), {
-    from: me.uid,
-    to: to.uid,
-    fromName: me.name,
-    toName: to.name,
-    participants: [me.uid, to.uid],
-    requestId,
-    date,
-    items,
-    status: "asking",
-    createdAt: serverTimestamp(),
-  })
-
-/** The mate's reply: every item gets a yes or no */
-export const answerPingDoc = (id: string, items: PingItem[]) =>
-  updateDoc(doc(db, "pings", id), { items, status: "answered", respondedAt: serverTimestamp() })
-
-/**
- * The asker's device claims an answered ping before applying it. Only one device can win, so an answer is applied
- * exactly once even when the same account is open in two browsers. Returns false if someone already claimed it.
- */
-export const claimPingDoc = (id: string) =>
-  runTransaction(db, async (tx) => {
-    const ref = doc(db, "pings", id)
-    const snap = await tx.get(ref)
-    if (!snap.exists() || snap.data().status !== "answered") return false
-    tx.update(ref, { status: "processed", processedAt: serverTimestamp() })
-    return true
-  })
-
 /** Save this device's push token so a mate's ping or reply can alert it (read only by the owner and the Cloud Functions) */
-export const savePushToken = (uid: string, token: string) =>
-  setDoc(doc(db, "pushTokens", uid), { token, updatedAt: serverTimestamp() })
+export const savePushToken = (uid: string, token: string, database: Firestore = db) =>
+  setDoc(doc(database, "pushTokens", uid), { token, updatedAt: serverTimestamp() })
 
-/** Cancel a ping you sent, or clear an old one */
-export const removePingDoc = (id: string) => deleteDoc(doc(db, "pings", id))
+/** Stop alerting this device for this account (used before switching or signing out of it) */
+export const deletePushToken = (uid: string, database: Firestore = db) => deleteDoc(doc(database, "pushTokens", uid))

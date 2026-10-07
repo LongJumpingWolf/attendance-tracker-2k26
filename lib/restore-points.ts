@@ -1,7 +1,8 @@
 /**
  * Restore points: automatic copies of this device's data, saved just before anything could overwrite it
  * (a sync that brings in another device's changes, joining an account, restoring a backup, resetting).
- * They live in IndexedDB on this device, newest first, so a bad merge or a mistake is always recoverable.
+ * They live in IndexedDB on this device, newest first, so a bad merge or a mistake is always recoverable. None is ever
+ * removed automatically.
  */
 import { dbGet, dbSet } from "./db"
 import { same } from "./merge"
@@ -16,7 +17,6 @@ export interface RestorePoint {
 }
 
 const KEY = "restorePoints"
-const MAX = 8
 
 const isEmpty = (d: FullBackupData) => d.subjects.length + d.tasks.length + d.mates.length === 0
 
@@ -30,7 +30,8 @@ export async function saveRestorePoint(reason: string, data: FullBackupData): Pr
   if (isEmpty(data)) return
   const all = await listRestorePoints()
   if (all[0] && same(all[0].data, data)) return
-  await dbSet(KEY, [{ id: newId(), at: Date.now(), reason, data }, ...all].slice(0, MAX))
+  // Never trimmed automatically: only the person deleting one removes it
+  await dbSet(KEY, [{ id: newId(), at: Date.now(), reason, data }, ...all])
 }
 
 export async function deleteRestorePoint(id: string): Promise<void> {

@@ -1,20 +1,9 @@
 // Service Worker for College Tracker
-// Handles Firebase Cloud Messaging and push notifications
-
-// SECURITY NOTE: These Firebase credentials are client-side configuration
-// and are designed to be public. Security is enforced through:
-// 1. Firestore Security Rules (see firestore.rules)
-// 2. Firebase Console domain restrictions
-// 3. Proper authentication (if implemented)
-
-// Import Firebase scripts for FCM
-// If these can't load (offline, or blocked) the worker must still install: the offline app shell below matters more.
-try {
-  importScripts('https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js');
-  importScripts('https://www.gstatic.com/firebasejs/9.22.2/firebase-messaging-compat.js');
-} catch (e) {
-  console.warn('[sw.js] Firebase scripts unavailable, push is off for now', e);
-}
+// 1. Keeps the app openable with no internet (the app shell, below).
+// 2. Shows push notifications (a Ping) and opens the right place when one is tapped.
+//
+// It does not load Firebase. A push arrives here as plain data and the worker builds the notification itself, so
+// delivery doesn't depend on any library starting up inside the worker (workers are stopped and restarted constantly).
 
 // ---- Offline app shell ----
 // The app keeps its data on the device (IndexedDB), so opening it must never need the internet. Pages and the files
@@ -79,155 +68,99 @@ self.addEventListener('fetch', (event) => {
   if (req.method !== 'GET') return;
   const url = new URL(req.url);
   if (url.origin !== self.location.origin) return;
-  if (url.pathname.startsWith('/api/') || url.pathname === '/sw.js' || url.pathname === '/firebase-messaging-sw.js') return;
+  if (url.pathname.startsWith('/api/') || url.pathname === '/sw.js') return;
   if (req.mode === 'navigate') return event.respondWith(page(req));
   if (url.pathname.startsWith('/_next/static/')) return event.respondWith(builtFile(req));
   if (/\.(png|svg|ico|json|webmanifest)$/.test(url.pathname)) return event.respondWith(staleWhileRevalidate(req));
 });
 
-// Fetch Firebase config from environment
-// Note: Service workers can't access environment variables directly,
-// so we fetch from an API endpoint
-let firebaseConfig = null;
+// ---- Notifications ----
 
-async function initializeFirebase() {
+/** A link from a notification, kept inside this app: anything pointing elsewhere falls back to the home page */
+function safeUrl(value) {
   try {
-    if (typeof firebase === 'undefined') return; // its scripts did not load; the offline shell still works
-    // Try to fetch config from API endpoint
-    const response = await fetch('/api/firebase-config');
-    if (response.ok) {
-      firebaseConfig = await response.json();
-    } else {
-      // Fallback to hardcoded config if API fails
-      console.warn('Failed to fetch Firebase config from API, using fallback');
-      firebaseConfig = {
-        apiKey: "AIzaSyBluLV5tPfhnyVIsTBYTWvqw-4SednixSI",
-        authDomain: "college-tracker-2024.firebaseapp.com",
-        projectId: "college-tracker-2024",
-        storageBucket: "college-tracker-2024.firebasestorage.app",
-        messagingSenderId: "798618910788",
-        appId: "1:798618910788:web:8437756701cffc76743c11"
-      };
-    }
-
-    // Initialize Firebase with config
-    firebase.initializeApp(firebaseConfig);
-
-    // Retrieve an instance of Firebase Messaging
-    const messaging = firebase.messaging();
-
-    // Handle background messages from Firebase
-    messaging.onBackgroundMessage(function(payload) {
-      console.log('[sw.js] Received background message ', payload);
-
-      const notificationTitle = payload.notification?.title || 'College Tracker';
-      const notificationOptions = {
-        body: payload.notification?.body || 'You have a new notification',
-        icon: '/favicon-192.png',
-        badge: '/favicon-192.png',
-        tag: payload.notification?.tag || 'notification',
-        data: payload.data || {}
-      };
-
-      self.registration.showNotification(notificationTitle, notificationOptions);
-    });
-
-    console.log('Firebase initialized successfully');
-  } catch (error) {
-    console.error('Failed to initialize Firebase:', error);
+    const u = new URL(value || '/', self.location.origin);
+    if (u.origin !== self.location.origin) return '/';
+    return u.pathname + u.search + u.hash;
+  } catch (e) {
+    return '/';
   }
 }
 
-// Handle push events (for non-Firebase push notifications)
-self.addEventListener('push', event => {
-  // Skip if this is handled by Firebase
-  if (event.data) {
-    try {
-      const data = event.data.json();
-      const title = data.title || 'College Tracker';
-      const options = {
-        body: data.body || 'You have a new notification',
-        icon: '/favicon-192.png',
-        badge: '/favicon-192.png',
-        tag: data.tag || 'notification',
-        data: data.data || {}
-      };
+/** What to show for a push: the message's own `data` (what the server sends), or a plain notification payload */
+function describePush(payload) {
+  const d = (payload && payload.data) || {};
+  const n = (payload && payload.notification) || {};
+  const title = d.title || n.title || (payload && payload.title) || 'College Tracker';
+  const body = d.body || n.body || (payload && payload.body) || '';
+  if (!d.title && !n.title && !(payload && payload.title) && !body) return null; // nothing worth showing
+  return {
+    title,
+    options: {
+      body,
+      icon: '/favicon-192.png',
+      badge: '/favicon-192.png',
+      // The Ping's own id is the tag, so a repeat for the same Ping replaces the first instead of stacking
+      tag: d.tag || n.tag || 'notification',
+      data: { url: safeUrl(d.url), pingId: d.pingId || null, type: d.type || null },
+    },
+  };
+}
 
-      event.waitUntil(self.registration.showNotification(title, options));
-    } catch (e) {
-      console.log('Error parsing push data:', e);
-    }
-  }
+self.addEventListener('push', (event) => {
+  event.waitUntil(
+    (async () => {
+      let payload = {};
+      try {
+        payload = event.data ? event.data.json() : {};
+      } catch (e) {
+        return;
+      }
+      const info = describePush(payload);
+      if (!info) return;
+      // The app is open in front of the person: it shows the Ping itself (from its live connection), so a system
+      // notification on top would only be a second copy of the same thing.
+      if (info.options.data.type === 'ping') {
+        const open = await clients.matchAll({ type: 'window', includeUncontrolled: true });
+        if (open.some((c) => c.visibilityState === 'visible')) return;
+      }
+      await self.registration.showNotification(info.title, info.options);
+    })(),
+  );
 });
 
-// Handle notification clicks
-self.addEventListener('notificationclick', event => {
+self.addEventListener('notificationclick', (event) => {
   event.notification.close();
-
-  if (event.action === 'open' || !event.action) {
-    event.waitUntil(
-      (async () => {
-        const notificationData = event.notification?.data || {};
-
-        // Construct target URL
-        let targetUrl = '/';
-        try {
-          if (notificationData.url) {
-            targetUrl = notificationData.url;
-          } else if (notificationData.subject) {
-            const params = new URLSearchParams({
-              subject: notificationData.subject || '',
-              time: notificationData.time || '',
-              day: notificationData.day || '',
-              type: notificationData.type || '',
-              fromNotification: 'true',
-            });
-            targetUrl = `/attendance/mark?${params.toString()}`;
-          }
-        } catch (err) {
-          console.error('Error constructing target URL:', err);
-          targetUrl = '/';
-        }
-
-        // Try to focus existing window or open new one
-        const windowClients = await clients.matchAll({ type: 'window', includeUncontrolled: true });
-        for (const client of windowClients) {
-          if (client.url.includes(targetUrl) && 'focus' in client) {
-            return client.focus();
-          }
-        }
-
-        if (clients.openWindow) {
-          return clients.openWindow(targetUrl);
-        }
-      })()
-    );
-  }
-});
-
-// Handle notification close
-self.addEventListener('notificationclose', event => {
-  console.log('Notification closed:', event.notification?.tag);
+  const data = event.notification.data || {};
+  const url = safeUrl(data.url);
+  event.waitUntil(
+    (async () => {
+      const open = await clients.matchAll({ type: 'window', includeUncontrolled: true });
+      const here = open.find((c) => 'focus' in c);
+      if (here) {
+        await here.focus();
+        // The app is already running: tell it which Ping, instead of reloading it
+        if (data.pingId) here.postMessage({ type: 'open-ping', id: data.pingId });
+        return;
+      }
+      if (clients.openWindow) return clients.openWindow(url);
+    })(),
+  );
 });
 
 // Service worker installation
 self.addEventListener('install', event => {
-  console.log('Service Worker installing...');
   self.skipWaiting();
 });
 
 // Service worker activation
 self.addEventListener('activate', event => {
-  console.log('Service Worker activating...');
   event.waitUntil(
     (async () => {
       // Drop saved shells from older versions of this worker
       for (const key of await caches.keys()) if (key.startsWith('shell-') && key !== SHELL) await caches.delete(key);
-      // Initialize Firebase when service worker activates
-      await initializeFirebase();
       // Claim all clients immediately
       await clients.claim();
-      console.log('Service Worker activated and ready');
     })()
   );
 });

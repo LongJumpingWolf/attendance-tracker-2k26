@@ -5,7 +5,6 @@ import {
   Bell,
   BellRinging,
   BellSlash,
-  CaretDown,
   DownloadSimple,
   Trash,
   UploadSimple,
@@ -13,7 +12,7 @@ import {
   Plus,
 } from "@phosphor-icons/react"
 import { inputClass, primaryButton, tintButton } from "./sheet"
-import { importNotificationSchedule, sendLocalNotification } from "@/lib/notifications"
+import { sendLocalNotification } from "@/lib/notifications"
 import { parseBackupFile, type BackupData } from "@/lib/backup-import"
 import type { Subject } from "@/lib/types"
 
@@ -31,10 +30,6 @@ interface NotificationsProps {
 
 export function NotificationsPanel({ supported, permission, onEnable, onToast }: NotificationsProps) {
   const [busy, setBusy] = useState(false)
-  const [advanced, setAdvanced] = useState(false)
-  const [json, setJson] = useState("")
-  const [errors, setErrors] = useState<string[]>([])
-  const [importing, setImporting] = useState(false)
 
   const on = permission === "granted"
   const blocked = permission === "denied"
@@ -57,17 +52,6 @@ export function NotificationsPanel({ supported, permission, onEnable, onToast }:
     }
   }
 
-  const runImport = async () => {
-    setErrors([])
-    setImporting(true)
-    const r = await importNotificationSchedule(json)
-    setImporting(false)
-    if (r.success) {
-      setJson("")
-      onToast("Reminder schedule imported")
-    } else setErrors(r.errors)
-  }
-
   return (
     <div className="space-y-6">
       <div className="rounded-2xl bg-secondary p-5 text-center">
@@ -85,10 +69,10 @@ export function NotificationsPanel({ supported, permission, onEnable, onToast }:
           {!supported
             ? "This browser or device can't show notifications. Installing the app to your home screen may help."
             : on
-              ? "Your class reminders can reach you, even when the app is closed."
+              ? "Class reminders appear while the app is open. They can't reach you once it is closed."
               : blocked
                 ? "You said no earlier, so the browser won't ask again. Tap the lock icon in the address bar, set Notifications to Allow, then come back."
-                : "Turn them on to get a nudge before class and to be told when a mate replies."}
+                : "Turn them on to get a nudge before class while the app is open, and to be told when a mate replies."}
         </p>
         {supported && !on && !blocked && (
           <button onClick={enable} disabled={busy} className={`${primaryButton} mt-4 disabled:opacity-50`}>
@@ -99,44 +83,6 @@ export function NotificationsPanel({ supported, permission, onEnable, onToast }:
           <button onClick={test} className={`${tintButton} mt-4 w-full h-12 bg-card text-[16px]`}>
             Send me a test
           </button>
-        )}
-      </div>
-
-      <div>
-        <button
-          onClick={() => setAdvanced(!advanced)}
-          aria-expanded={advanced}
-          className="w-full flex items-center justify-between rounded-2xl bg-secondary px-4 py-3.5 text-left"
-        >
-          <span>
-            <span className="block text-[16px] font-semibold">Import a reminder schedule</span>
-            <span className="block text-[13px] text-mute">Advanced: paste a schedule as JSON</span>
-          </span>
-          <CaretDown weight="bold" className={`w-4 h-4 text-mute transition-transform ${advanced ? "rotate-180" : ""}`} />
-        </button>
-        {advanced && (
-          <div className="mt-3">
-            <textarea
-              value={json}
-              onChange={(e) => {
-                setJson(e.target.value)
-                setErrors([])
-              }}
-              spellCheck={false}
-              rows={6}
-              placeholder={'{ "timezone": "Asia/Kolkata", "subjects": [ { "title": "Pathology", "message": "Class starts", "schedule": { "monday": ["10:00"] } } ] }'}
-              className="w-full rounded-xl bg-secondary p-3 text-[13px] leading-snug font-mono outline-none placeholder:text-mute focus:ring-1 focus:ring-ink/40"
-            />
-            {errors.map((e) => (
-              <p key={e} className="text-[13px] text-bad mt-1">
-                {e}
-              </p>
-            ))}
-            <p className={`${note} mt-2`}>This replaces the push schedule stored on the server for this device.</p>
-            <button onClick={runImport} disabled={importing || !json.trim()} className={`${primaryButton} mt-3 disabled:opacity-40`}>
-              {importing ? "Importing…" : "Import schedule"}
-            </button>
-          </div>
         )}
       </div>
     </div>
@@ -227,28 +173,16 @@ export function TagsPanel({ tags, subjects, onAdd, onDelete }: TagsProps) {
 interface BackupProps {
   /** The lossless JSON backup */
   onSaveFull: () => void
-  /** The older spreadsheet export (ZIP of Excel files) */
-  onExport: () => Promise<void>
   onImportData: (data: BackupData) => void
   onToast: (message: string) => void
 }
 
 const count = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`
 
-export function BackupPanel({ onSaveFull, onExport, onImportData, onToast }: BackupProps) {
-  const [exporting, setExporting] = useState(false)
+export function BackupPanel({ onSaveFull, onImportData, onToast }: BackupProps) {
   const [reading, setReading] = useState(false)
   const [pending, setPending] = useState<BackupData | null>(null)
   const input = useRef<HTMLInputElement>(null)
-
-  const doExport = async () => {
-    setExporting(true)
-    try {
-      await onExport()
-    } finally {
-      setExporting(false)
-    }
-  }
 
   const pick = async (file: File | undefined) => {
     if (!file) return
@@ -270,7 +204,8 @@ export function BackupPanel({ onSaveFull, onExport, onImportData, onToast }: Bac
       count(pending.subjects.length, "subject", "subjects"),
       count(pending.tasks.length, "deadline", "deadlines"),
       count(pending.tags.length, "tag", "tags"),
-      ...(pending.full ? [count(pending.mates?.length ?? 0, "proxy-mate", "proxy-mates"), count(pending.reminders?.length ?? 0, "reminder", "reminders")] : []),
+      count(pending.mates?.length ?? 0, "proxy-mate", "proxy-mates"),
+      count(pending.reminders?.length ?? 0, "reminder", "reminders"),
     ]
     return (
       <div>
@@ -280,13 +215,7 @@ export function BackupPanel({ onSaveFull, onExport, onImportData, onToast }: Bac
           </span>
           <h3 className="text-[20px] font-bold tracking-tight mt-3">Replace your data?</h3>
           <p className="text-[15px] text-mute mt-1.5 leading-snug">This backup has {parts.join(", ")}. Restoring it replaces what is in the app now.</p>
-          {pending.full ? (
-            <p className="text-[13px] text-mute mt-2 leading-snug">Full backup: class days, every mark, plans, mates and reminders come back exactly as saved.</p>
-          ) : (
-            <p className="text-[13px] text-mute mt-2 leading-snug">
-              This is an older spreadsheet backup. It has no class days, mark history, mates or reminders. Subjects with the same name keep their class days and history; mates and reminders stay as they are.
-            </p>
-          )}
+          <p className="text-[13px] text-mute mt-2 leading-snug">Class days, every mark, plans, mates and reminders come back exactly as saved.</p>
         </div>
         <div className="grid grid-cols-2 gap-2 mt-4">
           <button onClick={() => setPending(null)} className={`${tintButton} h-[52px] text-[17px]`}>
@@ -328,11 +257,8 @@ export function BackupPanel({ onSaveFull, onExport, onImportData, onToast }: Bac
           <span className="block text-[13px] text-mute leading-snug">Pick a backup file. You&rsquo;ll see what&rsquo;s inside before anything changes.</span>
         </span>
       </button>
-      <input ref={input} type="file" accept=".json,.zip,.csv" onChange={(e) => pick(e.target.files?.[0])} className="hidden" />
+      <input ref={input} type="file" accept=".json" onChange={(e) => pick(e.target.files?.[0])} className="hidden" />
 
-      <button onClick={doExport} disabled={exporting} className="block mx-auto pt-2 text-[15px] font-medium text-mute disabled:opacity-50">
-        {exporting ? "Preparing…" : "Export spreadsheets (ZIP) instead"}
-      </button>
       <p className={`${note} pt-1 text-center`}>Keep a backup somewhere safe before you switch phones or start a new year.</p>
     </div>
   )

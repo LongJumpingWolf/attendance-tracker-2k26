@@ -13,6 +13,7 @@ const STATUS: Record<CloudSync["status"], { text: string; cls: string }> = {
   syncing: { text: "Syncing…", cls: "bg-ink/[0.07] text-mute" },
   synced: { text: "Up to date", cls: "bg-good/15 text-good" },
   offline: { text: "Offline", cls: "bg-ink/[0.07] text-mute" },
+  "too-large": { text: "Not backed up", cls: "bg-bad/10 text-bad" },
 }
 
 /** Settings > Sync between browsers: sign in with Google and your data follows you */
@@ -51,7 +52,38 @@ export default function SyncPanel({ sync, onToast }: { sync: CloudSync; onToast:
         </p>
       )}
 
-      {sync.account ? (
+      {sync.switchPlan ? (
+        <section>
+          <h3 className={label}>This Google account is already set up</h3>
+          <div className={card}>
+            <p className="text-[15px] font-semibold leading-snug">Use it here, and reconnect your mates?</p>
+            <p className="text-[13px] text-mute mt-1 leading-snug">
+              Your Google account was first used on another device, so this device will switch to it. The{" "}
+              {sync.switchPlan.carry.length === 1 ? "mate" : `${sync.switchPlan.carry.length} mates`} you connected here (
+              {sync.switchPlan.carry.map((c) => c.name).join(", ")}) will be asked to connect with your account again. Their history with you is kept.
+            </p>
+            <div className="grid gap-2 mt-4">
+              <button
+                disabled={busy}
+                onClick={async () => {
+                  setBusy(true)
+                  const problem = await sync.confirmSwitch()
+                  setBusy(false)
+                  if (problem) setError(problem)
+                  else onToast("Signed in. Your mates have been asked to reconnect.")
+                }}
+                className={primaryButton}
+              >
+                {busy ? "Switching…" : "Switch and reconnect"}
+              </button>
+              <button disabled={busy} onClick={sync.cancelSwitch} className={tintButton}>
+                Cancel
+              </button>
+            </div>
+            {error && <p className="text-[13px] text-bad mt-2 leading-snug">{error}</p>}
+          </div>
+        </section>
+      ) : sync.account ? (
         <>
           <section>
             <h3 className={label}>Account</h3>
@@ -67,6 +99,9 @@ export default function SyncPanel({ sync, onToast }: { sync: CloudSync; onToast:
                 {sync.status === "offline" && sync.pending ? "Saved here, will sync" : sync.status === "synced" && sync.realtime ? "Up to date · live" : STATUS[sync.status].text}
               </span>
             </div>
+            {sync.status === "too-large" && (
+              <p className="text-[13px] text-bad font-medium mt-2 px-1 leading-snug">Cloud backup is too large. Your data is safe on this device.</p>
+            )}
             <button
               onClick={async () => onToast((await sync.syncNow()) ? "Updated from your other browser" : "Everything is up to date")}
               className={`${tintButton} w-full mt-2`}

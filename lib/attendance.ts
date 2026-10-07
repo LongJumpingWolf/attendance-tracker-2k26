@@ -63,6 +63,47 @@ export function getAttendance(attended: number, missed: number, requirement: num
   }
 }
 
+/**
+ * Can this class be skipped? This is the rule the "Can I skip tomorrow?" widget already used, moved here so every screen
+ * reads the same answer: no marks yet, fine to skip (not below the minimum and a skip to spare), or must attend.
+ */
+export type SkipVerdict = "nodata" | "skip" | "attend"
+export const skipVerdict = (info: AttendanceInfo): SkipVerdict =>
+  info.total === 0 ? "nodata" : info.status !== "risk" && (info.canSkip === null || info.canSkip > 0) ? "skip" : "attend"
+
+export interface ClassVerdict {
+  kind: "skip" | "must" | "reach" | "nodata"
+  label: string
+  /** The existing short note, e.g. "2 skips available", "No skips left", "Attend next 3" */
+  detail: string
+  /** Current attendance %, or null when nothing is marked yet (so no misleading 0%) */
+  pct: number | null
+}
+
+/** The answer to "can I afford to miss this class?" for a subject, from its current marks */
+export function classVerdict(s: Subject): ClassVerdict {
+  const info = getAttendance(s.attended, s.missed, s.requirement)
+  const v = skipVerdict(info)
+  if (v === "nodata") return { kind: "nodata", label: "NO MARKS YET", detail: "Mark a class to see where you stand", pct: null }
+  if (v === "skip") return { kind: "skip", label: "SAFE TO SKIP", detail: info.short, pct: info.pct }
+  if (info.status === "risk") return { kind: "reach", label: "ATTEND TO REACH TARGET", detail: info.short, pct: info.pct }
+  return { kind: "must", label: "MUST ATTEND", detail: info.short, pct: info.pct }
+}
+
+/** A subject that needs a look: below its minimum, or exactly at it with no skip to spare */
+export const needsAttention = (info: AttendanceInfo) => info.status === "risk" || info.status === "edge"
+
+/** Sorts least safe first: how far each subject is from its minimum. Subjects with no marks yet go last. */
+export const bySafety = (a: Subject, b: Subject) => {
+  const gap = (s: Subject) => (s.attended + s.missed > 0 ? getAttendance(s.attended, s.missed, s.requirement).pct - s.requirement : 999)
+  return gap(a) - gap(b)
+}
+
+/** The latest marks recorded for a subject, newest first (a mark with no class time sorts before the timed ones that day) */
+export function recentMarks(s: Subject, n = 6): LogEntry[] {
+  return [...(s.log || [])].sort((a, b) => (a.d === b.d ? (b.t ?? "").localeCompare(a.t ?? "") : a.d < b.d ? 1 : -1)).slice(0, n)
+}
+
 /** Total classes you could still skip across every subject */
 export function skipBudget(subjects: Subject[]): number {
   return subjects.reduce((n, s) => n + (getAttendance(s.attended, s.missed, s.requirement).canSkip ?? 0), 0)
@@ -127,13 +168,45 @@ export interface ClassSlot {
   slot: Slot
 }
 
-/** Classes happening on the given date, earliest first */
+/** Classes happening on the given date, earliest first. Each (subject, start time) is one class, listed once. */
 export function classesOn(subjects: Subject[], date: Date): ClassSlot[] {
   const day = date.getDay()
+  const seen = new Set<string>()
   return subjects
     .flatMap((subject) => (subject.slots || []).filter((slot) => slot.day === day).map((slot) => ({ subject, slot })))
+    .filter(({ subject, slot }) => {
+      const key = `${subject.id}@${slot.start}`
+      if (seen.has(key)) return false
+      seen.add(key)
+      return true
+    })
     .sort((a, b) => toMin(a.slot.start) - toMin(b.slot.start))
 }
+
+/** A class on a given day, with its recorded state (null = not marked yet) */
+export interface DayClass extends ClassSlot {
+  key: string
+  state: "P" | "A" | null
+}
+
+/**
+ * What the Today screen is made of: only classes that are really on the timetable for that day, never a subject just
+ * because it exists. A subject with no timetable, or none on this day, has no class today.
+ */
+export function dayClasses(subjects: Subject[], date: Date): DayClass[] {
+  const d = localDate(date)
+  return classesOn(subjects, date).map((c) => ({ ...c, key: `${c.subject.id}@${c.slot.start}`, state: markFor(c.subject, d, c.slot.start) }))
+}
+
+/** How many of the day's classes still need a mark, and whether the day is done (there were classes and none is left) */
+export function dayProgress(classes: DayClass[]) {
+  const toMark = classes.filter((c) => c.state === null).length
+  return { total: classes.length, toMark, allDone: classes.length > 0 && toMark === 0 }
+}
+
+/** The mark details that tie a record to one class. Today and Subject Detail both use this, so they write the same record. */
+export const slotMeta = (slot: Slot | null | undefined): MarkMeta | undefined =>
+  slot ? { t: slot.start, ...(slot.kind ? { k: slot.kind } : {}) } : undefined
 
 /* ---------- marking ---------- */
 
@@ -156,14 +229,11 @@ export interface MarkMeta {
   by?: string
 }
 
-/** Append a mark (allows several lectures of one subject on the same day) */
-export function withMark(s: Subject, kind: "attended" | "missed", date: string, meta?: MarkMeta): Subject {
-  const entry: LogEntry = { d: date, s: kind === "attended" ? "P" : "A", ...(meta?.t ? { t: meta.t } : {}), ...(meta?.k ? { k: meta.k } : {}), ...(meta?.by ? { by: meta.by } : {}) }
-  const log = [...(s.log || []), entry].slice(-400)
-  return kind === "attended" ? { ...s, attended: s.attended + 1, log } : { ...s, missed: s.missed + 1, log }
-}
-
-/** Set (or clear, with null) the status of one class on one date, keeping the counts consistent */
+/**
+ * Set (or clear, with null) the status of one class on one date, keeping the counts consistent. A class is one
+ * (date, start time): setting it again with the same status changes nothing, and changing it moves the count across
+ * instead of adding another, so the same class can never be counted twice.
+ */
 export function withSet(s: Subject, date: string, status: "P" | "A" | null, meta?: MarkMeta): Subject {
   const t = meta?.t ?? ""
   const cur = markFor(s, date, t)
@@ -183,6 +253,27 @@ export function withSet(s: Subject, date: string, status: "P" | "A" | null, meta
   if (status === "A") missed += 1
   if (status) log.push({ d: date, s: status, ...(meta?.t ? { t: meta.t } : {}), ...(meta?.k ? { k: meta.k } : {}), ...(meta?.by ? { by: meta.by } : {}) })
   return { ...s, attended, missed, log: log.slice(-400) }
+}
+
+/** The mark currently recorded for one class (date + start time), or null */
+export function entryFor(s: Subject, date: string, t = ""): LogEntry | null {
+  const entries = (s.log || []).filter((x) => x.d === date && (x.t ?? "") === t)
+  return entries.length ? entries[entries.length - 1] : null
+}
+
+/** Puts one class back to what it was (a previous entry, or unmarked). Touches nothing else. */
+export function restoreMark(s: Subject, date: string, t: string, prev: LogEntry | null): Subject {
+  return withSet(s, date, prev ? prev.s : null, prev ? { t: prev.t, k: prev.k, by: prev.by } : { t })
+}
+
+/**
+ * Marks one class and returns how to take exactly that back: the undo restores that class's own previous record, so
+ * other classes of the same subject, marked before or after, are never touched.
+ */
+export function markWithUndo(s: Subject, date: string, status: "P" | "A" | null, meta?: MarkMeta) {
+  const t = meta?.t ?? ""
+  const prev = entryFor(s, date, t)
+  return { next: withSet(s, date, status, meta), undo: (current: Subject) => restoreMark(current, date, t, prev) }
 }
 
 /* ---------- planning future lectures ---------- */

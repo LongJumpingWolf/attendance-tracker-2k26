@@ -1,16 +1,6 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Notification schedules: each belongs to the (anonymous) account that saved it.
-    // The scheduler reads them with admin credentials, which bypass these rules.
-    match /notificationSchedules/{scheduleId} {
-      allow create: if request.auth != null
-                    && request.resource.data.owner == request.auth.uid
-                    && request.resource.data.fcmToken is string
-                    && request.resource.data.fcmToken.size() > 0;
-      allow read, update, delete: if request.auth != null && resource.data.owner == request.auth.uid;
-    }
-
     // ---- Friend connections (anonymous auth) ----
 
     // Public profile: just a display name. Anyone signed in can read it (needed to show who a QR belongs to),
@@ -38,9 +28,13 @@ service cloud.firestore {
     match /requests/{requestId} {
       allow read: if request.auth != null && request.auth.uid in resource.data.participants;
       allow create: if request.auth != null
+                    && request.resource.data.keys().hasOnly(['from', 'to', 'fromName', 'toName', 'participants', 'status', 'createdAt'])
                     && request.resource.data.from == request.auth.uid
+                    && request.resource.data.to is string
                     && request.resource.data.to != request.auth.uid
                     && request.resource.data.participants == [request.resource.data.from, request.resource.data.to]
+                    && request.resource.data.fromName is string && request.resource.data.fromName.size() <= 40
+                    && request.resource.data.toName is string && request.resource.data.toName.size() <= 40
                     && request.resource.data.status == 'pending';
       // Only the person who was asked can accept or decline, and only the status may change
       allow update: if request.auth != null
@@ -52,45 +46,124 @@ service cloud.firestore {
     }
 
     // "Did you mark me present?" The person who was away asks a mate about specific classes.
-    // Only accepted mates can send one: the ping names the accepted connection (requestId), and the rules
-    // check that it is accepted and that sender and receiver are its two people.
-    // Only the mate who was asked can answer, and only the answers (items) and status may change.
+    //
+    // The server is the security boundary; nothing here relies on the app hiding a button.
+    //  * Only the asker can create a Ping, only to someone they have an ACCEPTED connection with (the Ping names that
+    //    connection and the rules read it), for a class day within the last few days, with the classes in the shape the
+    //    app writes. The id is chosen by the app (so a retry can't make a second Ping) and must be a plain token.
+    //  * createdAt is the server's clock, and a Ping lives for 3 days from it. After that nobody can answer it.
+    //  * Only the mate who was asked can answer, only while it is still asking and unexpired, and the ONLY thing that
+    //    may change is each class's `answer` (yes / no). Who asked, which classes, which day: all frozen.
+    //  * The asker then takes a short LEASE on the answer (claimedBy / claimedAt), applies it on their device, and only
+    //    then marks it processed. So a Ping is never "processed" before its result is safely applied, and two devices
+    //    can't both hold the lease. Processed is final.
+    //  * An answered Ping can't be deleted until it is processed, so a result can't be thrown away before it is applied.
     match /pings/{pingId} {
-      function acceptedMates() {
-        let req = get(/databases/$(database)/documents/requests/$(request.resource.data.requestId)).data;
+      function signedIn() { return request.auth != null; }
+      function validId() { return pingId.matches('^[A-Za-z0-9_-]{8,64}$'); }
+
+      // The connection the Ping names: accepted, and made of exactly these two people
+      function connected(d) {
+        let req = get(/databases/$(database)/documents/requests/$(d.requestId)).data;
         return req.status == 'accepted'
-            && request.resource.data.from in req.participants
-            && request.resource.data.to in req.participants;
+            && req.participants.size() == 2
+            && d.from in req.participants
+            && d.to in req.participants;
       }
 
-      allow read: if request.auth != null && request.auth.uid in resource.data.participants;
-      allow create: if request.auth != null
+      // One class as the asker writes it: an unanswered question, with only the fields the app uses.
+      // (Kept short, and a Ping holds at most 8 classes, on purpose: every class is checked, and Firestore evaluates at most
+      // 1,000 expressions per request. 10 classes already reach that limit; tests/rules/pings.test.ts keeps us clear of it.)
+      function newItem(i) {
+        let items = request.resource.data.items;
+        return items.size() <= i
+            || (items[i].keys().hasOnly(['key', 'subjectId', 'name', 't', 'answer'])
+                && items[i].answer == null
+                && items[i].key is string
+                && items[i].subjectId is string
+                && (!('t' in items[i]) || items[i].t is string)
+                && items[i].name is string && items[i].name.size() <= 60);
+      }
+
+      // One class when it is answered: identical to what was asked, except the answer
+      function answeredItem(i) {
+        let now = request.resource.data.items;
+        let was = resource.data.items;
+        return now.size() <= i
+            || (now[i].diff(was[i]).affectedKeys().hasOnly(['answer']) && now[i].answer in ['yes', 'no']);
+      }
+
+      // 3 days from the moment the server created it
+      function lifetimeEnds() { return resource.data.createdAt + duration.value(3, 'd'); }
+
+      // The class day has to be recent: not older than the Ping's lifetime, not more than a day ahead (time zones)
+      function dayIsRecent(day) {
+        let at = timestamp.date(int(day[0:4]), int(day[5:7]), int(day[8:10]));
+        return at >= request.time - duration.value(3, 'd') && at <= request.time + duration.value(1, 'd');
+      }
+
+      allow read: if signedIn() && request.auth.uid in resource.data.participants;
+
+      allow create: if signedIn()
+                    && validId()
+                    && request.resource.data.keys().hasOnly(['from', 'to', 'fromName', 'toName', 'participants', 'requestId', 'date', 'items', 'status', 'createdAt'])
                     && request.resource.data.from == request.auth.uid
+                    && request.resource.data.to is string
                     && request.resource.data.to != request.auth.uid
                     && request.resource.data.participants == [request.resource.data.from, request.resource.data.to]
                     && request.resource.data.requestId is string
-                    && acceptedMates()
+                    && connected(request.resource.data)
                     && request.resource.data.status == 'asking'
-                    && request.resource.data.date is string
-                    && request.resource.data.items is list
-                    && request.resource.data.items.size() > 0
-                    && request.resource.data.items.size() <= 12
+                    && request.resource.data.createdAt == request.time
                     && request.resource.data.fromName is string && request.resource.data.fromName.size() <= 40
                     && request.resource.data.toName is string && request.resource.data.toName.size() <= 40
-                    && request.resource.data.date.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$');
-      allow update: if request.auth != null
+                    && request.resource.data.date is string
+                    && request.resource.data.date.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$')
+                    && dayIsRecent(request.resource.data.date)
+                    && request.resource.data.items is list
+                    && request.resource.data.items.size() > 0
+                    && request.resource.data.items.size() <= 8
+                    && newItem(0) && newItem(1) && newItem(2) && newItem(3) && newItem(4) && newItem(5) && newItem(6) && newItem(7);
+
+      // The mate answers: yes / no on each class, nothing else
+      allow update: if signedIn()
                     && resource.data.to == request.auth.uid
                     && resource.data.status == 'asking'
+                    && request.time < lifetimeEnds()
+                    && resource.data.createdAt <= request.time
+                    && resource.data.items.size() <= 8
+                    && connected(resource.data)
                     && request.resource.data.status == 'answered'
+                    && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['items', 'status', 'respondedAt'])
+                    && request.resource.data.respondedAt == request.time
                     && request.resource.data.items.size() == resource.data.items.size()
-                    && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['items', 'status', 'respondedAt']);
-      // The person who asked claims an answered ping before applying it, so it is applied once: answered -> processed
-      allow update: if request.auth != null
+                    && answeredItem(0) && answeredItem(1) && answeredItem(2) && answeredItem(3) && answeredItem(4) && answeredItem(5) && answeredItem(6) && answeredItem(7);
+
+      // The asker takes (or renews) the lease on an answer. Free, their own, or run out (2 minutes, by the server's clock).
+      allow update: if signedIn()
+                    && resource.data.from == request.auth.uid
+                    && resource.data.status == 'answered'
+                    && request.resource.data.status == 'answered'
+                    && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['claimedBy', 'claimedAt'])
+                    && request.resource.data.claimedBy is string
+                    && request.resource.data.claimedBy.matches('^[A-Za-z0-9_-]{8,64}$')
+                    && request.resource.data.claimedAt == request.time
+                    && (resource.data.get('claimedAt', null) == null
+                        || resource.data.get('claimedBy', '') == request.resource.data.claimedBy
+                        || resource.data.claimedAt + duration.value(2, 'm') <= request.time);
+
+      // The asker finishes: the answer has been applied, so it is processed, for good
+      allow update: if signedIn()
                     && resource.data.from == request.auth.uid
                     && resource.data.status == 'answered'
                     && request.resource.data.status == 'processed'
-                    && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'processedAt']);
-      allow delete: if request.auth != null && request.auth.uid in resource.data.participants;
+                    && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'processedAt'])
+                    && request.resource.data.processedAt == request.time;
+
+      // Either person can withdraw or clear a Ping, except an answer that hasn't been applied yet
+      allow delete: if signedIn()
+                    && request.auth.uid in resource.data.participants
+                    && resource.data.status != 'answered';
     }
 
     // Push tokens: one device token per account, used only by the Cloud Functions (admin credentials)
