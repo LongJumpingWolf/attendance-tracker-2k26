@@ -171,8 +171,8 @@ select throws_ok($$
 -- The Data API roles have no access before Phase 3
 select is(
   (select count(*)::int from information_schema.role_table_grants
-    where table_schema = 'public' and grantee in ('anon', 'authenticated')), 0,
-  'anon and authenticated hold no grants on application tables');
+    where table_schema = 'public' and grantee in ('anon', 'authenticated') and privilege_type <> 'SELECT'), 0,
+  'anon and authenticated hold no write grants on application tables (Phase 3 adds SELECT on four; see security.test.sql)');
 
 select * from finish();
 rollback;

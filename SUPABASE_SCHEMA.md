@@ -1,5 +1,7 @@
 # SUPABASE_SCHEMA.md
 
+> **Phase 3 update:** RLS, read policies, grants and the 16 RPCs now exist (migrations `20261007130100` to `130500`). They are documented in `PHASE3_SECURITY_MATRIX.md`; this file describes the tables as built in Phase 2B, and "no RLS / no RPCs" below is the Phase 2B state.
+
 The PostgreSQL schema for the Firebase to Supabase migration, as built in Phase 2B. **Local only**: applied to the local Docker database, never to a hosted project. No RLS, RPCs, triggers, application code or data exist yet.
 
 Governing documents: `MIGRATION_DECISIONS.md` (wins) over `MIGRATION_PLAN.md` section 12.2. Source of the migrations: `supabase/migrations/`.
