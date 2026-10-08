@@ -48,6 +48,8 @@ export type ShadowPing =
 
 export type ShadowPushToken = { op: "save"; uid: string; token: string } | { op: "remove"; uid: string }
 
+export type ShadowInvite = { op: "create"; uid: string; token: string; name: string; minutes: number } | { op: "remove"; token: string }
+
 export interface ShadowWriter {
   /** False for the no-op. Callers may skip building payloads when this is false. */
   readonly active: boolean
@@ -56,6 +58,7 @@ export interface ShadowWriter {
   connection(w: ShadowConnection): Promise<void>
   ping(w: ShadowPing): Promise<void>
   pushToken(w: ShadowPushToken): Promise<void>
+  invite(w: ShadowInvite): Promise<void>
 }
 
 /** Does nothing, to nothing. The only writer that exists in Phase 6A. */
@@ -66,6 +69,7 @@ export const noopShadowWriter: ShadowWriter = {
   connection: async () => {},
   ping: async () => {},
   pushToken: async () => {},
+  invite: async () => {},
 }
 
 /**
@@ -93,10 +97,11 @@ export function isolateShadowFailures(writer: ShadowWriter, onError?: (op: strin
     connection: guard("connection", (x: ShadowConnection) => writer.connection(x)),
     ping: guard("ping", (x: ShadowPing) => writer.ping(x)),
     pushToken: guard("pushToken", (x: ShadowPushToken) => writer.pushToken(x)),
+    invite: guard("invite", (x: ShadowInvite) => writer.invite(x)),
   }
 }
 
-/** Phase 6A: always the no-op. A later phase may choose a real writer here, behind its own flag. */
+/** Always the no-op. The real writer (Phase 6B, lib/backend/shadow-supabase.ts) is built only by lib/backend/index.ts, behind its flags. */
 export function getShadowWriter(): ShadowWriter {
   return noopShadowWriter
 }

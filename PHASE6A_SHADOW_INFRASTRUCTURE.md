@@ -152,3 +152,7 @@ Not changed: Firebase adapter, Firebase rules, functions, Firebase Auth code, In
 | Local Supabase | `supabase db reset` applied all migrations; `supabase test db`: 228 of 228 pass |
 
 **Zero production shadow traffic:** the flag is off and nothing in the application imports the shadow writer or the reconciliation model; the guard refuses every Supabase call while the flag is off; tests with `fetch` and `XMLHttpRequest` stubbed to throw prove no request is made; the production build contains no `supabase.co` URL; `.env.local` (git-ignored) contains no Supabase, backend or bridge variable, so `NEXT_PUBLIC_BACKEND` is unset (Firebase) and the bridge is off; no credentials were added; the Firebase adapter is byte-identical (hash-pinned).
+
+## 16. Update (Phase 6B)
+
+The real shadow writer, the Firebase wrapper and the shadow flags now exist (see `PHASE6B_SHADOW_DUAL_WRITE.md`). They are off by default and Firebase remains authoritative. Sections 7 and 8 above describe the 6A state: the interface and the no-op, which `getShadowWriter()` still returns.

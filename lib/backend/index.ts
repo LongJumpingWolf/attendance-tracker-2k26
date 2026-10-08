@@ -17,7 +17,10 @@ import { BackendError } from "./errors"
 import type { Backend, BackendKind } from "./contracts"
 import { createFirebaseBackend } from "./firebase"
 import { createSupabaseBackend, createSupabaseGuard, readBuildSupabaseConfig } from "./supabase"
-import { authBridgeEnabled } from "./flags"
+import { anyShadowFlag, authBridgeEnabled, shadowFlags, type ShadowFlags } from "./flags"
+import { isolateShadowFailures } from "./shadow"
+import { createSupabaseShadowWriter } from "./shadow-supabase"
+import { withShadow } from "./shadow-backend"
 import { createAuthBridge, createFetchBootstrapTransport, type AuthBridge } from "./supabase-auth"
 
 export * from "./contracts"
@@ -61,19 +64,42 @@ export function getAuthBridge(): AuthBridge {
   return bridge
 }
 
+/**
+ * Firebase, optionally with the Phase 6B shadow writer around it. With every shadow flag off (the default), or the auth
+ * bridge off, or the Supabase configuration missing, this returns `base` itself: the same object, nothing wrapped.
+ */
+function firebaseWithOptionalShadow(base: Backend, flags: ShadowFlags): Backend {
+  if (!anyShadowFlag(flags) || !authBridgeEnabled() || !readBuildSupabaseConfig()) return base
+  const guard = createSupabaseGuard({ flagEnabled: authBridgeEnabled, config: readBuildSupabaseConfig, bridge: getAuthBridge() })
+  const writer = createSupabaseShadowWriter({
+    guard,
+    config: readBuildSupabaseConfig,
+    currentUid: () => {
+      try {
+        return getAuth(app).currentUser?.uid ?? null
+      } catch {
+        return null
+      }
+    },
+  })
+  return withShadow(base, isolateShadowFailures(writer), flags)
+}
+
 let cached: Backend | null = null
-let cachedKind: BackendKind | null = null
+let cachedKey: string | null = null
 let override: Backend | null = null
 
 export function getBackend(): Backend {
   if (override) return override
   const kind = configured() // throws on an invalid value: fail closed
-  if (cached && cachedKind === kind) return cached
+  const flags = shadowFlags()
+  const key = `${kind}|${flags.sync}|${flags.social}|${flags.push}|${authBridgeEnabled()}`
+  if (cached && cachedKey === key) return cached
   cached =
     kind === "supabase"
       ? createSupabaseBackend({ guard: createSupabaseGuard({ flagEnabled: authBridgeEnabled, config: readBuildSupabaseConfig, bridge: getAuthBridge() }) })
-      : createFirebaseBackend({ db, ensureSignedIn })
-  cachedKind = kind
+      : firebaseWithOptionalShadow(createFirebaseBackend({ db, ensureSignedIn }), flags)
+  cachedKey = key
   return cached
 }
 

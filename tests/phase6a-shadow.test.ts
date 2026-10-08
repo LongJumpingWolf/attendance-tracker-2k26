@@ -32,8 +32,9 @@ describe("the shadow writer defaults to a no-op, and is connected to nothing", (
     expect(net).not.toHaveBeenCalled()
     vi.unstubAllGlobals()
   })
-  it("no application file uses the shadow writer or the reconciliation model: nothing can emit a shadow write", () => {
-    const users = ["app", "components", "hooks", "lib"].flatMap(walk).filter((f) => !f.endsWith("lib/backend/shadow.ts") && !f.endsWith("lib/backend/reconcile.ts")).filter((f) => /backend\/(shadow|reconcile)|from\s+["']\.\/(shadow|reconcile)["']/.test(text(f)))
+  it("no application file uses the shadow writer or the reconciliation model: only lib/backend wires them (Phase 6B), behind flags", () => {
+    // Phase 6B: lib/backend/index.ts builds the real writer and wraps the Firebase backend, only when the shadow flags are on.
+    const users = ["app", "components", "hooks", "lib"].flatMap(walk).filter((f) => !f.startsWith("lib/backend/")).filter((f) => /backend\/(shadow|reconcile)/.test(text(f)))
     expect(users).toEqual([])
   })
   it("the shadow and reconcile modules import no backend library and no transport: they cannot reach anything", () => {
@@ -53,6 +54,7 @@ describe("the shadow writer defaults to a no-op, and is connected to nothing", (
       connection: async () => {},
       ping: async () => Promise.reject(new Error("x")),
       pushToken: async () => {},
+      invite: async () => {},
     }
     const errors: string[] = []
     const w = isolateShadowFailures(boom, (op) => errors.push(op))
