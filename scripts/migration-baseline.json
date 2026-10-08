@@ -1,8 +1,8 @@
 {
   "_comment": "Phase 0 baseline, measured at commit 3644948 with no test edited. The health check fails if a suite reports FEWER passing tests than this (a deleted or skipped test is a regression), or any failure. Raise numbers when tests are ADDED; never lower them.",
   "commit": "3644948",
-  "unitNote": "177 tests in 15 files at 3644948, plus 55 migration-invariants tests added in Phase 1 (16 files, 232), plus 72 backend adapter, selection and architecture tests in Phase 4A (19 files, 304), plus 45 auth-bridge, guard, shadow-interface and reconciliation tests in Phase 6A (21 files, 349), plus 37 shadow dual-write tests in Phase 6B (22 files, 386).",
-  "unit": { "files": 22, "tests": 386 },
+  "unitNote": "177 tests in 15 files at 3644948, plus 55 migration-invariants tests added in Phase 1 (16 files, 232), plus 72 backend adapter, selection and architecture tests in Phase 4A (19 files, 304), plus 45 auth-bridge, guard, shadow-interface and reconciliation tests in Phase 6A (21 files, 349), plus 37 shadow dual-write tests in Phase 6B (22 files, 386), plus 46 initial-import tooling tests in Phase 6C (23 files, 432).",
+  "unit": { "files": 23, "tests": 432 },
   "rules": { "files": 4, "tests": 64 },
   "lint": { "errors": 0, "maxWarnings": 75 },
   "knownFlaky": [

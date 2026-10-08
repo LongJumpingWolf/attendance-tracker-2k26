@@ -126,3 +126,19 @@ SUPABASE — NOT CONNECTED
 PRODUCTION DATA — UNCHANGED
 FIREBASE — NOT RETIRED
 ROLLBACK — FULLY AVAILABLE
+
+## 10. Status update after Phase 6C (initial import tooling)
+
+Phases 2 to 5 (local schema, security, repository boundary, Auth spike) and 6A to 6C are done and committed on `migration/supabase`. Phase 6C added the export / transform / validate / import / verify tooling (`PHASE6C_INITIAL_IMPORT.md`).
+
+```
+CURRENT MIGRATION STATUS:
+PHASE 6C — INITIAL IMPORT TOOLING COMPLETE (NOT RUN AGAINST PRODUCTION)
+APPLICATION BACKEND — STILL FIREBASE (authoritative)
+SUPABASE — A COPY ONLY; production project not touched; no import performed
+SHADOW / BRIDGE FLAGS — ALL OFF
+PRODUCTION DATA — UNCHANGED
+FIREBASE — NOT RETIRED
+ROLLBACK — FULLY AVAILABLE
+NEXT — owner steps in PHASE6C_INITIAL_IMPORT.md section 12 (read-only key, schema check, dry run, import, verify)
+```

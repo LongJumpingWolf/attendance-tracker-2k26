@@ -31,3 +31,10 @@ next-env.d.ts
 firestore-debug.log
 firebase-debug.log
 ui-debug.log
+
+# Phase 6C import tooling: exports hold real user data (uids, sync blobs, push tokens); never commit them or any credential
+/migration-output/
+*.ndjson
+*service-account*.json
+*-firebase-adminsdk-*.json
+serviceAccount*.json
