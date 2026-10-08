@@ -26,7 +26,7 @@ describe("which backend is selected", () => {
 
   it("firebase stays firebase even when Supabase variables are present", () => {
     vi.stubEnv("NEXT_PUBLIC_SUPABASE_URL", "https://example.invalid")
-    vi.stubEnv("NEXT_PUBLIC_SUPABASE_ANON_KEY", "not-a-real-key")
+    vi.stubEnv("NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY", "not-a-real-key")
     expect(getBackend().kind).toBe("firebase")
   })
 

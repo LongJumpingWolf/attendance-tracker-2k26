@@ -1,5 +1,6 @@
 /**
  * The Supabase implementation of the backend contracts: a SKELETON. It is not active and nothing selects it by default.
+ * Phase 6A added the authorization guard (guard.ts) and the Realtime token seam; there is still no client and no shadow write.
  *
  * What it is: the mapping from each contract operation to the Postgres functions and tables built in Phase 2B/3
  * (supabase/migrations, PHASE3_SECURITY_MATRIX.md), expressed against a tiny injected transport so tests can run it
@@ -11,24 +12,11 @@
  */
 import type { FriendRequest } from "../../types"
 import { BackendError, fromPostgresError, notConfigured } from "../errors"
-import type { Backend, CloudSyncStore, ConnectionStore, InviteStore, PingStore, ProfileStore, PushTokenStore, StoredSync, Subscription } from "../contracts"
+import type { Backend, RealtimeAuth, CloudSyncStore, ConnectionStore, InviteStore, PingStore, ProfileStore, PushTokenStore, StoredSync, Subscription } from "../contracts"
 import { randomToken } from "../token"
+import type { SupabaseGuard } from "./guard"
 
-/**
- * The variables a future Supabase client will need. Documented here, never given a value in the repository.
- *   NEXT_PUBLIC_SUPABASE_URL        the project URL
- *   NEXT_PUBLIC_SUPABASE_ANON_KEY   the public (anon) key; row access is decided by RLS and the RPCs, not by hiding this
- */
-export interface SupabaseConfig {
-  url: string
-  anonKey: string
-}
-
-export function readSupabaseConfig(env: Record<string, string | undefined>): SupabaseConfig | null {
-  const url = env.NEXT_PUBLIC_SUPABASE_URL
-  const anonKey = env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-  return url && anonKey ? { url, anonKey } : null
-}
+export { readSupabaseConfig, readBuildSupabaseConfig, createSupabaseGuard, type SupabaseConfig, type SupabaseGuard } from "./guard"
 
 export interface PostgrestResult<T> {
   data: T | null
@@ -40,10 +28,16 @@ export interface SupabaseTransport {
   rpc(fn: string, args?: Record<string, unknown>): Promise<PostgrestResult<unknown>>
   /** Rows of a table readable by the caller under RLS, optionally filtered by equality */
   select(table: string, eq?: Record<string, string>): Promise<PostgrestResult<Record<string, unknown>[]>>
+  /** Optional: receives the bridge's Firebase token before each operation */
+  setAccessToken?(token: string): void
+  /** Optional: Supabase `realtime.setAuth(token)`. Required for Realtime to deliver anything (PHASE5_AUTH_SPIKE.md). null on sign-out. */
+  setRealtimeAuth?(token: string | null): void
 }
 
 export interface SupabaseDeps {
   transport?: SupabaseTransport
+  /** Asked before EVERY operation. The app always passes one (lib/backend/index.ts); without a transport nothing can be sent anyway. */
+  guard?: SupabaseGuard
 }
 
 const ms = (v: unknown): number | null => {
@@ -52,14 +46,16 @@ const ms = (v: unknown): number | null => {
   return Number.isNaN(t) ? null : t
 }
 
-export function createSupabaseBackend({ transport }: SupabaseDeps = {}): Backend {
+export function createSupabaseBackend({ transport, guard }: SupabaseDeps = {}): Backend {
   const need = (what: string): SupabaseTransport => {
     if (!transport) throw notConfigured(what)
     return transport
   }
 
   async function run<T>(what: string, go: (t: SupabaseTransport) => Promise<PostgrestResult<T>>): Promise<T | null> {
+    const token = guard ? await guard() : null // flag, configuration and bridge token: refuses before anything is sent
     const t = need(what)
+    if (token) t.setAccessToken?.(token)
     let res: PostgrestResult<T>
     try {
       res = await go(t)
@@ -188,5 +184,12 @@ export function createSupabaseBackend({ transport }: SupabaseDeps = {}): Backend
     },
   }
 
-  return { kind: "supabase", sync, profiles, invites, connections, pings, pushTokens }
+  /** The seam for Realtime: the latest Firebase token is handed to Supabase `realtime.setAuth`. No subscription uses it yet. */
+  const realtimeAuth: RealtimeAuth = {
+    setToken(token) {
+      transport?.setRealtimeAuth?.(token)
+    },
+  }
+
+  return { kind: "supabase", sync, profiles, invites, connections, pings, pushTokens, realtimeAuth }
 }

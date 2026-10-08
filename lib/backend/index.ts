@@ -3,17 +3,22 @@
  *
  *   NEXT_PUBLIC_BACKEND   unset or "firebase"  -> Firebase (the production backend, the default)
  *                         "supabase"           -> the Supabase skeleton, which refuses every call (fails closed): nothing
- *                                                 can reach Supabase until a later phase wires and authorizes it
+ *                                                 can reach Supabase until a later phase wires and authorizes it. Even then it
+ *                                                 needs NEXT_PUBLIC_SUPABASE_AUTH_BRIDGE=true, the Supabase configuration and a
+ *                                                 valid bridge token (lib/backend/supabase/guard.ts)
  *                         anything else        -> an error, never a silent fallback
  *
  * There is no user-visible setting and no runtime switch.
  */
-import { db } from "../firebase"
+import { getAuth, onIdTokenChanged } from "firebase/auth"
+import { app, db } from "../firebase"
 import { ensureSignedIn } from "../social"
 import { BackendError } from "./errors"
 import type { Backend, BackendKind } from "./contracts"
 import { createFirebaseBackend } from "./firebase"
-import { createSupabaseBackend } from "./supabase"
+import { createSupabaseBackend, createSupabaseGuard, readBuildSupabaseConfig } from "./supabase"
+import { authBridgeEnabled } from "./flags"
+import { createAuthBridge, createFetchBootstrapTransport, type AuthBridge } from "./supabase-auth"
 
 export * from "./contracts"
 export { BackendError, isBackendError, type BackendErrorKind } from "./errors"
@@ -28,6 +33,34 @@ export function resolveBackendKind(raw: string | undefined): BackendKind {
 /** The static reference lets Next.js inline the build-time value */
 const configured = () => resolveBackendKind(process.env.NEXT_PUBLIC_BACKEND)
 
+let bridge: AuthBridge | null = null
+
+/**
+ * The Firebase -> Supabase auth bridge, built on first use. Building it does nothing: no Firebase call, no network, no
+ * subscription. It is only consulted by the Supabase guard, and the guard only runs when the Supabase backend is selected.
+ */
+export function getAuthBridge(): AuthBridge {
+  bridge ??= createAuthBridge({
+    enabled: authBridgeEnabled,
+    identity: {
+      current: () => {
+        try {
+          return getAuth(app).currentUser
+        } catch {
+          return null // Firebase Auth is not configured (local mode): there is no user, so the bridge stays unauthorized
+        }
+      },
+      onChange: (listener) => onIdTokenChanged(getAuth(app), () => listener()),
+    },
+    bootstrap: async (idToken) => {
+      const config = readBuildSupabaseConfig()
+      if (!config) throw new Error("Supabase is not configured")
+      return createFetchBootstrapTransport(config)(idToken)
+    },
+  })
+  return bridge
+}
+
 let cached: Backend | null = null
 let cachedKind: BackendKind | null = null
 let override: Backend | null = null
@@ -36,7 +69,10 @@ export function getBackend(): Backend {
   if (override) return override
   const kind = configured() // throws on an invalid value: fail closed
   if (cached && cachedKind === kind) return cached
-  cached = kind === "supabase" ? createSupabaseBackend() : createFirebaseBackend({ db, ensureSignedIn })
+  cached =
+    kind === "supabase"
+      ? createSupabaseBackend({ guard: createSupabaseGuard({ flagEnabled: authBridgeEnabled, config: readBuildSupabaseConfig, bridge: getAuthBridge() }) })
+      : createFirebaseBackend({ db, ensureSignedIn })
   cachedKind = kind
   return cached
 }

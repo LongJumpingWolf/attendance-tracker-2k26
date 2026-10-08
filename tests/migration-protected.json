@@ -21,5 +21,6 @@
   "functions/pings.js": "782226d5dce35c70e1ad4a0dd5c39c4a4eb4befc6cce6f6b073fba828b457a43",
   "functions/ping-handlers.js": "9e458a7b0edfaf108109968a1c3ebc781a8cb9825e3801e8ca28869fb6534e81",
   "functions/ping-messages.js": "dd494518ca6dd8a8b680b001d88ffcf05cc71fea7caf9d6ea2e02fdfe2c56a19",
-  "public/sw.js": "f777790c6cb547d8b6f71caf986eccddea51a03c286897a069448d7b18636785"
+  "public/sw.js": "f777790c6cb547d8b6f71caf986eccddea51a03c286897a069448d7b18636785",
+  "lib/backend/firebase/index.ts": "cc4b720f871e535ef4ed17dbc28398a0ac9bd612678861b491b3d19a1b30473b"
 }

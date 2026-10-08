@@ -25,8 +25,10 @@ describe("configuration", () => {
   it("is null without both variables, and never has a default value", () => {
     expect(readSupabaseConfig({})).toBeNull()
     expect(readSupabaseConfig({ NEXT_PUBLIC_SUPABASE_URL: "https://x.test" })).toBeNull()
-    expect(readSupabaseConfig({ NEXT_PUBLIC_SUPABASE_ANON_KEY: "k" })).toBeNull()
-    expect(readSupabaseConfig({ NEXT_PUBLIC_SUPABASE_URL: "https://x.test", NEXT_PUBLIC_SUPABASE_ANON_KEY: "k" })).toEqual({ url: "https://x.test", anonKey: "k" })
+    expect(readSupabaseConfig({ NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: "k" })).toBeNull()
+    expect(readSupabaseConfig({ NEXT_PUBLIC_SUPABASE_URL: "https://x.test", NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: "k" })).toEqual({ url: "https://x.test", publishableKey: "k" })
+    // Phase 6A renamed the key variable to the publishable key; the legacy anon key is no longer read
+    expect(readSupabaseConfig({ NEXT_PUBLIC_SUPABASE_URL: "https://x.test", NEXT_PUBLIC_SUPABASE_ANON_KEY: "k" })).toBeNull()
   })
 })
 

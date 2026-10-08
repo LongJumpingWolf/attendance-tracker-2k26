@@ -119,6 +119,16 @@ export interface PushTokenStore {
 
 export type BackendKind = "firebase" | "supabase"
 
+/**
+ * Supabase Realtime only delivers events after `realtime.setAuth(token)` with the Firebase token, and again every time the
+ * token changes (PHASE5_AUTH_SPIKE.md: without it every event arrives as "401 Unauthorized"). A backend that needs this
+ * implements it; the Firebase adapter does not (Firebase Auth is attached to the Firestore SDK by itself), so it has none.
+ */
+export interface RealtimeAuth {
+  /** The current Firebase token, or null after sign-out */
+  setToken(token: string | null): void
+}
+
 /** The stores of one backend. A bag of focused interfaces, not one service object. */
 export interface Backend {
   readonly kind: BackendKind
@@ -128,4 +138,6 @@ export interface Backend {
   readonly connections: ConnectionStore
   readonly pings: PingStore
   readonly pushTokens: PushTokenStore
+  /** Optional: only backends whose realtime needs an explicit token */
+  readonly realtimeAuth?: RealtimeAuth
 }

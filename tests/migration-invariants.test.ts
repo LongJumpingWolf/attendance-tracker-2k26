@@ -62,6 +62,8 @@ describe("the files the migration must not change are unchanged", () => {
     "lib/ping-processing.ts", "lib/ping-apply.ts", "lib/ping-id.ts", "lib/pings.ts",
     // identity: friends are keyed by uid; auth behaviour
     "lib/identity.ts", "lib/social-session.ts", "lib/account.ts", "lib/realtime.ts",
+    // the Firebase adapter: the only file that calls Firestore. Phase 6A adds the shadow infrastructure beside it and must not change it.
+    "lib/backend/firebase/index.ts",
     // the sync orchestration (offline, retry, merge-before-push)
     "hooks/use-cloud-sync.ts",
     // the production security boundary and the (not yet deployed) functions
