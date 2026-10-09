@@ -142,3 +142,16 @@ FIREBASE — NOT RETIRED
 ROLLBACK — FULLY AVAILABLE
 NEXT — owner steps in PHASE6C_INITIAL_IMPORT.md section 12 (read-only key, schema check, dry run, import, verify)
 ```
+
+## 11. Status update after Phase 6D (production bridge readiness)
+
+Phase 6D audited the production authentication bridge and prepared (but did not deploy) the production Edge Function and a proposed issuer/audience SQL guard. See `PHASE6D_PRODUCTION_BRIDGE_READINESS.md`.
+
+```
+CURRENT MIGRATION STATUS:
+PHASE 6D — PRODUCTION BRIDGE READINESS PREPARED (NOTHING DEPLOYED, NOTHING APPLIED REMOTELY)
+APPLICATION BACKEND — STILL FIREBASE (authoritative)
+AUTH BRIDGE FUNCTION — NOT DEPLOYED; SHADOW / BRIDGE FLAGS — ALL OFF
+PRODUCTION DATA — UNCHANGED BY 6D
+NEXT — owner-supplied origin, secrets and decisions listed in section 8 of the 6D document
+```
