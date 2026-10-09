@@ -198,3 +198,7 @@ Unit baseline in `scripts/migration-baseline.json` raised from 23/432 to 24/467 
 | `MIGRATION_CHECKPOINT.md` | status note |
 
 Not changed: application code, Firebase adapter/rules/functions, the 10 migrations, `config.toml`, `tsconfig.json`, package files, environment variables.
+
+## 14. Update
+
+The issuer/audience guard described in section 7 was later promoted to a LOCAL migration (not applied to production) and the client gaps in section 8 item 9 were addressed in code: see `PHASE6D_AUTH_HARDENING.md`, which is the later record.

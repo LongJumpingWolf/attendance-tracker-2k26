@@ -111,7 +111,12 @@ function judgeVitest(label, { code, out }, expected) {
 // ---------------------------------------------------------------------------------------------------------------------
 const checks = {
   async unit() {
-    return judgeVitest("unit", await node(bin("vitest", "vitest.mjs"), ["run"]), baseline.unit)
+    // A checkout linked to the production project (supabase/.temp/project-ref) cannot satisfy the "no remote link" invariant
+    // of a clean clone. Run the SAME suite against a clean copy instead (scripts/test-unlinked.mjs); never unlink, never skip.
+    const linked = fs.existsSync(path.join(ROOT, "supabase", ".temp", "project-ref"))
+    const res = linked ? await node(path.join(ROOT, "scripts", "test-unlinked.mjs"), []) : await node(bin("vitest", "vitest.mjs"), ["run"])
+    const verdict = judgeVitest("unit", res, baseline.unit)
+    return linked ? { ...verdict, detail: `${verdict.detail} [run on a clean unlinked copy: this checkout is linked to a Supabase project]` } : verdict
   },
 
   async rules() {

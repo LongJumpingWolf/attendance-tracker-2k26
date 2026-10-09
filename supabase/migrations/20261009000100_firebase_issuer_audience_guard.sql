@@ -1,6 +1,6 @@
--- Phase 6D: PROPOSED migration. NOT APPLIED to any database. It lives in supabase/proposed/ so `supabase db push` ignores it.
--- Promote it (move it into supabase/migrations/) only in a later, explicitly approved phase, together with the test-helper
--- change described in PHASE6D_PRODUCTION_BRIDGE_READINESS.md section 7.
+-- Phase 6D: Firebase issuer/audience guard. LOCAL migration only: it has NOT been applied to the production project and must
+-- not be pushed without the owner's explicit approval (`supabase db push --dry-run` first). Test helpers in supabase/tests now
+-- supply the production iss/aud, and supabase/tests/database/issuer_audience_guard.test.sql covers the guard.
 --
 -- WHY: Firebase signs the ID tokens of EVERY Firebase project with the same keys. Supabase's own third-party setting rejects
 -- unregistered issuers (verified in the Phase 5 spike, S8), but the database itself currently trusts any `sub`. The Supabase

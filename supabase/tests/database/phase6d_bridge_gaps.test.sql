@@ -9,7 +9,7 @@ grant usage on schema tests6d to public;
 create function tests6d.claims(p_claims jsonb) returns void language plpgsql as $$
 begin
   reset role;
-  perform set_config('request.jwt.claims', p_claims::text, true);
+  perform set_config('request.jwt.claims', (jsonb_build_object('iss', 'https://securetoken.google.com/attendance-tracker-2k26', 'aud', 'attendance-tracker-2k26') || p_claims)::text, true);
   set local role authenticated;
 end $$;
 create function tests6d.err(q text) returns text language plpgsql as $$

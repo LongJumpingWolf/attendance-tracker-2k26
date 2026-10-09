@@ -322,9 +322,11 @@ describe("the shipped source", () => {
     expect(cfg).not.toMatch(/^\s*\[functions\./m)
     expect(cfg).not.toMatch(/auth-role-bootstrap|FIREBASE_SERVICE_ACCOUNT/)
   })
-  it("the proposed SQL is outside supabase/migrations, so `db push` cannot apply it", () => {
-    expect(fs.readdirSync(path.join(ROOT, "supabase", "migrations")).filter((f) => /issuer|audience|guard/i.test(f))).toEqual([])
-    expect(fs.existsSync(path.join(ROOT, "supabase", "proposed", "20261009000100_firebase_issuer_audience_guard.sql"))).toBe(true)
+  it("the issuer/audience guard is a LOCAL migration (promoted in the hardening step) and the remote list is the owner's to change", () => {
+    // Phase 6D readiness kept it in supabase/proposed/; the hardening step promoted it. Applying it to production stays an explicit owner action.
+    expect(fs.existsSync(path.join(ROOT, "supabase", "migrations", "20261009000100_firebase_issuer_audience_guard.sql"))).toBe(true)
+    expect(fs.existsSync(path.join(ROOT, "supabase", "proposed", "20261009000100_firebase_issuer_audience_guard.sql"))).toBe(false)
+    expect(fs.readFileSync(path.join(ROOT, "supabase", "migrations", "20261009000100_firebase_issuer_audience_guard.sql"), "utf8")).toMatch(/NOT been applied to the production project/)
   })
 })
 

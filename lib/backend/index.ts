@@ -60,6 +60,11 @@ export function getAuthBridge(): AuthBridge {
       if (!config) throw new Error("Supabase is not configured")
       return createFetchBootstrapTransport(config)(idToken)
     },
+    // Phase 6D: at most 3 attempts with backoff for transient failures, tokens refreshed 2 minutes before expiry, and a
+    // 30 s pause after a failure so a down bootstrap is not called once per operation. Only reachable with the bridge flag on.
+    retry: { maxAttempts: 3 },
+    refreshMarginMs: 120_000,
+    failureCooldownMs: 30_000,
   })
   return bridge
 }

@@ -15,13 +15,14 @@ grant usage on schema tests to public;
 create function tests.act_as(p_uid text, p_extra jsonb default '{}') returns void language plpgsql as $$
 begin
   reset role;
-  perform set_config('request.jwt.claims', (jsonb_build_object('sub', p_uid, 'role', 'authenticated') || p_extra)::text, true);
+  -- Phase 6D: a production-shaped token also carries the Firebase issuer and audience (app_private.current_uid() requires them)
+  perform set_config('request.jwt.claims', (jsonb_build_object('sub', p_uid, 'role', 'authenticated', 'iss', 'https://securetoken.google.com/attendance-tracker-2k26', 'aud', 'attendance-tracker-2k26') || p_extra)::text, true);
   set local role authenticated;
 end $$;
 create function tests.act_claims(p_claims jsonb) returns void language plpgsql as $$
 begin
   reset role;
-  perform set_config('request.jwt.claims', p_claims::text, true);
+  perform set_config('request.jwt.claims', (jsonb_build_object('iss', 'https://securetoken.google.com/attendance-tracker-2k26', 'aud', 'attendance-tracker-2k26') || p_claims)::text, true);
   set local role authenticated;
 end $$;
 create function tests.act_anon() returns void language plpgsql as $$

@@ -155,3 +155,7 @@ AUTH BRIDGE FUNCTION — NOT DEPLOYED; SHADOW / BRIDGE FLAGS — ALL OFF
 PRODUCTION DATA — UNCHANGED BY 6D
 NEXT — owner-supplied origin, secrets and decisions listed in section 8 of the 6D document
 ```
+
+## 12. Status update after Phase 6D hardening
+
+Guard migration 20261009000100 exists locally only (remote still has the original 10). Client retry, refresh margin, cooldown and the Realtime session controller exist behind the OFF bridge flag. Bridge function not deployed; all flags off. See `PHASE6D_AUTH_HARDENING.md`. Linked checkouts run unit tests with `npm run test:unlinked`.

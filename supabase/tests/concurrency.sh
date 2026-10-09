@@ -6,7 +6,7 @@ T=$(mktemp -d)
 C=${DB_CONTAINER:-supabase_db_Attendance_tracker}
 psql_() { docker exec -i "$C" psql -U postgres -X -q -v ON_ERROR_STOP=1 -tA "$@"; }
 as() { # as <uid> <sql> : run one statement as an authenticated caller with that JWT sub
-  psql_ -c "begin; select set_config('request.jwt.claims', json_build_object('sub','$1','role','authenticated')::text, true); set local role authenticated; $2; commit;" 2>&1
+  psql_ -c "begin; select set_config('request.jwt.claims', json_build_object('sub','$1','role','authenticated','iss','https://securetoken.google.com/attendance-tracker-2k26','aud','attendance-tracker-2k26')::text, true); set local role authenticated; $2; commit;" 2>&1
 }
 fail=0; check() { if [ "$2" = "$3" ]; then echo "PASS $1"; else echo "FAIL $1 (got '$2', want '$3')"; fail=1; fi; }
 A=RaceAliceUid00000000000000a1; B=RaceBobUid0000000000000000b2

@@ -76,6 +76,8 @@ export function createFetchBootstrapTransport(config: { url: string; publishable
 export interface FirebaseUserLike {
   readonly uid: string
   getIdToken(forceRefresh?: boolean): Promise<string>
+  /** Optional (the Firebase SDK user has it): lets the bridge see WHEN a token expires without decoding it */
+  getIdTokenResult?(forceRefresh?: boolean): Promise<{ token: string; expirationTime: string }>
 }
 
 export interface FirebaseIdentitySource {
@@ -105,10 +107,33 @@ export interface AuthBridge {
   reset(): void
 }
 
+/** Bounded retry of a failed bootstrap. Absent = a single attempt (the 6A behaviour). Only transient errors are retried. */
+export interface RetryPolicy {
+  /** total attempts including the first; default 1 */
+  maxAttempts?: number
+  baseDelayMs?: number
+  maxDelayMs?: number
+  sleep?: (ms: number) => Promise<void>
+  random?: () => number
+}
+
+/** Errors worth another attempt. An invalid token or an unauthorized account will not heal by asking again. */
+const RETRYABLE: ReadonlySet<BootstrapErrorKind> = new Set(["unavailable", "rate-limited", "server-error"])
+
 export interface AuthBridgeDeps {
   enabled: () => boolean
   identity: FirebaseIdentitySource
   bootstrap: BootstrapTransport
+  retry?: RetryPolicy
+  /**
+   * A token with less than this much life left is force-refreshed before it is handed out (Firebase tokens last 1 h and
+   * Supabase's own check has a short, undocumented grace after expiry, so the bridge never relies on the boundary).
+   * 0 / absent = hand out whatever Firebase returns. Needs `getIdTokenResult` on the user.
+   */
+  refreshMarginMs?: number
+  /** After a failed attempt, further calls for the same account return the failed state for this long instead of calling the bootstrap again. 0 / absent = none. */
+  failureCooldownMs?: number
+  now?: () => number
 }
 
 const statusFor = (error: BootstrapErrorKind): BridgeStatus =>
@@ -118,6 +143,8 @@ export function createAuthBridge(deps: AuthBridgeDeps): AuthBridge {
   let state: BridgeState = { status: "idle" }
   let authedUid: string | null = null
   let inflight: { uid: string; promise: Promise<BridgeState> } | null = null
+  let failed: { uid: string; at: number } | null = null
+  const now = deps.now ?? Date.now
   const stateListeners = new Set<(s: BridgeState) => void>()
   const tokenListeners = new Set<(t: string | null) => void>()
   let offIdentity: Unsubscribe | null = null
@@ -132,8 +159,26 @@ export function createAuthBridge(deps: AuthBridgeDeps): AuthBridge {
     const was = authedUid !== null
     authedUid = null
     inflight = null
+    failed = null
     set({ status: "idle" })
     if (was) emitToken(null)
+  }
+
+  /**
+   * The token to hand out. With a margin configured, a token that is close to expiry is replaced by a force-refreshed one
+   * (the role claim survives a refresh). If that refresh fails, a still-valid token is used; an expired one is not.
+   */
+  async function freshToken(user: FirebaseUserLike): Promise<string | null> {
+    const margin = deps.refreshMarginMs ?? 0
+    if (margin <= 0 || !user.getIdTokenResult) return user.getIdToken()
+    const current = await user.getIdTokenResult()
+    const exp = Date.parse(current.expirationTime)
+    if (Number.isFinite(exp) && exp - now() >= margin) return current.token
+    try {
+      return await user.getIdToken(true)
+    } catch {
+      return Number.isFinite(exp) && exp > now() ? current.token : null
+    }
   }
 
   /** Follows Firebase's own token changes so Realtime can be given the new token, and drops the bridge on an account change */
@@ -143,23 +188,36 @@ export function createAuthBridge(deps: AuthBridgeDeps): AuthBridge {
       const user = deps.identity.current()
       if (!authedUid) return
       if (!user || user.uid !== authedUid) return reset()
-      user.getIdToken().then(emitToken, () => {})
+      freshToken(user).then((t) => t && emitToken(t), () => {})
     })
   }
 
   async function run(uid: string, user: FirebaseUserLike): Promise<BridgeState> {
     set({ status: "bootstrapping" })
+    const r = deps.retry
+    const maxAttempts = Math.max(1, Math.floor(r?.maxAttempts ?? 1))
+    const sleep = r?.sleep ?? ((ms: number) => new Promise<void>((res) => setTimeout(res, ms)))
     let outcome: BootstrapOutcome
-    try {
-      outcome = await bootstrapFirebaseIdentity(await user.getIdToken(), deps.bootstrap)
-    } catch {
-      outcome = { ok: false, error: "unavailable" } // no Firebase token could be obtained
-    }
-    if (deps.identity.current()?.uid !== uid) {
-      reset() // the account changed while we were waiting: nothing from this attempt may survive
-      return state
+    for (let attempt = 1; ; attempt++) {
+      try {
+        outcome = await bootstrapFirebaseIdentity(await user.getIdToken(), deps.bootstrap)
+      } catch {
+        outcome = { ok: false, error: "unavailable" } // no Firebase token could be obtained
+      }
+      if (deps.identity.current()?.uid !== uid) {
+        reset() // the account changed while we were waiting: nothing from this attempt may survive
+        return state
+      }
+      if (outcome.ok || attempt >= maxAttempts || !RETRYABLE.has(outcome.error)) break
+      const backoff = Math.min(r?.maxDelayMs ?? 8000, (r?.baseDelayMs ?? 500) * 2 ** (attempt - 1))
+      await sleep(Math.round(backoff * (1 + 0.25 * (r?.random ?? Math.random)()))) // bounded exponential backoff with jitter
+      if (deps.identity.current()?.uid !== uid) {
+        reset() // signed out or switched while backing off
+        return state
+      }
     }
     if (!outcome.ok) {
+      failed = { uid, at: now() }
       set({ status: statusFor(outcome.error), reason: outcome.error })
       return state
     }
@@ -191,15 +249,24 @@ export function createAuthBridge(deps: AuthBridgeDeps): AuthBridge {
         set({ status: "unavailable", reason: "disabled" }) // flag off: Firebase Auth is not even consulted
         return state
       }
-      const user = deps.identity.current()
+      let user: FirebaseUserLike | null = null
+      try {
+        user = deps.identity.current()
+      } catch {
+        user = null // an unreadable identity is "nobody signed in", never a throw into the app
+      }
       if (!user) {
         if (authedUid) reset()
+        failed = null
         set({ status: "unauthorized", reason: "no-firebase-user" })
         return state
       }
       const uid = user.uid
       if (authedUid && authedUid !== uid) reset() // account switch
       if (authedUid === uid && state.status === "authenticated") return state
+      const cooldown = deps.failureCooldownMs ?? 0
+      if (cooldown > 0 && failed && failed.uid === uid && now() - failed.at < cooldown && state.status !== "bootstrapping") return state // do not hammer a failing bootstrap
+      if (failed && failed.uid !== uid) failed = null
       if (inflight && inflight.uid === uid) return inflight.promise
       watchIdentity()
       const promise = run(uid, user).finally(() => {
@@ -213,7 +280,7 @@ export function createAuthBridge(deps: AuthBridgeDeps): AuthBridge {
       const user = deps.identity.current()
       if (!user || user.uid !== authedUid) return null
       try {
-        return await user.getIdToken()
+        return await freshToken(user)
       } catch {
         return null
       }

@@ -1,6 +1,5 @@
--- Phase 6D: tests for the PROPOSED issuer/audience guard. Run with supabase/proposed/run-proposed-tests.sh, which applies
--- 20261009000100_firebase_issuer_audience_guard.sql INSIDE a transaction in front of this file and rolls everything back.
--- The runner supplies `begin;` and `rollback;`. LOCAL DATABASE ONLY.
+-- Phase 6D: tests for the Firebase issuer/audience guard (migration 20261009000100). Run: npx supabase test db (local only; rolled back).
+begin;
 create extension if not exists pgtap with schema extensions;
 set search_path = public, extensions;
 
@@ -106,3 +105,4 @@ select is(tests.err($$truncate syncs$$), '42501', 'TRUNCATE denied');
 select tests.back();
 
 select * from finish();
+rollback;
