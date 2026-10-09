@@ -73,7 +73,10 @@ select is((select array_agg(table_name::text order by table_name) from informati
            where table_schema = 'public' and grantee = 'authenticated'),
   array['connections', 'pings', 'push_tokens', 'syncs'], 'authenticated can SELECT only connections, pings, push_tokens, syncs');
 select ok(has_table_privilege('service_role', 'public.legacy_requests', 'insert'), 'service_role keeps access to the migration tables');
-select is((select count(*)::int from pg_proc where pronamespace = 'public'::regnamespace), 16, 'public exposes exactly the 16 intended functions');
+-- Phase 6E: one service-role-only function (the bootstrap rate limiter, migration 20261009000200) is the single permitted addition;
+-- the client-facing count stays exactly 16 and any other new function still fails this test.
+select is((select count(*)::int from pg_proc where pronamespace = 'public'::regnamespace and proname <> 'bootstrap_rate_check'), 16, 'public exposes exactly the 16 intended client functions');
+select is((select count(*)::int from pg_proc where pronamespace = 'public'::regnamespace and proname = 'bootstrap_rate_check'), 1, 'plus exactly one service-role-only function (bootstrap_rate_check)');
 select is((select count(*)::int from pg_proc where pronamespace = 'public'::regnamespace and not prosecdef), 0, 'all of them are SECURITY DEFINER (each justified in its migration)');
 select is((select count(*)::int from pg_proc where pronamespace = 'public'::regnamespace
            and not coalesce(proconfig @> array['search_path=""'], false)), 0, 'every public function pins search_path to the empty path');

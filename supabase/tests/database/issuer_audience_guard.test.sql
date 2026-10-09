@@ -39,7 +39,7 @@ select is((select count(*)::int from pg_proc p where pronamespace = 'app_private
 select is((select count(*)::int from pg_proc p where pronamespace = 'app_private'::regnamespace and has_function_privilege('anon', p.oid, 'execute')), 0, 'anon can execute no private helper');
 select ok((select proconfig @> array['search_path=""'] from pg_proc where oid = 'app_private.current_uid()'::regprocedure), 'current_uid() still pins search_path');
 select ok(not (select prosecdef from pg_proc where oid = 'app_private.current_uid()'::regprocedure), 'current_uid() is still SECURITY INVOKER');
-select is((select count(*)::int from pg_proc where pronamespace = 'public'::regnamespace), 16, 'public still exposes exactly the 16 functions');
+select is((select count(*)::int from pg_proc where pronamespace = 'public'::regnamespace and proname <> 'bootstrap_rate_check'), 16, 'public still exposes exactly the 16 client functions (the rate limiter is service-role only and tested separately)');
 
 -- ---- a production token works -------------------------------------------------------------------------------------------
 select tests.good('AliceFbUid0000000000000000a1');

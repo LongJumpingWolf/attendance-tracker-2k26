@@ -107,3 +107,93 @@ Unresolved items, documented rather than bypassed:
 ## 10. Safety confirmation
 
 Commands run were read-only: git inspection, `vercel domains/alias/project inspect/ls`, public `HEAD`/`GET` of three hostnames, `supabase migration list --linked`, `supabase db push --dry-run --linked`, and local tests. No deployment, no remote SQL applied, no secret created or printed, no export/import, no flag enabled, no change to Vercel or Supabase configuration, no Firebase change.
+
+
+---
+
+# Update: deployment hardening (supersedes sections 6 to 9 where they differ)
+
+State after this update: guard migration `20261009000100` **applied** to production (owner-approved, verified); rate-limit migration `20261009000200` exists **locally only**; function **not deployed**; no secret set; all flags OFF; Firebase authoritative. Owner reports Firebase is now registered under Third-Party Auth; this was **not independently verified** (no dashboard access) and is re-checked in step 3 below.
+
+## U1. Authentication and revocation behaviour of the current function
+
+| Property | Status |
+|---|---|
+| Exact issuer and audience | enforced in the function (`iss`, `aud` must equal the configured project id) and in the database (`current_uid()`); both tested |
+| Token verification checks revocation and disabled users | `index.ts` calls `verifyIdToken(token, true)`; the handler maps `auth/id-token-revoked` to 401 and `auth/user-disabled` to 403 and also re-checks `disabled` and `tokensValidAfterTime` on the write path. The official Firebase pages I could read do not confirm the exact Node error string for a disabled user (the revoked string is documented), so both are handled and unknown errors fall to a plain 401. **Not exercised against real Firebase** |
+| Conflicting existing `role` claim | never overwritten (403); tested |
+| Client retry | bounded: 3 attempts, backoff capped at 8 s, transient errors only, 30 s failure cooldown; tested |
+| Revoked session vs an already-issued Supabase-accepted token | **not invalidated at the same instant.** Supabase accepts a Firebase ID token by signature and expiry (plus the short, unmeasured grace seen in S13) and does not ask Firebase whether the session was revoked. After `revokeRefreshTokens(uid)`: the bootstrap function refuses that user immediately (revocation check), the user cannot obtain new tokens, but an access token already issued, which carries `role=authenticated`, keeps working against Supabase until it expires, up to about one hour. Firebase documents that ID tokens last an hour |
+| Recommended default (Free-plan friendly) | accept the up-to-one-hour window; revoke only on security events (owner-run); no per-sign-out revocation (an Admin call per sign-out that also logs out all devices). If a shorter window is ever required, the only mechanism without paid features is a database-side deny-list checked in `current_uid()`; that is a design change and a decision for the owner, not done here |
+
+## U2. Service account: custom least-privilege role (owner creates; nothing was created)
+
+Permissions the current function needs (from the official Identity Platform access-control and Firebase permission pages; the SDK-method-to-permission mapping is the documented REST mapping plus inference):
+
+| Permission | Why |
+|---|---|
+| `firebaseauth.users.get` | `getUser` (lookup) and the revocation check in `verifyIdToken(..., true)` |
+| `firebaseauth.users.update` | `setCustomUserClaims` (set account info) |
+
+`verifyIdToken` itself uses Google's public certificates and needs no permission. **Do not** use Owner, Editor or the predefined "Firebase Authentication Admin" role (it adds user create/delete/config permissions this function never uses). The predefined product roles also contain `firebase.projects.get` and `resourcemanager.projects.get`; the pages read do not say these two calls need them. Start with only the two permissions above; if the smoke test shows `PERMISSION_DENIED` naming another permission, add exactly that one after review, never a broad role.
+
+Owner-run sketch (Google Cloud Shell or a local `gcloud`; adjust names; never commit or paste the key):
+
+1. `gcloud iam roles create attendanceBridgeClaims --project=attendance-tracker-2k26 --title="Attendance bridge claims" --permissions=firebaseauth.users.get,firebaseauth.users.update --stage=GA`
+2. `gcloud iam service-accounts create attendance-bridge --project=attendance-tracker-2k26 --display-name="Attendance auth bridge"`
+3. `gcloud projects add-iam-policy-binding attendance-tracker-2k26 --member="serviceAccount:attendance-bridge@attendance-tracker-2k26.iam.gserviceaccount.com" --role="projects/attendance-tracker-2k26/roles/attendanceBridgeClaims"`
+4. Create a key **to a path outside the repository** (`gcloud iam service-accounts keys create <path> --iam-account=...`), set it as the secret (U3), then delete the file. An organisation policy may block key creation; if so report it rather than loosening the policy.
+
+## U3. Production secrets and configuration (owner sets privately; never in chat or git)
+
+| Name | Kind | Value |
+|---|---|---|
+| `FIREBASE_SERVICE_ACCOUNT_JSON` | secret | the key file contents from U2; must have `project_id` = `attendance-tracker-2k26` (the function refuses otherwise) |
+| `FIREBASE_PROJECT_ID` | secret/config | `attendance-tracker-2k26` |
+| `ALLOWED_ORIGINS` | secret/config | `https://attendance-tracker-2k26.vercel.app` after the owner confirms it |
+| `CLIENT_IP_MODE`, `RATE_UID_PER_10MIN`, `RATE_GLOBAL_PER_MIN`, `RATE_IP_PER_MIN` | optional config | leave unset (defaults: IP off, 6 / 120 / 60) |
+| `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` | expected from the platform | **to be confirmed at deployment**; the function uses the service key only to call the rate-limit RPC. If absent, set `RATE_LIMIT_DB_KEY` privately. The function fails closed without either |
+
+Set them in the Supabase dashboard (Edge Functions > Secrets) or with `supabase secrets set --env-file <file outside the repo>`; delete the file afterwards.
+
+## U4. Readiness checklist
+
+**1. Claude can prepare and test locally (done in this phase unless noted)**
+- Rate-limit migration, function changes, tests, quota analysis (done). Local checks: see U6.
+- Still to do after the owner answers: copy the function to `supabase/functions/` with the `config.toml` entry and update the one "not deployable" test (a reviewed commit, still undeployed); a smoke-test script that reads tokens from the environment; a read-only role-claim census script for the owner to run.
+
+**2. Dashboard / console actions only the owner can do**
+- Confirm Supabase Authentication > Third-Party Auth lists Firebase with project id `attendance-tracker-2k26`.
+- Create the custom role, service account and key (U2); set the secrets (U3).
+- Confirm the production origin and the Firebase Authorized domains.
+- Review current usage and the Edge Function limits on the dashboard; set a weekly usage check (alerts not established).
+
+**3. Production changes that need explicit owner approval, each separately**
+- Apply `20261009000200_bootstrap_rate_limit.sql` (dry run first; take a fresh backup).
+- Deploy the function.
+- Any change to `ALLOWED_ORIGINS`, secrets, `CLIENT_IP_MODE`.
+- Setting any `NEXT_PUBLIC_SUPABASE_*` or flag in Vercel (separate later phase).
+
+## U5. Amended deployment sequence (for later explicit approval of EACH step)
+
+1. Re-verify: clean tree, `migration:health` HEALTHY, `migration list --linked` (11 applied + 1 pending), `db push --dry-run --linked` lists **only** `20261009000200_bootstrap_rate_limit.sql`.
+2. Fresh backup (schema, data, roles) into a new timestamped `migration-output/` folder.
+3. Owner confirms Third-Party Auth registration, origin, IAM role and service account (U2).
+4. Apply `20261009000200` (`db push --linked`), verify with `migration list` and a read-only schema dump (function present, EXECUTE only for `service_role`, table RLS on, no grants).
+5. Owner sets secrets (U3).
+6. Reviewed commit that copies the function into `supabase/functions/auth-role-bootstrap/` with `verify_jwt = false`; deploy with `--no-verify-jwt`. **The rate-limit migration must already be applied**, otherwise every first-time bootstrap fails closed (503).
+7. Smoke tests (readiness document section 9, plus): with a throwaway Firebase user, bootstrap succeeds and a second call is idempotent; the 7th attempt within 10 minutes for one account is 429; revoke that user's refresh tokens and confirm a new bootstrap with an old token is 401; confirm the function can read `SUPABASE_SERVICE_ROLE_KEY` (a first-time bootstrap returns 200, not 503); send a forged `X-Forwarded-For` and decide `CLIENT_IP_MODE` per `PHASE6E_RATE_LIMIT_AND_QUOTA.md` section 2. Delete the throwaway user afterwards.
+8. Stop. Flags stay OFF until a separate shadow-activation approval.
+
+Rollback: unchanged from section 9 above, plus for the rate-limit migration a corrective migration dropping `public.bootstrap_rate_check` and `app_private.rate_limits` (no user data in them).
+
+## U6. Verification results
+
+| Check | Result (ran on this checkout) |
+|---|---|
+| `npm run migration:health` (full) | **HEALTHY**: unit 26 files / 521 tests (clean unlinked copy); Firestore rules 4 files / 64 tests, **PASSED ON RETRY** (the first attempt failed only in the documented flaky test `identity.test.ts > anonymous -> Google sign-in ...`, the known case in `MIGRATION_CHECKPOINT.md`; no application or rules file changed); typecheck clean; lint 0 errors / 75 warnings (unchanged); e2e 7 suites 203/203; `next build` succeeded |
+| Local Supabase after `db reset --local` (12 migrations) | `supabase test db`: **327 / 327** (existing suites with the strengthened helpers, guard 38, rate limiter 36) |
+| `supabase/tests/concurrency.sh` | all pass, including 24 parallel limiter calls against a limit of 10: exactly 10 pass, 14 refused, all 24 counted |
+| New unit tests | 25 in `tests/phase6e-rate-limit.test.ts`; handler suite from 6D still 35; mutation-checked (removing the project-wide cap or the IP-mode guard each fails tests; reverted) |
+| Remote (read-only) | `db push --dry-run --linked` lists **only** `20261009000200_bootstrap_rate_limit.sql`; nothing applied |
+| Not tested | the function against real Firebase / Deno / the real REST endpoint; the real client-IP header; `SUPABASE_SERVICE_ROLE_KEY` availability in the function; real revocation and disabled-user error strings; Third-Party Auth registration |

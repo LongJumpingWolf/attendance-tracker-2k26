@@ -40,6 +40,7 @@ function setup(opts: { token?: VerifiedToken | "throw"; user?: Partial<UserRecor
   const handler = createHandler(parsed, {
     ipLimiter: createRateLimiter({ windowMs: 60_000, max: opts.ipMax ?? 1000 }),
     uidLimiter: createRateLimiter({ windowMs: 60_000, max: opts.uidMax ?? 1000 }),
+    dbLimiter: { take: async () => true }, // the database counters have their own tests (phase6e-rate-limit.test.ts)
     log: (c) => calls.logs.push(c),
     async verifyIdToken() {
       calls.verify++
@@ -245,7 +246,7 @@ describe("claim bootstrap", () => {
 
 describe("rate limiting (best effort, per instance)", () => {
   it("limits per client before any verification work", async () => {
-    const { call, calls } = setup({ ipMax: 3 })
+    const { call, calls } = setup({ ipMax: 3, config: { CLIENT_IP_MODE: "xff-first" } }) // per-address buckets exist only when the owner enables an IP mode
     const statuses = []
     for (let i = 0; i < 5; i++) statuses.push((await call({ headers: { "x-forwarded-for": "203.0.113.9" } })).status)
     expect(statuses).toEqual([200, 200, 200, 429, 429])
@@ -302,7 +303,7 @@ describe("the shipped source", () => {
     expect(h).not.toMatch(/console\./)
     for (const m of h.matchAll(/deps\.log\((.*)\)\s*$/gm)) {
       // each call passes a fixed string literal, or the sanitised Admin error code (never a message, token or uid)
-      expect(m[1].startsWith('"') || m[1].startsWith("code.startsWith"), m[1]).toBe(true)
+      expect(m[1].startsWith('"') || m[1].startsWith("code.startsWith") || m[1].startsWith('code === "auth/id-token-revoked" ?'), m[1]).toBe(true)
       expect(m[1]).not.toMatch(/\.message|\bm\[1\]|\btoken\.|\buid\b/)
     }
   })

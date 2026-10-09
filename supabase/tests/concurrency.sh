@@ -49,6 +49,17 @@ check "sync CAS: exactly one writer wins" "$(cat $T/s1.out $T/s2.out | grep -cE 
 check "sync CAS: the loser is refused with 40001" "$(cat $T/s1.out $T/s2.out | grep -c 'revision conflict')" 1
 check "sync CAS: final rev is 2" "$(psql_ -c "select rev from public.syncs where uid='$A'")" 2
 
+# 5. bootstrap rate limiter (migration 20261009000200): 24 sessions at once against a limit of 10 -> exactly 10 pass, 14 refused
+RLK="race-rl-$$"
+for i in $(seq 1 24); do
+  psql_ -c "begin; set local role service_role; select public.bootstrap_rate_check('uid','$RLK',10,3600); commit;" 2>&1 | grep -E '^(t|f)$' > $T/rl$i.out &
+done
+wait
+check "rate limit race: exactly 10 of 24 parallel calls pass" "$(cat $T/rl*.out | grep -c '^t')" 10
+check "rate limit race: the other 14 are refused" "$(cat $T/rl*.out | grep -c '^f')" 14
+check "rate limit race: every call was counted" "$(psql_ -c "select hits from app_private.rate_limits where bucket='uid' and key='$RLK'")" 24
+psql_ -c "delete from app_private.rate_limits where key='$RLK'" >/dev/null
+
 cleanup
 [ $fail = 0 ] && echo "ALL CONCURRENCY CHECKS PASSED" || echo "CONCURRENCY CHECKS FAILED"
 exit $fail

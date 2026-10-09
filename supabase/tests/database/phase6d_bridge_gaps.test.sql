@@ -26,9 +26,9 @@ select is((select count(*)::int from pg_proc p where p.pronamespace in ('public'
 select is((select count(*)::int from pg_proc p where p.pronamespace in ('public'::regnamespace, 'app_private'::regnamespace)
             and p.prosecdef and not coalesce(p.proconfig @> array['search_path=""'], false)), 0,
   'every SECURITY DEFINER function pins search_path');
-select is((select count(*)::int from pg_proc p where p.pronamespace = 'public'::regnamespace and p.prosecdef
+select is((select count(*)::int from pg_proc p where p.pronamespace = 'public'::regnamespace and p.prosecdef and p.proname <> 'bootstrap_rate_check'
             and pg_get_functiondef(p.oid) !~ 'app_private\.(require_uid|current_uid)\(\)'), 0,
-  'every public SECURITY DEFINER function derives the caller from current_uid()/require_uid()');
+  'every public client SECURITY DEFINER function derives the caller from current_uid()/require_uid() (the service-role-only rate limiter takes a caller-chosen key by design and is tested separately)');
 select is((select count(*)::int from pg_proc p where p.pronamespace = 'public'::regnamespace and p.prosecdef
             and pg_get_functiondef(p.oid) ~* 'auth\.uid\(\)'), 0, 'no function uses auth.uid() (it casts to uuid and fails for Firebase uids)');
 select is((select count(*)::int from pg_policy po where pg_get_expr(po.polqual, po.polrelid) ~* 'auth\.uid\(\)'), 0, 'no policy uses auth.uid()');
