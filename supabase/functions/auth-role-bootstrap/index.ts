@@ -20,6 +20,7 @@ import { getAuth } from "npm:firebase-admin@13/auth"
 import { createHandler, createRateLimiter, parseConfig } from "./handler.ts"
 
 const configResult = parseConfig({
+  FIREBASE_AUTH_EMULATOR_HOST: Deno.env.get("FIREBASE_AUTH_EMULATOR_HOST") ?? "", // must be absent: with it the Admin SDK accepts unsigned tokens
   ALLOWED_ORIGINS: Deno.env.get("ALLOWED_ORIGINS") ?? "",
   FIREBASE_PROJECT_ID: Deno.env.get("FIREBASE_PROJECT_ID") ?? "",
   CLIENT_IP_MODE: Deno.env.get("CLIENT_IP_MODE") ?? "",
@@ -57,12 +58,14 @@ async function dbTake(bucket, key, limit, windowSeconds) {
 }
 
 const handle = createHandler(configResult, {
-  ipLimiter: createRateLimiter({ windowMs: 60_000, max: 30 }),
-  uidLimiter: createRateLimiter({ windowMs: 60_000, max: 6 }),
+  ipLimiter: createRateLimiter({ windowMs: 60_000, max: 120 }), // only used when CLIENT_IP_MODE is on; the database counter (RATE_IP_PER_MIN) is the real limit
+  uidLimiter: createRateLimiter({ windowMs: 60_000, max: 6 }), // first-time bootstrap, per verified account
+  fastLimiter: createRateLimiter({ windowMs: 60_000, max: 120 }), // established users, per verified account
+  revocationLimiter: createRateLimiter({ windowMs: 60_000, max: 600, maxKeys: 1 }), // one shared safety valve per instance on Firebase revocation look-ups
   dbLimiter: { take: dbTake },
   log: (code) => console.error("auth-role-bootstrap", code), // a fixed code only; never a token, uid, key or message
-  async verifyIdToken(token) {
-    const d = await admin().verifyIdToken(token, true) // Google signature, exp, iss, aud AND revocation / disabled user
+  async verifyIdToken(token, checkRevoked) {
+    const d = await admin().verifyIdToken(token, checkRevoked === true) // signature, exp, iss, aud (local); with checkRevoked also revocation / disabled user (network)
     return { uid: d.uid, sub: d.sub, iss: d.iss, aud: d.aud, iat: d.iat, role: d.role }
   },
   async getUser(uid) {

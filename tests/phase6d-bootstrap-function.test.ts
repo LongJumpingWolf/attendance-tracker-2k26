@@ -35,15 +35,18 @@ const good = (over: Partial<VerifiedToken> = {}): VerifiedToken => ({
 
 function setup(opts: { token?: VerifiedToken | "throw"; user?: Partial<UserRecordLike>; config?: Record<string, string>; ipMax?: number; uidMax?: number; setFails?: string } = {}) {
   const parsed = parseConfig({ ALLOWED_ORIGINS: ORIGIN, FIREBASE_PROJECT_ID: PROJECT, ...(opts.config ?? {}) })
-  const calls = { verify: 0, getUser: 0, set: [] as [string, Record<string, unknown>][], logs: [] as string[] }
+  const calls = { verify: 0, revoked: 0, getUser: 0, set: [] as [string, Record<string, unknown>][], logs: [] as string[] }
   const user: UserRecordLike = { disabled: false, customClaims: null, ...(opts.user ?? {}) }
   const handler = createHandler(parsed, {
     ipLimiter: createRateLimiter({ windowMs: 60_000, max: opts.ipMax ?? 1000 }),
     uidLimiter: createRateLimiter({ windowMs: 60_000, max: opts.uidMax ?? 1000 }),
+    fastLimiter: createRateLimiter({ windowMs: 60_000, max: 100000 }), // established users: covered in phase6e-limiter-fix.test.ts
+    revocationLimiter: createRateLimiter({ windowMs: 60_000, max: 100000, maxKeys: 1 }),
     dbLimiter: { take: async () => true }, // the database counters have their own tests (phase6e-rate-limit.test.ts)
     log: (c) => calls.logs.push(c),
-    async verifyIdToken() {
+    async verifyIdToken(_t: string, revoked: boolean) {
       calls.verify++
+      if (revoked) calls.revoked++
       if (opts.token === "throw") throw Object.assign(new Error("Firebase ID token has expired. Raw token: " + BEARER), { code: "auth/id-token-expired" })
       return opts.token ?? good()
     },
@@ -250,7 +253,7 @@ describe("rate limiting (best effort, per instance)", () => {
     const statuses = []
     for (let i = 0; i < 5; i++) statuses.push((await call({ headers: { "x-forwarded-for": "203.0.113.9" } })).status)
     expect(statuses).toEqual([200, 200, 200, 429, 429])
-    expect(calls.verify).toBe(3)
+    expect(calls.verify - calls.revoked).toBe(3) // local verifications: the per-address cap stops the rest before any verification
     expect((await call({ headers: { "x-forwarded-for": "203.0.113.10" } })).status).toBe(200) // another client is unaffected
   })
   it("limits Admin lookups per account, with Retry-After", async () => {
@@ -315,7 +318,7 @@ describe("the shipped source", () => {
   })
   it("index.ts logs only a fixed code and wires every dependency", () => {
     expect(code(indexSrc)).toMatch(/log: \(code\) => console\.error\("auth-role-bootstrap", code\)/)
-    expect(code(indexSrc)).toMatch(/verifyIdToken\(token\)/)
+    expect(code(indexSrc)).toMatch(/verifyIdToken\(token, checkRevoked\)/)
   })
   it("deployment copy (Phase 6E): the function is in supabase/functions with exactly one config entry, verify_jwt off, and no secret in config or beside it", () => {
     // Phase 6D asserted the opposite ("not deployable by accident"). The owner completed the pre-deployment checks and the

@@ -64,6 +64,8 @@ function setup(
   const handler = createHandler(parsed, {
     ipLimiter: createRateLimiter({ windowMs: 60_000, max: 100000 }),
     uidLimiter: createRateLimiter({ windowMs: 60_000, max: 100000 }),
+    fastLimiter: createRateLimiter({ windowMs: 60_000, max: 100000 }),
+    revocationLimiter: createRateLimiter({ windowMs: 60_000, max: 100000, maxKeys: 1 }),
     dbLimiter: db.db,
     log: (c) => stats.logs.push(c),
     async verifyIdToken() {
@@ -243,7 +245,10 @@ describe("revocation and disabled users", () => {
     expect(s.stats.set).toBe(0)
   })
   it("index.ts verifies with revocation checking", () => {
-    expect(fs.readFileSync(path.join(FN_DIR, "index.ts"), "utf8")).toMatch(/verifyIdToken\(token, true\)/)
+    // index.ts passes the flag through; the handler asks for the revocation check on every path that acts (first-time bootstrap) and on the established-user path
+    expect(fs.readFileSync(path.join(FN_DIR, "index.ts"), "utf8")).toMatch(/verifyIdToken\(token, checkRevoked === true\)/)
+    expect(fs.readFileSync(path.join(FN_DIR, "handler.ts"), "utf8").match(/verifyIdToken\(m\[1\], true\)/g)).toHaveLength(1) // inside revocationCheck(), which both paths call
+    expect(fs.readFileSync(path.join(FN_DIR, "handler.ts"), "utf8").match(/await revocationCheck\(\)/g)).toHaveLength(2)
   })
 })
 

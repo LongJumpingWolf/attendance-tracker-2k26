@@ -113,3 +113,9 @@ The estimates ignore PostgREST request volume (stated as unlimited), logs and Au
 ## 6. Verification of this phase
 
 See `PHASE6E_PRODUCTION_PREFLIGHT.md` "Update: deployment hardening" for the test results.
+
+---
+
+## Update: layer order superseded by the limiter fix (local, undeployed)
+
+Section 1's list of layers describes the **deployed v1**. The local fix in `PHASE6E_LIMITER_FIX.md` changes it: there is no pre-verification limit when the IP mode is off (a bad token is a cheap local 401), established (role-bearing) users have their own per-account limit and an instance-wide revocation valve and never touch the first-time counters, and first-time bootstraps use the per-account memory limit, then the database counters (per account, project-wide), then the revocation check and the Admin write. The v1 statement "existing users with the role never touch it" was true of the database counters but not of the shared per-instance cap, which is what the fix removes. Production still runs v1 until the owner approves a redeploy.

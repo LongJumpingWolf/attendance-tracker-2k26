@@ -182,3 +182,12 @@ APPLICATION BACKEND — STILL FIREBASE; ALL BRIDGE / SHADOW / BACKEND FLAGS OFF
 FULL HEALTH — HEALTHY (unit 28 files / 586 tests, rules 64, e2e 203, build ok)
 NEXT — see PHASE7_SUPABASE_TRANSPORT.md section 9.7
 ```
+
+## 15. Status update after the bootstrap limiter fix (local only, uncommitted)
+
+```
+CURRENT MIGRATION STATUS:
+BOOTSTRAP LIMITER FIX — IMPLEMENTED AND TESTED LOCALLY (24 new tests; Deno type-check ok); DEPLOYED FUNCTION IS STILL VERSION 1 (old behaviour)
+PRODUCTION / FLAGS / FIREBASE / VERCEL — UNCHANGED; APPLICATION BACKEND — STILL FIREBASE; ALL FLAGS OFF
+NEXT — owner review, then (with approval) commit and redeploy, then the production smoke tests in PHASE6E_LIMITER_FIX.md section 6
+```

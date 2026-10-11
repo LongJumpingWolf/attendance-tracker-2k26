@@ -182,3 +182,9 @@ Shadow read, read-only. Reference: Firebase (authoritative). Account: Alic***. R
 
 ### 9.7 Recommended next step
 **Close the two cheap production-facing gaps before any soak:** (1) fix finding A in the bootstrap function (raise or bypass the per-instance cap for role-bearing tokens), redeploy with approval and re-test with the dedicated Google test account; (2) run the remaining production bridge tests (rate limit with a second never-used account, expiry, disabled user). Then, with approval, build a controlled preview build with `SHADOW_READ`, the bridge flag and `SHADOW_SYNC` on for the test account only, and read its report. A persistence and scheduling layer for reports (Phase 7's nightly report) comes after that.
+
+---
+
+## Update: finding A is fixed locally (not committed, not deployed)
+
+The bootstrap function's shared per-instance limiter no longer throttles established users in the local source; see `PHASE6E_LIMITER_FIX.md`. The "Open from the earlier audit" item about that limiter in section 9.6 is therefore addressed in code but **not in production** (the deployed function is still version 1). The other items in 9.6 remain open.

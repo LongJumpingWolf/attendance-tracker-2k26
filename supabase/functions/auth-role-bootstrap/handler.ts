@@ -15,9 +15,15 @@
  *  - issuer and audience must equal the configured Firebase project; a token for another project is refused;
  *  - the token is verified WITH revocation checking (index.ts); a revoked token is 401, a disabled user 403;
  *  - CORS: exact-match allow-list from configuration; an unconfigured list refuses every browser request; never `*`, never echoed;
- *  - rate limits, three layers: per-instance memory; a database counter per verified uid and for all bootstrap attempts together
- *    (cannot be bypassed by header tricks); and a per-client-IP counter that is OFF unless the owner has verified how the
- *    platform sets the client-IP header (it is not established by official documentation);
+ *  - rate limits sit at the EXPENSIVE steps, never at the cheap pre-verification step (Phase 6E hardening, finding A):
+ *      * a token is first verified LOCALLY (signature, expiry, issuer, audience; no network). A bad token is a cheap 401 and is
+ *        not rate limited: the invocation is already spent and limiting it would only throttle everybody who shares the bucket;
+ *      * a token that already carries the role (an established user) takes the fast path: a generous per-ACCOUNT limit and an
+ *        instance-wide valve on revocation look-ups, and NEVER the first-time bootstrap counters;
+ *      * a first-time bootstrap (no role yet) takes the per-account memory limit, then the shared database counters (per
+ *        verified account and project-wide), and only then the revocation look-up and the Admin write;
+ *      * a per-client-IP counter exists but is OFF unless the owner has verified how the platform sets the client-IP header
+ *        (not established by official documentation);
  *  - repeated requests are idempotent: nothing is written once the claim exists;
  *  - an unexpected existing `role` claim is never overwritten;
  *  - responses carry only a fixed error word, never the token, the uid, a key or a library message.
@@ -81,14 +87,22 @@ export interface HandlerConfig {
 }
 
 export interface HandlerDeps {
-  /** verifies signature, expiry, issuer, audience AND revocation with the Firebase Admin SDK; throws (with the SDK error `code`) when not valid */
-  verifyIdToken(token: string): Promise<VerifiedToken>
+  /**
+   * Verifies signature, expiry, issuer and audience with the Firebase Admin SDK. With `checkRevoked` false it is LOCAL (public
+   * keys, no network call); with true it also asks Firebase whether the session was revoked or the user disabled (a network
+   * call). Throws, with the SDK error `code`, when the token is not valid.
+   */
+  verifyIdToken(token: string, checkRevoked: boolean): Promise<VerifiedToken>
   getUser(uid: string): Promise<UserRecordLike>
   setCustomClaims(uid: string, claims: Record<string, unknown>): Promise<void>
-  /** per-instance limit applied before any cryptographic work */
+  /** per-instance limit per client address; used ONLY when the owner has enabled an IP mode (otherwise there is no pre-verification limit) */
   ipLimiter: RateLimiter
-  /** per-instance, per-account limit applied before any Admin API call */
+  /** per-instance limit per verified account on the FIRST-TIME bootstrap path */
   uidLimiter: RateLimiter
+  /** per-instance limit per verified account for established (role-bearing) users: generous, it only bounds one account's look-ups */
+  fastLimiter: RateLimiter
+  /** one shared per-instance valve on revocation look-ups (network calls to Firebase): a safety limit, far above normal use */
+  revocationLimiter: RateLimiter
   /** database counters (shared by all instances) */
   dbLimiter: DbRateLimiter
   /** logs a fixed code only; the handler never passes a token, uid, key or library message */
@@ -102,10 +116,16 @@ const PROJECT_ID_RE = /^[a-z][a-z0-9-]{4,28}[a-z0-9]$/
 
 export const DEFAULT_RATE: RateConfig = { uidPer10Min: 6, globalPerMin: 120, ipPerMin: 60 }
 
-export type ConfigError = "origins-missing" | "origins-invalid" | "project-missing" | "project-invalid" | "ip-mode-invalid" | "rate-invalid"
+export type ConfigError = "origins-missing" | "origins-invalid" | "project-missing" | "project-invalid" | "ip-mode-invalid" | "rate-invalid" | "emulator-host-set"
 export type ConfigResult = { ok: true; config: HandlerConfig } | { ok: false; reason: ConfigError }
 
 export interface ConfigEnv {
+  /**
+   * Must be absent. The Firebase Admin SDK switches to an UNSIGNED-token verifier (algorithm "none") whenever this variable
+   * exists in the environment (verified in firebase-admin 13.10.0, lib/auth/base-auth.js and lib/utils/jwt.js). Its presence
+   * therefore fails the whole function closed.
+   */
+  FIREBASE_AUTH_EMULATOR_HOST?: string
   ALLOWED_ORIGINS?: string
   FIREBASE_PROJECT_ID?: string
   CLIENT_IP_MODE?: string
@@ -127,6 +147,7 @@ function intOr(raw: string | undefined, fallback: number): number | null {
  * Rate settings are optional integers 1..10000 (defaults above); CLIENT_IP_MODE is off | xff-first | xff-last (default off).
  */
 export function parseConfig(env: ConfigEnv): ConfigResult {
+  if ((env.FIREBASE_AUTH_EMULATOR_HOST ?? "").trim() !== "") return { ok: false, reason: "emulator-host-set" }
   const rawOrigins = (env.ALLOWED_ORIGINS ?? "").trim()
   if (!rawOrigins) return { ok: false, reason: "origins-missing" }
   const origins = rawOrigins.split(",").map((o) => o.trim())
@@ -255,30 +276,44 @@ export function createHandler(configResult: ConfigResult, deps: HandlerDeps): (r
     const m = /^Bearer ([A-Za-z0-9._-]{20,4096})$/.exec(req.headers.get("authorization") ?? "")
     if (!m) return fail(401, "missing-or-malformed-bearer", corsOrigin)
 
-    const ip = clientKey(req, ipMode)
-    if (!deps.ipLimiter.take(ip)) return fail(429, "rate-limited", corsOrigin, { "retry-after": "60" })
+    const tooMany = (retryAfter = "60") => fail(429, "rate-limited", corsOrigin, { "retry-after": retryAfter })
 
-    // Layer 2a (only when the owner has enabled an IP mode): shared per-address counter before any verification work.
-    if (ipMode !== "off" && ip !== "unknown") {
-      try {
-        if (!(await deps.dbLimiter.take("ip", await sha256Hex(ip), rate.ipPerMin, 60))) return fail(429, "rate-limited", corsOrigin, { "retry-after": "60" })
-      } catch {
-        deps.log("rate-store-failed")
-        return fail(503, "unavailable", corsOrigin) // fail closed: do not do Admin work without a working limiter
+    // Optional IP layers (only when the owner has enabled an IP mode): per-address, before any verification work. With the mode
+    // off there is NO pre-verification limit: nothing useful can be limited before the token is known, see the header.
+    if (ipMode !== "off") {
+      const ip = clientKey(req, ipMode)
+      if (!deps.ipLimiter.take(ip)) return tooMany()
+      if (ip !== "unknown") {
+        try {
+          if (!(await deps.dbLimiter.take("ip", await sha256Hex(ip), rate.ipPerMin, 60))) return tooMany()
+        } catch {
+          deps.log("rate-store-failed")
+          return fail(503, "unavailable", corsOrigin) // fail closed: do not do Admin work without a working limiter
+        }
       }
     }
 
-    let token: VerifiedToken
-    try {
-      token = await deps.verifyIdToken(m[1])
-    } catch (e) {
+    /** Maps an SDK verification failure to a response. Transient trouble reaching Firebase is 503 (retry), never a verdict on the token. */
+    const refuse = (e: unknown) => {
       const code = String((e as { code?: unknown })?.code ?? "")
       if (code === "auth/user-disabled") {
         deps.log("user-disabled")
         return fail(403, "unauthorized", corsOrigin)
       }
+      if (code === "auth/internal-error" || code === "app/network-error" || code === "auth/quota-exceeded") {
+        deps.log("verify-unavailable")
+        return fail(503, "unavailable", corsOrigin)
+      }
       deps.log(code === "auth/id-token-revoked" ? "token-revoked" : "verify-failed")
       return fail(401, "invalid-token", corsOrigin)
+    }
+
+    // Phase 1: LOCAL verification (no network, no limiter). A bad token ends here with a cheap 401.
+    let token: VerifiedToken
+    try {
+      token = await deps.verifyIdToken(m[1], false)
+    } catch (e) {
+      return refuse(e)
     }
 
     // Explicit checks on top of the SDK: the Firebase UID is text, comes only from the verified token, and the token
@@ -294,21 +329,39 @@ export function createHandler(configResult: ConfigResult, deps: HandlerDeps): (r
       deps.log("claims-mismatch")
       return fail(401, "invalid-token", corsOrigin)
     }
-    const uid = token.sub
+    const uid = token.sub // from here on the uid is the verified account; limiter keys never come from the client
 
-    // Idempotent fast path: this very (revocation-checked) token already proves the role. No write, no database counter.
-    if (token.role === REQUIRED_ROLE) return respond(200, { success: true }, corsOrigin)
+    /** One revocation / disabled-user look-up (network). Returns a refusal Response, or null when the session is good. */
+    const revocationCheck = async (): Promise<Response | null> => {
+      if (!deps.revocationLimiter.take("instance")) return tooMany()
+      try {
+        await deps.verifyIdToken(m[1], true)
+        return null
+      } catch (e) {
+        return refuse(e)
+      }
+    }
 
-    if (!deps.uidLimiter.take(uid)) return fail(429, "rate-limited", corsOrigin, { "retry-after": "60" })
+    // Established user: the verified token already carries the role. Nothing is written. This path never touches the first-time
+    // bootstrap counters, so an exhausted bootstrap budget cannot lock established users out; it is bounded per ACCOUNT only.
+    if (token.role === REQUIRED_ROLE) {
+      if (!deps.fastLimiter.take(uid)) return tooMany()
+      const refused = await revocationCheck()
+      if (refused) return refused
+      return respond(200, { success: true }, corsOrigin)
+    }
 
-    // Layer 2b: shared counters for the attempts that reach the Admin API. The key is the VERIFIED uid, never a client value.
+    // First-time bootstrap (no role yet): per-account memory limit, then the shared database counters, keyed by the VERIFIED uid.
+    if (!deps.uidLimiter.take(uid)) return tooMany()
     try {
-      if (!(await deps.dbLimiter.take("uid", uid, rate.uidPer10Min, 600))) return fail(429, "rate-limited", corsOrigin, { "retry-after": "600" })
-      if (!(await deps.dbLimiter.take("global", "bootstrap", rate.globalPerMin, 60))) return fail(429, "rate-limited", corsOrigin, { "retry-after": "60" })
+      if (!(await deps.dbLimiter.take("uid", uid, rate.uidPer10Min, 600))) return tooMany("600")
+      if (!(await deps.dbLimiter.take("global", "bootstrap", rate.globalPerMin, 60))) return tooMany()
     } catch {
       deps.log("rate-store-failed")
       return fail(503, "unavailable", corsOrigin)
     }
+    const refused = await revocationCheck() // revoked / disabled accounts are refused before anything is read or written
+    if (refused) return refused
 
     try {
       const user = await deps.getUser(uid)
