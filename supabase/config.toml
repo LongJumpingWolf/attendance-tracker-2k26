@@ -413,3 +413,10 @@ enabled = true
 # formatted with uppercase keywords, indent 2, max width 180, trailing commas,
 # and column/key alignment. Set to "null" to emit raw, unformatted SQL.
 # format_options = "{\"keywordCase\":\"upper\",\"indent\":2,\"maxWidth\":180,\"commaStyle\":\"trailing\"}"
+
+# Phase 6E: the Firebase -> Supabase auth bridge. The bearer token is a FIREBASE ID token, so the platform JWT check must be
+# off; the function verifies the token itself (supabase/functions/auth-role-bootstrap/handler.ts).
+# Committing this does not deploy anything. Deployment is a separate, explicitly approved step.
+[functions.auth-role-bootstrap]
+enabled = true
+verify_jwt = false

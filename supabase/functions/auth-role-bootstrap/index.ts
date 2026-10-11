@@ -1,8 +1,8 @@
 /* eslint-disable @typescript-eslint/ban-ts-comment -- Deno-only glue: npm: specifiers and the Deno global cannot be typechecked by the Next.js tsconfig */
 // @ts-nocheck  Deno-only glue (npm: specifiers and the Deno global). The logic lives in handler.ts and is tested under Node.
 //
-// PROPOSED, NOT DEPLOYED. Lives in supabase/proposed/ on purpose so `supabase functions deploy` cannot pick it up by accident.
-// At an approved deployment it is copied to supabase/functions/auth-role-bootstrap/ (see PHASE6E_PRODUCTION_PREFLIGHT.md).
+// DEPLOYMENT COPY (Phase 6E). Committing this file does NOT deploy it: deployment (`supabase functions deploy auth-role-bootstrap
+// --project-ref ajfyyknqdqaptuuzbwnv --no-verify-jwt`) needs the owner's explicit approval (see PHASE6E_PRODUCTION_PREFLIGHT.md).
 //
 // Secrets / configuration (set by the owner in the Supabase dashboard or `supabase secrets set`, never in git or chat):
 //   FIREBASE_SERVICE_ACCOUNT_JSON   the Firebase service-account key (JSON). Read here and nowhere else.

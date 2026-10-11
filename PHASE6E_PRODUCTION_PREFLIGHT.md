@@ -197,3 +197,39 @@ Rollback: unchanged from section 9 above, plus for the rate-limit migration a co
 | New unit tests | 25 in `tests/phase6e-rate-limit.test.ts`; handler suite from 6D still 35; mutation-checked (removing the project-wide cap or the IP-mode guard each fails tests; reverted) |
 | Remote (read-only) | `db push --dry-run --linked` lists **only** `20261009000200_bootstrap_rate_limit.sql`; nothing applied |
 | Not tested | the function against real Firebase / Deno / the real REST endpoint; the real client-IP header; `SUPABASE_SERVICE_ROLE_KEY` availability in the function; real revocation and disabled-user error strings; Third-Party Auth registration |
+
+
+---
+
+# Update: deployment commit (pre-deployment audit closed)
+
+The function now lives in `supabase/functions/auth-role-bootstrap/` (moved from `supabase/proposed/`, one copy only) and `supabase/config.toml` has `[functions.auth-role-bootstrap]` with `verify_jwt = false`. **Committing this deploys nothing.** Note that a bare `supabase functions deploy` would now deploy it, so deployment must only be run as the explicit command in step D1.
+
+## Evidence the agent verified itself
+
+| Item | How |
+|---|---|
+| Branch/HEAD/tree, linked project `ajfyyknqdqaptuuzbwnv` | git and `supabase/.temp/project-ref` |
+| The three secrets exist, and no others | `supabase secrets list` (names; the CLI prints SHA-256 digests, no values) |
+| `ALLOWED_ORIGINS` is exactly `https://attendance-tracker-2k26.vercel.app`; `FIREBASE_PROJECT_ID` is exactly `attendance-tracker-2k26` | SHA-256 of the expected public value compared with the stored digest |
+| No function deployed; remote migrations up to date (12) | `functions list`, `db push --dry-run --linked` |
+| No bridge/shadow/backend variable in Vercel or `.env.local` | `vercel env ls` (names), grep |
+| No key file in the repo or Downloads; no tracked private-key marker | file search by name, `git grep` |
+| The deployable files type-check under Deno with the real `firebase-admin@13` | `deno check` of a byte-identical copy in an isolated folder |
+| Unit 26 files / 521 tests, typecheck, lint (0 errors / 75 warnings), `next build`, local pgTAP 327 / 327 | commands above |
+
+## NOT independently verifiable by the agent (owner attestation only)
+
+| Item | Why |
+|---|---|
+| The service account `supabase-auth-bridge-prod` has only the custom role "Supabase Auth Bridge" with `firebaseauth.users.get` and `firebaseauth.users.update`, and nothing inherited | no `gcloud`, no console access; the secret's contents are deliberately not read |
+| The key JSON is valid, belongs to `attendance-tracker-2k26`, and is deleted from the owner's machine | secret not read (the function refuses a mismatched `project_id` at runtime; I found no copy in the repo or Downloads, which is not the whole disk) |
+| Firebase is registered under Supabase Third-Party Auth | no dashboard or management-API access |
+| `SUPABASE_SERVICE_ROLE_KEY` is available to the function | `secrets list` does not show platform defaults; first-time bootstrap in the smoke test proves it |
+| Behaviour against real Firebase and real Supabase (revocation strings, the client-IP header, Third-Party Auth acceptance) | needs the production smoke test |
+
+## D1. Deployment command (requires the owner's explicit approval; not run)
+
+`npx supabase functions deploy auth-role-bootstrap --project-ref ajfyyknqdqaptuuzbwnv --no-verify-jwt`
+
+Then run the smoke tests (readiness document section 9 plus the extra checks in U5 step 7) with one throwaway Firebase user. If the first-time bootstrap returns 503, check the rate-limit key (`RATE_LIMIT_DB_KEY`); if every call returns 401, suspect the key secret or the project id. Rollback: `supabase functions delete auth-role-bootstrap --project-ref ajfyyknqdqaptuuzbwnv`.

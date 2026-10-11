@@ -16,10 +16,10 @@ import {
   type DbRateLimiter,
   type UserRecordLike,
   type VerifiedToken,
-} from "../supabase/proposed/functions/auth-role-bootstrap/handler"
+} from "../supabase/functions/auth-role-bootstrap/handler"
 
 const ROOT = path.resolve(import.meta.dirname, "..")
-const FN_DIR = path.join(ROOT, "supabase", "proposed", "functions", "auth-role-bootstrap")
+const FN_DIR = path.join(ROOT, "supabase", "functions", "auth-role-bootstrap")
 const PROJECT = "demo-project-123"
 const ORIGIN = "https://app.example.test"
 const BEARER = "A".repeat(40) + ".bbbbbbbbbbbbbbbbbbbb.cccccccccccccccccccc"

@@ -1,5 +1,5 @@
 /**
- * Phase 6D: the PROPOSED production bootstrap function (supabase/proposed/functions/auth-role-bootstrap/handler.ts).
+ * Phase 6D: the PROPOSED production bootstrap function (supabase/functions/auth-role-bootstrap/handler.ts).
  * Everything is faked: no Firebase, no Supabase, no network, no credentials. Nothing here deploys or activates anything.
  */
 import { describe, expect, it, vi, afterEach } from "vitest"
@@ -12,13 +12,13 @@ import {
   parseConfig,
   type UserRecordLike,
   type VerifiedToken,
-} from "../supabase/proposed/functions/auth-role-bootstrap/handler"
+} from "../supabase/functions/auth-role-bootstrap/handler"
 import { BOOTSTRAP_PATH, mapBootstrapStatus } from "@/lib/backend/supabase-auth"
 
 afterEach(() => vi.unstubAllEnvs())
 
 const ROOT = path.resolve(import.meta.dirname, "..")
-const FN_DIR = path.join(ROOT, "supabase", "proposed", "functions", "auth-role-bootstrap")
+const FN_DIR = path.join(ROOT, "supabase", "functions", "auth-role-bootstrap")
 const PROJECT = "demo-project-123"
 const ORIGIN = "https://app.example.test"
 const UID = "AliceFbUid0000000000000000a1"
@@ -317,11 +317,16 @@ describe("the shipped source", () => {
     expect(code(indexSrc)).toMatch(/log: \(code\) => console\.error\("auth-role-bootstrap", code\)/)
     expect(code(indexSrc)).toMatch(/verifyIdToken\(token\)/)
   })
-  it("is NOT deployable by accident: nothing under supabase/functions, no [functions.*] in config.toml, no function secrets in config", () => {
-    expect(fs.existsSync(path.join(ROOT, "supabase", "functions"))).toBe(false)
+  it("deployment copy (Phase 6E): the function is in supabase/functions with exactly one config entry, verify_jwt off, and no secret in config or beside it", () => {
+    // Phase 6D asserted the opposite ("not deployable by accident"). The owner completed the pre-deployment checks and the
+    // function was moved into place in the Phase 6E deployment commit. Committing it deploys nothing.
+    expect(fs.readdirSync(path.join(ROOT, "supabase", "functions"))).toEqual(["auth-role-bootstrap"])
+    expect(fs.readdirSync(FN_DIR).sort()).toEqual(["handler.ts", "index.ts"]) // no .env, key file or extra source
     const cfg = fs.readFileSync(path.join(ROOT, "supabase", "config.toml"), "utf8")
-    expect(cfg).not.toMatch(/^\s*\[functions\./m)
-    expect(cfg).not.toMatch(/auth-role-bootstrap|FIREBASE_SERVICE_ACCOUNT/)
+    expect([...cfg.matchAll(/^\s*\[functions\.([^\]]+)\]/gm)].map((m) => m[1])).toEqual(["auth-role-bootstrap"])
+    expect(cfg).toMatch(/\[functions\.auth-role-bootstrap\]\s*\n(?:[^\[]*\n)?verify_jwt = false/)
+    expect(cfg).not.toMatch(/FIREBASE_SERVICE_ACCOUNT|private_key|ALLOWED_ORIGINS/)
+    expect(fs.existsSync(path.join(ROOT, "supabase", "proposed"))).toBe(false) // one copy only, no drift
   })
   it("the issuer/audience guard is a LOCAL migration (promoted in the hardening step) and the remote list is the owner's to change", () => {
     // Phase 6D readiness kept it in supabase/proposed/; the hardening step promoted it. Applying it to production stays an explicit owner action.
