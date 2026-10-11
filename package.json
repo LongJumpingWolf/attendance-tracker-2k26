@@ -11,6 +11,8 @@
     "typecheck": "tsc --noEmit",
     "migration:health": "node scripts/migration-health.mjs",
     "test:unlinked": "node scripts/test-unlinked.mjs",
+    "test:local-supabase": "vitest run --config vitest.local-supabase.config.mts",
+    "test:shadow-integration": "firebase emulators:exec --only firestore --project demo-shadow \"vitest run --config vitest.shadow-integration.config.mts\"",
     "test:rules": "firebase emulators:exec --only firestore,auth --project demo-ping \"vitest run --config vitest.rules.config.mts\"",
     "migration:import": "node scripts/migration-import.mjs",
     "migration:import:selftest": "firebase emulators:exec --only firestore --project demo-import \"node scripts/migration-import-selftest.mjs\""

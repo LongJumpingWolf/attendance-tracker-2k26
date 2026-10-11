@@ -47,3 +47,16 @@ export const shadowFlags = (): ShadowFlags =>
   })
 
 export const anyShadowFlag = (f: ShadowFlags): boolean => f.sync || f.social || f.push
+
+/**
+ * Phase 7 shadow-READ flag (independent of the write flags above). OFF unless the build says exactly "true".
+ *
+ *   NEXT_PUBLIC_SUPABASE_SHADOW_READ   compare the signed-in user's Supabase copy with Firebase (read-only, report only)
+ *
+ * It does nothing on its own: a shadow read also needs NEXT_PUBLIC_SUPABASE_AUTH_BRIDGE=true, the Supabase configuration and
+ * Firebase as the selected backend. It never writes to either side and never changes what the application shows.
+ */
+export const parseShadowReadFlag = (raw: string | undefined): boolean => parseAuthBridgeFlag(raw)
+
+/** The static reference lets Next.js inline the build-time value */
+export const shadowReadEnabled = (): boolean => parseShadowReadFlag(process.env.NEXT_PUBLIC_SUPABASE_SHADOW_READ)

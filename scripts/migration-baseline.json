@@ -1,8 +1,8 @@
 {
   "_comment": "Phase 0 baseline, measured at commit 3644948 with no test edited. The health check fails if a suite reports FEWER passing tests than this (a deleted or skipped test is a regression), or any failure. Raise numbers when tests are ADDED; never lower them.",
   "commit": "3644948",
-  "unitNote": "177 tests in 15 files at 3644948, plus 55 migration-invariants tests added in Phase 1 (16 files, 232), plus 72 backend adapter, selection and architecture tests in Phase 4A (19 files, 304), plus 45 auth-bridge, guard, shadow-interface and reconciliation tests in Phase 6A (21 files, 349), plus 37 shadow dual-write tests in Phase 6B (22 files, 386), plus 46 initial-import tooling tests in Phase 6C (23 files, 432), plus 35 production bridge-function and readiness tests in Phase 6D (24 files, 467), plus 29 client-hardening and Realtime-session tests in the 6D hardening step (25 files, 496), plus 25 rate-limit, IP-trust and revocation tests in Phase 6E (26 files, 521).",
-  "unit": { "files": 26, "tests": 521 },
+  "unitNote": "177 tests in 15 files at 3644948, plus 55 migration-invariants tests added in Phase 1 (16 files, 232), plus 72 backend adapter, selection and architecture tests in Phase 4A (19 files, 304), plus 45 auth-bridge, guard, shadow-interface and reconciliation tests in Phase 6A (21 files, 349), plus 37 shadow dual-write tests in Phase 6B (22 files, 386), plus 46 initial-import tooling tests in Phase 6C (23 files, 432), plus 35 production bridge-function and readiness tests in Phase 6D (24 files, 467), plus 29 client-hardening and Realtime-session tests in the 6D hardening step (25 files, 496), plus 25 rate-limit, IP-trust and revocation tests in Phase 6E (26 files, 521), plus 38 Supabase transport tests in Phase 7 preparation (27 files, 559), plus 27 shadow-reader tests in the Phase 7 shadow-read step (28 files, 586).",
+  "unit": { "files": 28, "tests": 586 },
   "rules": { "files": 4, "tests": 64 },
   "lint": { "errors": 0, "maxWarnings": 75 },
   "knownFlaky": [

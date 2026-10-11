@@ -17,10 +17,12 @@ import { BackendError } from "./errors"
 import type { Backend, BackendKind } from "./contracts"
 import { createFirebaseBackend } from "./firebase"
 import { createSupabaseBackend, createSupabaseGuard, readBuildSupabaseConfig } from "./supabase"
-import { anyShadowFlag, authBridgeEnabled, shadowFlags, type ShadowFlags } from "./flags"
+import { createFetchTransport } from "./supabase/transport"
+import { anyShadowFlag, authBridgeEnabled, shadowFlags, shadowReadEnabled, type ShadowFlags } from "./flags"
 import { isolateShadowFailures } from "./shadow"
 import { createSupabaseShadowWriter } from "./shadow-supabase"
 import { withShadow } from "./shadow-backend"
+import { createShadowReader, readSurface, type ShadowReader } from "./shadow-read"
 import { createAuthBridge, createFetchBootstrapTransport, type AuthBridge } from "./supabase-auth"
 
 export * from "./contracts"
@@ -90,6 +92,20 @@ function firebaseWithOptionalShadow(base: Backend, flags: ShadowFlags): Backend 
   return withShadow(base, isolateShadowFailures(writer), flags)
 }
 
+/**
+ * The real Supabase transport, built ONLY when the `supabase` backend kind is selected. A missing or unsafe configuration
+ * yields no transport, and the adapter then refuses every call as "not configured". The guard still runs before each call.
+ */
+function buildSupabaseTransport() {
+  const config = readBuildSupabaseConfig()
+  if (!config) return undefined
+  try {
+    return createFetchTransport({ config })
+  } catch {
+    return undefined
+  }
+}
+
 let cached: Backend | null = null
 let cachedKey: string | null = null
 let override: Backend | null = null
@@ -102,10 +118,39 @@ export function getBackend(): Backend {
   if (cached && cachedKey === key) return cached
   cached =
     kind === "supabase"
-      ? createSupabaseBackend({ guard: createSupabaseGuard({ flagEnabled: authBridgeEnabled, config: readBuildSupabaseConfig, bridge: getAuthBridge() }) })
+      ? createSupabaseBackend({ guard: createSupabaseGuard({ flagEnabled: authBridgeEnabled, config: readBuildSupabaseConfig, bridge: getAuthBridge() }), transport: buildSupabaseTransport() })
       : firebaseWithOptionalShadow(createFirebaseBackend({ db, ensureSignedIn }), flags)
   cachedKey = key
   return cached
+}
+
+/**
+ * The Phase 7 read-only shadow reader, or null. It exists only when ALL of these hold: NEXT_PUBLIC_SUPABASE_SHADOW_READ=true,
+ * NEXT_PUBLIC_SUPABASE_AUTH_BRIDGE=true, the Supabase configuration is present and safe, and Firebase is the selected backend.
+ * Nothing in the application calls it: it is for a controlled build, a developer panel or a test. It never writes to either side;
+ * the Firebase side is created without the anonymous sign-in helper, so reading can never create a user.
+ */
+export function getShadowReader(): ShadowReader | null {
+  if (!shadowReadEnabled() || !authBridgeEnabled() || !readBuildSupabaseConfig()) return null
+  try {
+    if (configured() !== "firebase") return null
+  } catch {
+    return null
+  }
+  const transport = buildSupabaseTransport()
+  if (!transport) return null
+  const guard = createSupabaseGuard({ flagEnabled: authBridgeEnabled, config: readBuildSupabaseConfig, bridge: getAuthBridge() })
+  return createShadowReader({
+    authoritative: readSurface(createFirebaseBackend({ db })),
+    shadow: readSurface(createSupabaseBackend({ guard, transport })),
+    currentUid: () => {
+      try {
+        return getAuth(app).currentUser?.uid ?? null
+      } catch {
+        return null
+      }
+    },
+  })
 }
 
 /** Tests only: install a backend (or null to go back to the configured one) */

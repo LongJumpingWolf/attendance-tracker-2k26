@@ -159,3 +159,26 @@ NEXT — owner-supplied origin, secrets and decisions listed in section 8 of the
 ## 12. Status update after Phase 6D hardening
 
 Guard migration 20261009000100 exists locally only (remote still has the original 10). Client retry, refresh margin, cooldown and the Realtime session controller exist behind the OFF bridge flag. Bridge function not deployed; all flags off. See `PHASE6D_AUTH_HARDENING.md`. Linked checkouts run unit tests with `npm run test:unlinked`.
+
+## 13. Status update after Phase 7 preparation (supersedes the statuses in sections 10 to 12)
+
+```
+CURRENT MIGRATION STATUS:
+PRODUCTION SUPABASE — 12 migrations applied (incl. issuer/audience guard and bootstrap rate limit); auth-role-bootstrap DEPLOYED (version 1)
+BRIDGE HAPPY PATH — VERIFIED IN PRODUCTION with a dedicated Google test account (rate limit, expiry, revocation: not yet)
+SUPABASE READ/RPC TRANSPORT — BUILT AND TESTED LOCALLY (unit + real local stack); NOT used by the app
+APPLICATION BACKEND — STILL FIREBASE; ALL BRIDGE / SHADOW / BACKEND FLAGS OFF
+NEXT — read-only shadow reads + reconciliation (local first); see PHASE7_SUPABASE_TRANSPORT.md
+```
+
+## 14. Status update after the Phase 7 shadow reader (local only, uncommitted)
+
+```
+CURRENT MIGRATION STATUS:
+SUPABASE TRANSPORT — BUILT AND TESTED (unit + real local stack); NOT used by the app
+READ-ONLY SHADOW READER + RECONCILIATION REPORT — BUILT AND TESTED LOCALLY (unit 27, Firestore emulator + local Supabase 14); NOT used by the app, NOT run against production
+SHADOW-READ FLAG — NEXT_PUBLIC_SUPABASE_SHADOW_READ, OFF by default and unset everywhere
+APPLICATION BACKEND — STILL FIREBASE; ALL BRIDGE / SHADOW / BACKEND FLAGS OFF
+FULL HEALTH — HEALTHY (unit 28 files / 586 tests, rules 64, e2e 203, build ok)
+NEXT — see PHASE7_SUPABASE_TRANSPORT.md section 9.7
+```
