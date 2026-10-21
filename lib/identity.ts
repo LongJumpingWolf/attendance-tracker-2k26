@@ -11,8 +11,8 @@
  *   1. the connections made under the old id are noted (and saved, in case the app closes half-way)
  *   2. they are ended on the server, so nobody is left connected to an id that is about to be abandoned
  *   3. the device signs in as the Google account's id
- *   4. a fresh connection request is sent to each of those mates from the new id; they accept it once, and their
- *      history with you is kept (the ledger matches them by name; see adoptConnections)
+ *   4. a fresh connection request is sent to each of those mates from the new id; they accept it once. The old ledger
+ *      is preserved separately unless the app can safely associate an unlinked local row with a unique display name.
  *
  * Nothing is merged silently and nothing is deleted without the person agreeing first.
  */
@@ -146,21 +146,31 @@ export async function signOutOfAccount(auth: Auth, db: Firestore) {
 export const announceProfile = (db: Firestore, uid: string, name: string) => (name ? saveProfile(uid, name, db).catch(() => {}) : Promise.resolve())
 
 /**
- * The favour ledger lists everyone you are connected to. A mate who reconnected under a new account id (see above) is
- * the same person with the same name: their old row, no longer connected, takes the new id and keeps its history,
- * instead of a second row appearing.
+ * The favour ledger lists everyone you are connected to. UIDs are the identity keys; a display name can be shared by
+ * different people and must never transfer favour history between accounts. A unique hand-added row without a UID can
+ * be linked when that contact connects; stale UID-bearing rows are retained rather than overwritten.
  */
 export function adoptConnections(mates: Mate[], connections: { uid: string; name: string }[]): Mate[] {
-  const norm = (s: string) => s.trim().toLowerCase()
-  const live = new Set(connections.map((c) => c.uid))
+  const norm = (s: string) => s.trim().normalize("NFKC").toLocaleLowerCase().replace(/\s+/g, " ")
   let next = mates
   for (const c of connections) {
-    if (next.some((m) => m.uid === c.uid)) continue
-    const stale = next.findIndex((m) => norm(m.name) === norm(c.name) && (!m.uid || !live.has(m.uid)))
-    next =
-      stale !== -1
-        ? next.map((m, i) => (i === stale ? { ...m, uid: c.uid } : m))
-        : [...next, { id: c.uid, uid: c.uid, name: c.name, covered: 0, repaid: 0 }]
+    if (!c.uid) continue
+    const connectedIndex = next.findIndex((m) => m.uid === c.uid)
+    if (connectedIndex >= 0) {
+      // The account UID is the identity. Update the display label without changing the ledger row or its counters.
+      next = next.map((m, index) => index === connectedIndex ? { ...m, name: c.name || m.name } : m)
+      continue
+    }
+
+    // A display name is not proof of identity. Only link a manually entered row without a UID when the name match
+    // is unique. Never transfer a ledger from an old/different UID to a new person by name.
+    const candidates = next.map((m, index) => ({ m, index })).filter(({ m }) => !m.uid && norm(m.name) === norm(c.name))
+    if (candidates.length === 1) {
+      const targetIndex = candidates[0].index
+      next = next.map((m, index) => index === targetIndex ? { ...m, uid: c.uid, name: c.name || m.name } : m)
+    } else {
+      next = [...next, { id: c.uid, uid: c.uid, name: c.name || "Mate", covered: 0, repaid: 0 }]
+    }
   }
   return next
 }

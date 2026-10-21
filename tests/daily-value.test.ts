@@ -113,6 +113,36 @@ describe("past days can be marked and corrected", () => {
     expect(dayClasses([s], new Date(2026, 8, 15)).map((c) => c.state)).toEqual([null, "A"])
   })
 
+  it("clearing a legacy duplicate mark removes every stale entry for that class but leaves other classes alone", () => {
+    const base = subject("a", "Pharm", 1, 1, everyDay(["09:00", "10:00"], ["14:00", "15:00"]))
+    const legacy: Subject = {
+      ...base,
+      log: [
+        { d: OLDER, s: "P", t: "09:00" },
+        { d: OLDER, s: "A", t: "09:00" }, // last entry is the current state; older duplicate should not reappear on clear
+        { d: OLDER, s: "P", t: "14:00" },
+      ],
+    }
+    const cleared = withSet(legacy, OLDER, null, { t: "09:00" })
+    expect(markFor(cleared, OLDER, "09:00")).toBeNull()
+    expect(markFor(cleared, OLDER, "14:00")).toBe("P")
+    expect(cleared.log).toEqual([{ d: OLDER, s: "P", t: "14:00" }])
+    expect(cleared.attended).toBe(1)
+    expect(cleared.missed).toBe(0)
+  })
+
+  it("repeating the current state collapses duplicate records without changing attendance counters", () => {
+    const base = subject("a", "Pharm", 0, 1, everyDay(["09:00", "10:00"]))
+    const legacy: Subject = { ...base, log: [
+      { d: OLDER, s: "P", t: "09:00" },
+      { d: OLDER, s: "A", t: "09:00" },
+    ] }
+    const normalized = withSet(legacy, OLDER, "A", { t: "09:00" })
+    expect(normalized.log).toEqual([{ d: OLDER, s: "A", t: "09:00" }])
+    expect(normalized.attended).toBe(0)
+    expect(normalized.missed).toBe(1)
+  })
+
   it("editing a past mark changes the calculated attendance and the verdict", () => {
     let s = subject("a", "Pharm", 9, 1, everyDay(["09:00", "10:00"])) // 90%
     const before = classVerdict(s)

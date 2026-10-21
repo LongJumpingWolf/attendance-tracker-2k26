@@ -1,7 +1,9 @@
 "use client"
 
-import { CaretLeft, Check, X, PencilSimple } from "@phosphor-icons/react"
-import type { Subject } from "@/lib/types"
+import { CaretLeft, Check, X, PencilSimple, DownloadSimple, SpinnerGap } from "@phosphor-icons/react"
+import { useRef, useState } from "react"
+import ClassActionMenu from "./class-action-menu"
+import type { ScheduleOverride, Subject } from "@/lib/types"
 import {
   getAttendance,
   STATUS_STYLES,
@@ -11,6 +13,7 @@ import {
   DAY_SHORT,
   formatTime,
   classesOn,
+  isSubjectSleeping,
   markFor,
   slotMeta,
   recentMarks,
@@ -18,10 +21,15 @@ import {
   type MarkMeta,
 } from "@/lib/attendance"
 import ProgressRing from "./progress-ring"
+import { downloadMonthlySubjectReport } from "@/lib/monthly-report"
 import { SectionHeader } from "./sheet"
 
 interface SubjectDetailProps {
   subject: Subject
+  allSubjects?: Subject[]
+  scheduleOverrides?: ScheduleOverride[]
+  onClassActions?: (target: { subjectId: string; date: string; slot: { day: number; start: string; end: string; kind?: string }; subjectName?: string }) => void
+  onSleep?: (subject: Subject) => void
   onBack: () => void
   /** The same call Today makes, so both screens write the same record for the same class */
   onSet: (date: string, status: "P" | "A" | null, meta?: MarkMeta) => void
@@ -31,7 +39,10 @@ interface SubjectDetailProps {
 
 const WEEKDAYS = ["S", "M", "T", "W", "T", "F", "S"]
 
-export default function SubjectDetail({ subject, onBack, onSet, onEdit, onPlan }: SubjectDetailProps) {
+export default function SubjectDetail({ subject, allSubjects = [subject], scheduleOverrides = [], onClassActions, onSleep, onBack, onSet, onEdit, onPlan }: SubjectDetailProps) {
+  const [reportBusy, setReportBusy] = useState(false)
+  const reportActionRef = useRef(false)
+  const [reportNotice, setReportNotice] = useState("")
   const info = getAttendance(subject.attended, subject.missed, subject.requirement)
   const st = STATUS_STYLES[info.status]
   const dates = futureClassDates(subject, 35)
@@ -51,7 +62,7 @@ export default function SubjectDetail({ subject, onBack, onSet, onEdit, onPlan }
 
   // Today's real classes of this subject. A subject with no timetable at all has a single "any time" class a day.
   const today = localDate()
-  const todays = classesOn([subject], new Date())
+  const todays = classesOn(allSubjects, new Date(), scheduleOverrides).filter((entry) => (entry.originalSubjectId ?? entry.subject.id) === subject.id && !entry.cancelled)
   const noTimetable = !(subject.slots && subject.slots.length > 0)
 
   const cycle = (date: string) => {
@@ -65,19 +76,53 @@ export default function SubjectDetail({ subject, onBack, onSet, onEdit, onPlan }
         <button onClick={onBack} className="flex items-center gap-0.5 text-[17px] text-ink -ml-1.5">
           <CaretLeft weight="bold" className="w-5 h-5" /> Subjects
         </button>
-        <button
-          onClick={onEdit}
-          aria-label="Edit subject"
-          className="w-9 h-9 grid place-items-center rounded-full bg-secondary text-ink"
-        >
-          <PencilSimple weight="bold" className="w-[18px] h-[18px]" />
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={async () => {
+              if (reportActionRef.current) return
+              reportActionRef.current = true
+              setReportBusy(true)
+              setReportNotice("")
+              try {
+                const result = await downloadMonthlySubjectReport(subject, scheduleOverrides)
+                if (result === "downloaded") setReportNotice("The share sheet was busy or unavailable, so the report image was saved instead.")
+                else if (result === "busy") setReportNotice("A monthly report is already being prepared. Please wait a moment.")
+              } catch (error) {
+                setReportNotice(error instanceof Error ? error.message : "Could not create the monthly report. Please try again.")
+              } finally {
+                reportActionRef.current = false
+                setReportBusy(false)
+              }
+            }}
+            disabled={reportBusy}
+            aria-busy={reportBusy}
+            aria-label={reportBusy ? "Preparing monthly report" : `Share ${subject.name} monthly attendance report`}
+            title={reportBusy ? "Preparing monthly report…" : "Share monthly report image"}
+            className="w-9 h-9 grid place-items-center rounded-full bg-secondary text-ink disabled:opacity-55"
+          >
+            {reportBusy ? <SpinnerGap weight="bold" className="w-[18px] h-[18px] animate-spin" /> : <DownloadSimple weight="bold" className="w-[18px] h-[18px]" />}
+          </button>
+          {onSleep && <ClassActionMenu subject={subject} onSleep={onSleep} />}
+          <button
+            onClick={onEdit}
+            aria-label="Edit subject"
+            className="w-9 h-9 grid place-items-center rounded-full bg-secondary text-ink"
+          >
+            <PencilSimple weight="bold" className="w-[18px] h-[18px]" />
+          </button>
+        </div>
       </div>
+      {reportNotice && (
+        <p role="status" aria-live="polite" className="mt-2 rounded-xl bg-secondary px-3 py-2 text-[12px] text-mute">
+          {reportNotice}
+        </p>
+      )}
 
       <div className="flex flex-col items-center text-center pt-2">
         <ProgressRing pct={info.pct} color={st.color} size={168} requirement={subject.requirement} />
         <h2 className="text-[clamp(22px,6.4vw,28px)] font-bold tracking-tight leading-tight mt-5 break-words max-w-full">{subject.name}</h2>
         {subject.tags?.length > 0 && <p className="text-[15px] text-mute mt-0.5">{subject.tags.join(" · ")}</p>}
+        {subject.sleeping && (subject.sleepUntil === "forever" || !subject.sleepUntil || subject.sleepUntil >= today) && <p className="mt-2 rounded-full bg-secondary px-3 py-1 text-[12px] font-semibold text-mute">{isSubjectSleeping(subject, today) ? "Sleeping" : "Sleep scheduled"} · {subject.sleepFrom && subject.sleepFrom > today ? `from ${subject.sleepFrom} · ` : ""}{subject.sleepUntil === "forever" || !subject.sleepUntil ? "until manually woken" : `through ${subject.sleepUntil}`}</p>}
         <p className={`text-[15px] font-medium mt-2 ${st.text}`}>{info.message}</p>
       </div>
 
@@ -104,7 +149,7 @@ export default function SubjectDetail({ subject, onBack, onSet, onEdit, onPlan }
       <section className="mt-5" aria-label="Today">
         {noTimetable || todays.length > 0 ? (
           <div className="space-y-3">
-            {(noTimetable ? [{ slot: null as null | (typeof todays)[number]["slot"] }] : todays).map((c) => {
+            {(noTimetable ? [{ slot: null as null | (typeof todays)[number]["slot"], subject }] : todays).map((c) => {
               const slot = c.slot
               const state = markFor(subject, today, slot?.start ?? "")
               const meta = slotMeta(slot)
@@ -112,6 +157,7 @@ export default function SubjectDetail({ subject, onBack, onSet, onEdit, onPlan }
                 <div key={slot?.start ?? "any"} data-testid="today-class">
                   <p className="text-[13px] text-mute mb-1.5 px-1">
                     {slot ? `Today · ${formatTime(slot.start)} – ${formatTime(slot.end)}${slot.kind ? ` · ${slot.kind}` : ""}` : "Today · any time"}
+                    {"override" in c && c.override?.kind === "substitute" && <span className="block text-info">Conducted as {c.subject.name}; attendance is recorded under {subject.name}</span>}
                     {state && <span data-testid="today-state">{state === "P" ? " · Marked present" : " · Marked absent"}</span>}
                   </p>
                   <div className="grid grid-cols-2 gap-3">
@@ -122,7 +168,7 @@ export default function SubjectDetail({ subject, onBack, onSet, onEdit, onPlan }
                         state === "P" ? "bg-good text-paper" : "bg-good/10 text-good"
                       }`}
                     >
-                      <Check weight="bold" className="w-5 h-5" /> Present
+                      <Check weight="bold" className="w-5 h-5" /> Add Present
                     </button>
                     <button
                       onClick={() => onSet(today, "A", meta)}
@@ -131,7 +177,7 @@ export default function SubjectDetail({ subject, onBack, onSet, onEdit, onPlan }
                         state === "A" ? "bg-bad text-paper" : "bg-bad/10 text-bad"
                       }`}
                     >
-                      <X weight="bold" className="w-5 h-5" /> Absent
+                      <X weight="bold" className="w-5 h-5" /> Add Absent
                     </button>
                   </div>
                   {state && (
@@ -139,12 +185,19 @@ export default function SubjectDetail({ subject, onBack, onSet, onEdit, onPlan }
                       Clear today&rsquo;s mark
                     </button>
                   )}
+                  {slot && onClassActions && <div className="flex justify-end"><ClassActionMenu subject={subject} target={{ subjectId: ("originalSubjectId" in c ? c.originalSubjectId : undefined) ?? subject.id, date: today, slot, subjectName: ("originalSubjectName" in c ? c.originalSubjectName : undefined) ?? subject.name }} onReplace={onClassActions} onCancel={onClassActions} /></div>}
                 </div>
               )
             })}
           </div>
         ) : (
-          <p className="rounded-2xl bg-card px-4 py-4 text-[15px] text-mute text-center">No class scheduled today.</p>
+          <div className="rounded-2xl bg-card px-4 py-4">
+            <p className="text-[14px] text-mute text-center mb-3">No class scheduled today. You can still record a quick attendance mark for this subject.</p>
+            <div className="grid grid-cols-2 gap-3">
+              <button onClick={() => onSet(today, "P")} className="h-[52px] rounded-2xl bg-good/10 text-good text-[16px] font-semibold flex items-center justify-center gap-2"><Check weight="bold" className="w-5 h-5"/>Add Present</button>
+              <button onClick={() => onSet(today, "A")} className="h-[52px] rounded-2xl bg-bad/10 text-bad text-[16px] font-semibold flex items-center justify-center gap-2"><X weight="bold" className="w-5 h-5"/>Add Absent</button>
+            </div>
+          </div>
         )}
       </section>
 

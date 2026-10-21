@@ -1,4 +1,4 @@
-import type { Subject, Slot, LogEntry } from "./types"
+import type { Subject, Slot, LogEntry, ScheduleOverride } from "./types"
 
 export type AttendanceStatus = "new" | "safe" | "edge" | "risk"
 
@@ -164,23 +164,57 @@ export function timeParts(t: string) {
 /* ---------- timetable ---------- */
 
 export interface ClassSlot {
+  /** Subject displayed as being taught during this slot (the replacement subject for a substitution). */
   subject: Subject
+  /** Subject that owns this recurring timetable slot and therefore receives its attendance mark. */
+  attendanceSubject?: Subject
   slot: Slot
+  originalSubjectId?: string
+  originalSubjectName?: string
+  cancelled?: boolean
+  override?: ScheduleOverride
 }
 
-/** Classes happening on the given date, earliest first. Each (subject, start time) is one class, listed once. */
-export function classesOn(subjects: Subject[], date: Date): ClassSlot[] {
+export function isSubjectSleeping(subject: Subject, date = localDate()): boolean {
+  if (!subject.sleeping) return false
+  if (subject.sleepFrom && date < subject.sleepFrom) return false
+  if (subject.sleepUntil === "forever" || !subject.sleepUntil) return true
+  return date <= subject.sleepUntil
+}
+
+/** Classes happening on the given date. Cancellations stay visible to Calendar; dayClasses filters them out. */
+export function classesOn(subjects: Subject[], date: Date, overrides: ScheduleOverride[] = []): ClassSlot[] {
   const day = date.getDay()
-  const seen = new Set<string>()
-  return subjects
-    .flatMap((subject) => (subject.slots || []).filter((slot) => slot.day === day).map((slot) => ({ subject, slot })))
-    .filter(({ subject, slot }) => {
-      const key = `${subject.id}@${slot.start}`
-      if (seen.has(key)) return false
-      seen.add(key)
-      return true
-    })
-    .sort((a, b) => toMin(a.slot.start) - toMin(b.slot.start))
+  const dateKey = localDate(date)
+  const byId = new Map(subjects.map((s) => [s.id, s]))
+  const found: ClassSlot[] = []
+  for (const original of subjects) {
+    if (isSubjectSleeping(original, dateKey)) continue
+    for (const slot of original.slots || []) {
+      if (slot.day !== day) continue
+      const exception = overrides.find((o) => o.date === dateKey && o.originalSubjectId === original.id && o.start === slot.start)
+      if (exception?.kind === "cancelled") {
+        found.push({ subject: original, attendanceSubject: original, slot, originalSubjectId: original.id, originalSubjectName: original.name, cancelled: true, override: exception })
+        continue
+      }
+      if (exception?.kind === "substitute" && exception.substituteSubjectId) {
+        const replacement = byId.get(exception.substituteSubjectId)
+        if (replacement && !isSubjectSleeping(replacement, dateKey)) {
+          found.push({ subject: replacement, attendanceSubject: original, slot, originalSubjectId: original.id, originalSubjectName: original.name, override: exception })
+          continue
+        }
+      }
+      found.push({ subject: original, attendanceSubject: original, slot })
+    }
+  }
+  // If replacement has its own class at that time, the explicit substituted slot takes priority.
+  const unique = new Map<string, ClassSlot>()
+  for (const entry of found) {
+    const key = entry.cancelled ? `cancelled:${entry.originalSubjectId ?? entry.subject.id}@${entry.slot.start}` : `${entry.subject.id}@${entry.slot.start}`
+    const previous = unique.get(key)
+    if (!previous || entry.override?.kind === "substitute") unique.set(key, entry)
+  }
+  return [...unique.values()].sort((a, b) => toMin(a.slot.start) - toMin(b.slot.start) || a.subject.name.localeCompare(b.subject.name))
 }
 
 /** A class on a given day, with its recorded state (null = not marked yet) */
@@ -193,9 +227,18 @@ export interface DayClass extends ClassSlot {
  * What the Today screen is made of: only classes that are really on the timetable for that day, never a subject just
  * because it exists. A subject with no timetable, or none on this day, has no class today.
  */
-export function dayClasses(subjects: Subject[], date: Date): DayClass[] {
+export function dayClasses(subjects: Subject[], date: Date, overrides: ScheduleOverride[] = []): DayClass[] {
   const d = localDate(date)
-  return classesOn(subjects, date).map((c) => ({ ...c, key: `${c.subject.id}@${c.slot.start}`, state: markFor(c.subject, d, c.slot.start) }))
+  const byId = new Map(subjects.map((s) => [s.id, s]))
+  return classesOn(subjects, date, overrides).filter((c) => !c.cancelled).map((c) => {
+    const attendanceSubject = c.attendanceSubject ?? byId.get(c.originalSubjectId ?? c.subject.id) ?? c.subject
+    return {
+      ...c,
+      attendanceSubject,
+      key: c.override?.kind === "substitute" ? `${attendanceSubject.id}>${c.subject.id}@${c.slot.start}` : `${c.subject.id}@${c.slot.start}`,
+      state: markFor(attendanceSubject, d, c.slot.start),
+    }
+  })
 }
 
 /** How many of the day's classes still need a mark, and whether the day is done (there were classes and none is left) */
@@ -236,17 +279,24 @@ export interface MarkMeta {
  */
 export function withSet(s: Subject, date: string, status: "P" | "A" | null, meta?: MarkMeta): Subject {
   const t = meta?.t ?? ""
-  const cur = markFor(s, date, t)
-  if (cur === status) return s
-  const log = [...(s.log || [])]
+  const currentEntries = (s.log || []).filter((entry) => entry.d === date && (entry.t ?? "") === t)
+  const cur = currentEntries.length ? currentEntries[currentEntries.length - 1].s : null
+
+  // Older/imported data may contain duplicate records for one class. Re-tapping the latest state is normally a no-op,
+  // but if duplicates exist, collapse them to the latest entry so a future clear cannot reveal a stale older mark.
+  if (cur === status) {
+    if (currentEntries.length <= 1) return s
+    const latest = currentEntries[currentEntries.length - 1]
+    const log = (s.log || []).filter((entry) => !(entry.d === date && (entry.t ?? "") === t))
+    log.push(latest)
+    return { ...s, log: log.slice(-400) }
+  }
+
+  // Remove every record for this date/time, not just the newest one. Counts change once because the class is one
+  // logical mark regardless of how many stale duplicate log entries an older/imported device happened to contain.
+  const log = (s.log || []).filter((entry) => !(entry.d === date && (entry.t ?? "") === t))
   let attended = s.attended
   let missed = s.missed
-  for (let k = log.length - 1; k >= 0; k--) {
-    if (log[k].d === date && (log[k].t ?? "") === t) {
-      log.splice(k, 1)
-      break
-    }
-  }
   if (cur === "P") attended = Math.max(0, attended - 1)
   if (cur === "A") missed = Math.max(0, missed - 1)
   if (status === "P") attended += 1
@@ -285,7 +335,9 @@ export function futureClassDates(s: Subject, days = 35): string[] {
   const now = new Date()
   for (let i = 1; i <= days; i++) {
     const d = new Date(now.getFullYear(), now.getMonth(), now.getDate() + i)
-    if (set.has(d.getDay())) out.push(localDate(d))
+    const date = localDate(d)
+    // A finite sleep hides only dates through sleepUntil. Future dates after the wake date must reappear in forecasts.
+    if (set.has(d.getDay()) && !isSubjectSleeping(s, date)) out.push(date)
   }
   return out
 }

@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest"
 import { assertFails, assertSucceeds, initializeTestEnvironment, type RulesTestEnvironment } from "@firebase/rules-unit-testing"
-import { Timestamp, collection, deleteDoc, doc, getDoc, getDocs, serverTimestamp, setDoc, updateDoc, type Firestore } from "firebase/firestore"
+import { Timestamp, collection, deleteDoc, doc, getDoc, getDocs, query, where, serverTimestamp, setDoc, updateDoc, type Firestore } from "firebase/firestore"
 import fs from "node:fs"
 import { answerPing, createPing, finalizePing, leasePing, removePing, type NewPing } from "@/lib/ping-server"
 import type { PingItem } from "@/lib/types"
@@ -18,6 +18,8 @@ const asDb = (db: unknown) => db as Firestore
 const asha = () => asDb(env.authenticatedContext(ASHA).firestore())
 const rahul = () => asDb(env.authenticatedContext(RAHUL).firestore())
 const mallory = () => asDb(env.authenticatedContext(MALLORY).firestore())
+const anonymousAsha = () => asDb(env.authenticatedContext(ASHA, { firebase: { sign_in_provider: "anonymous", identities: {} } }).firestore())
+const anonymousRahul = () => asDb(env.authenticatedContext(RAHUL, { firebase: { sign_in_provider: "anonymous", identities: {} } }).firestore())
 
 const day = (daysAgo: number) => new Date(Date.now() - daysAgo * 86_400_000).toISOString().slice(0, 10)
 const item = (key = "dbms@09:00", over: Partial<PingItem> = {}): PingItem => ({ key, subjectId: "dbms", name: "DBMS", t: "09:00", answer: null, ...over })
@@ -62,12 +64,34 @@ beforeEach(async () => {
   })
 })
 
+describe("anonymous identity restrictions", () => {
+  it("blocks anonymous accounts from creating direct in-app Pings", async () => {
+    await assertFails(createPing(anonymousAsha(), ping()))
+    expect(await count()).toBe(0)
+  })
+
+  it("blocks anonymous accounts from answering direct in-app Pings", async () => {
+    await createPing(asha(), ping())
+    await assertFails(answerPing(anonymousRahul(), "ping-0001-aaaa", answers(ping(), ["yes", "no"])))
+    expect((await read("ping-0001-aaaa"))?.status).toBe("asking")
+  })
+})
+
 describe("creating a Ping", () => {
   it("an asker can create one for an accepted mate, and the server stamps the time", async () => {
     expect(await createPing(asha(), ping())).toBe("created")
     const d = await read("ping-0001-aaaa")
     expect(d).toMatchObject({ from: ASHA, to: RAHUL, status: "asking" })
     expect(d?.createdAt).toBeTruthy()
+  })
+
+  it("accepts a date-specific substituted class and preserves its metadata through the answer", async () => {
+    const p = ping({ id: "ping-substitute-0001", items: [item("physiology@09:00", { subjectId: "physiology", name: "Physiology", t: "09:00", substituted: true })] })
+    await assertSucceeds(createPing(asha(), p))
+    await assertFails(answerPing(rahul(), p.id, [{ ...p.items[0], substituted: false, answer: "yes" }]))
+    await assertSucceeds(answerPing(rahul(), p.id, [{ ...p.items[0], answer: "yes" }]))
+    const saved = await read(p.id)
+    expect(saved?.items).toMatchObject([{ subjectId: "physiology", t: "09:00", substituted: true, answer: "yes" }])
   })
 
   it("8. cannot manufacture a Ping involving someone they aren't connected to", async () => {
@@ -356,5 +380,103 @@ describe("reading and deleting", () => {
   it("a waiting Ping can be withdrawn by either person, but not by a stranger", async () => {
     await assertFails(removePing(mallory(), "ping-0001-aaaa"))
     await assertSucceeds(removePing(asha(), "ping-0001-aaaa"))
+  })
+})
+
+
+describe("share-link Pings", () => {
+  const shareId = "a".repeat(64)
+  const shareItem = { key: "dbms@09:00", subjectId: "dbms", name: "DBMS", t: "09:00", answer: null }
+  const shareDoc = (over: Record<string, unknown> = {}) => ({
+    ownerUid: ASHA,
+    fromName: "Asha",
+    recipientName: "",
+    date: day(1),
+    items: [shareItem],
+    status: "asking",
+    createdAt: serverTimestamp(),
+    expiresAt: Timestamp.fromMillis(Date.now() + 12 * 60 * 60_000),
+    purgeAt: Timestamp.fromMillis(Date.now() + 30 * 86_400_000),
+    ...over,
+  })
+
+  it("lets a signed-in sender create a one-day random link document, but anonymous users cannot list links", async () => {
+    await assertSucceeds(setDoc(doc(asha(), "sharePings", shareId), shareDoc()))
+    await assertSucceeds(getDoc(doc(asDb(env.unauthenticatedContext().firestore()), "sharePings", shareId)))
+    await assertFails(getDocs(collection(asDb(env.unauthenticatedContext().firestore()), "sharePings")))
+    await assertSucceeds(getDocs(query(collection(asha(), "sharePings"), where("ownerUid", "==", ASHA))))
+  })
+
+  it("accepts substitution metadata but prevents a link holder from altering it", async () => {
+    await assertSucceeds(setDoc(doc(asha(), "sharePings", shareId), shareDoc({
+      items: [{ ...shareItem, substituted: true }],
+    })))
+    const publicDb = asDb(env.unauthenticatedContext().firestore())
+    await assertFails(updateDoc(doc(publicDb, "sharePings", shareId), {
+      items: [{ ...shareItem, substituted: false, answer: "yes" }], status: "answered", respondedAt: serverTimestamp(),
+    }))
+    await assertSucceeds(updateDoc(doc(publicDb, "sharePings", shareId), {
+      items: [{ ...shareItem, substituted: true, answer: "yes" }], status: "answered", respondedAt: serverTimestamp(),
+    }))
+  })
+
+  it("allows one exact Yes/No answer from the bearer link and then blocks second answers", async () => {
+    await assertSucceeds(setDoc(doc(asha(), "sharePings", shareId), shareDoc()))
+    const publicDb = asDb(env.unauthenticatedContext().firestore())
+    await assertSucceeds(updateDoc(doc(publicDb, "sharePings", shareId), {
+      items: [{ ...shareItem, answer: "yes" }], status: "answered", respondedAt: serverTimestamp(),
+    }))
+    await assertFails(updateDoc(doc(publicDb, "sharePings", shareId), {
+      items: [{ ...shareItem, answer: "no" }], status: "answered", respondedAt: serverTimestamp(),
+    }))
+  })
+
+  it("does not let a link holder alter the requested class or sender", async () => {
+    await assertSucceeds(setDoc(doc(asha(), "sharePings", shareId), shareDoc()))
+    const publicDb = asDb(env.unauthenticatedContext().firestore())
+    await assertFails(updateDoc(doc(publicDb, "sharePings", shareId), {
+      fromName: "Mallory", items: [{ ...shareItem, name: "Different class", answer: "yes" }],
+      status: "answered", respondedAt: serverTimestamp(),
+    }))
+  })
+
+  it("lets only the sender claim and finish an answer after its result can be applied", async () => {
+    await assertSucceeds(setDoc(doc(asha(), "sharePings", shareId), shareDoc()))
+    const publicDb = asDb(env.unauthenticatedContext().firestore())
+    await assertSucceeds(updateDoc(doc(publicDb, "sharePings", shareId), {
+      items: [{ ...shareItem, answer: "yes" }], status: "answered", respondedAt: serverTimestamp(),
+    }))
+    await assertSucceeds(updateDoc(doc(asha(), "sharePings", shareId), { claimedBy: "device-phone-001", claimedAt: serverTimestamp() }))
+    await assertFails(updateDoc(doc(rahul(), "sharePings", shareId), { claimedBy: "device-phone-002", claimedAt: serverTimestamp() }))
+    await assertSucceeds(updateDoc(doc(asha(), "sharePings", shareId), { status: "processed", processedAt: serverTimestamp() }))
+  })
+
+  it("lets the owner withdraw a pending link and stops public reads afterward", async () => {
+    await assertSucceeds(setDoc(doc(asha(), "sharePings", shareId), shareDoc()))
+    await assertSucceeds(updateDoc(doc(asha(), "sharePings", shareId), { status: "cancelled" }))
+    const publicDb = asDb(env.unauthenticatedContext().firestore())
+    await assertFails(getDoc(doc(publicDb, "sharePings", shareId)))
+  })
+
+  it("rejects malformed IDs and extra fields at creation", async () => {
+    await assertFails(setDoc(doc(asha(), "sharePings", "short-id"), shareDoc()))
+    await assertFails(setDoc(doc(asha(), "sharePings", shareId), shareDoc({ secret: "not-allowed" })))
+  })
+
+  it("rejects share links that would live longer than 24 hours", async () => {
+    await assertFails(setDoc(doc(asha(), "sharePings", shareId), shareDoc({
+      expiresAt: Timestamp.fromMillis(Date.now() + 25 * 60 * 60_000),
+    })))
+  })
+
+  it("does not allow an answer after expiry", async () => {
+    await seed(async (db) => setDoc(doc(db, "sharePings", shareId), shareDoc({
+      expiresAt: Timestamp.fromMillis(Date.now() - 60_000),
+      purgeAt: Timestamp.fromMillis(Date.now() + 86_400_000),
+    })))
+    const publicDb = asDb(env.unauthenticatedContext().firestore())
+    await assertFails(updateDoc(doc(publicDb, "sharePings", shareId), {
+      items: [{ ...shareItem, answer: "yes" }], status: "answered", respondedAt: serverTimestamp(),
+    }))
   })
 })

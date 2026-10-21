@@ -37,7 +37,13 @@ const marksIn = (subjects: Subject[], r: { start: string; end: string }) =>
 
 /** The last finished week: its id (the Monday it started) and whether you marked anything in it */
 export function lastWeekInfo(subjects: Subject[], now: Date = new Date()) {
-  const r = weekRange(now, 1)
+  // Wrapped is published on Saturday for the week currently ending, not early on Monday.
+  const saturdayRelease = now.getDay() === 6
+  const r = weekRange(now, saturdayRelease ? 0 : 1)
+  if (saturdayRelease) {
+    r.end = localDate(now)
+    r.endDate = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+  }
   return { key: r.start, hasData: marksIn(subjects, r) > 0 }
 }
 
@@ -47,7 +53,12 @@ export function computeWrapped(subjects: Subject[], mates: Mate[], now: Date = n
   // Last week, unless it's empty and this week already has marks
   const last = weekRange(now, 1)
   const cur = weekRange(now, 0)
-  const isCurrent = marksIn(subjects, last) === 0 && marksIn(subjects, cur) > 0
+  const saturdayRelease = now.getDay() === 6
+  if (saturdayRelease) {
+    cur.end = localDate(now)
+    cur.endDate = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+  }
+  const isCurrent = saturdayRelease || (marksIn(subjects, last) === 0 && marksIn(subjects, cur) > 0)
   const range = isCurrent ? cur : last
 
   let attended = 0

@@ -111,3 +111,44 @@ The probe (`denoattack/attack.ts`, scratch only, not committed) built 11 forged 
 2. `npx supabase functions deploy auth-role-bootstrap --project-ref ajfyyknqdqaptuuzbwnv --no-verify-jwt`. No migration, no secret, no config change is involved. Rollback: redeploy the previous commit (v1 behaviour) or delete the function.
 3. Smoke tests with the dedicated Google test account (the local sign-in page used before): bootstrap succeeds; **150 sequential requests with the role-bearing token all return 200** (v1 would return 429 after about 30 if they hit one instance); a request with a garbage token is still 401; a second never-used account closes the still-open production per-account rate-limit test; a stale role-less token after the claim exists is 200.
 4. Stop. Flags stay off.
+
+---
+
+## 8. Production deployment and smoke test (recorded after the fact)
+
+The sections above describe the fix as reviewed and committed (`f08c412`). It was then deployed with the owner's explicit approval; this section records what was done and observed. No tokens, secrets or personal data are recorded here.
+
+### 8.1 Deployment
+* `auth-role-bootstrap` was deployed from `f08c412` (working tree clean, source byte-identical to the commit, emulator guard present) with `--no-verify-jwt`. Only that function was deployed. No migration, secret or configuration change was involved.
+* Result: **ACTIVE, version 2** (it was version 1), `verify_jwt` false. Nothing was pushed; no flag, Vercel or Firebase setting changed; the backend is still Firebase.
+
+### 8.2 Tests that need no account (12 requests, after the deployment)
+| Test | Result |
+|---|---|
+| no Authorization; garbage bearer; well-formed but meaningless bearer; wrong auth scheme | **PASS** (401 each) |
+| unsigned `alg: none` token with `role=authenticated` and correct `iss`/`aud` | **PASS** (401) |
+| attacker-signed RS256 token with `role=authenticated` | **PASS** (401; body is only `{"success":false,"error":"invalid-token"}`) |
+| OPTIONS from a foreign origin / from the production origin | **PASS** (403 without allow-origin / 204 with the exact allow-origin and POST) |
+| POST from a foreign origin | **PASS** (403, no allow-origin) |
+| GET | **PASS** (405) |
+| a refused POST from the production origin | **PASS** (401, exact allow-origin, `no-store`) |
+
+A forged `role=authenticated` claim therefore cannot select the established path in production.
+
+### 8.3 Established-account smoke test (dedicated Google test account; UID safety check passed)
+| # | Test | Result |
+|---|---|---|
+| 0 | token is for the production project (`iss`/`aud`), provider google; token carries `role=authenticated` | **PASS** |
+| 1 | one established request: 200 `{"success":true}`, exact allow-origin, `no-store` | **PASS** |
+| 2 | **150 sequential established-account requests, paced at about one per second** | **PASS**: all 150 returned HTTP 200, over 162 s (about 56 per minute); latency min 341 ms, median 820 ms, max 4483 ms; **no 429** |
+| 3 | a garbage bearer immediately afterwards | **PASS**: 401 |
+| 4 | an established-account request afterwards | **PASS**: 200 (not throttled by the garbage request) |
+| 5 | unpaced burst of 150 from one account | **NOT RUN, deliberately** (it would legitimately reach the per-account limit of 120 per minute per instance, an unnecessary rate-limit event on production) |
+| 6 | **first-time per-account rate limit with a second never-used account** | **NOT RUN**: needs the owner's separate authorization |
+
+**Correction to section 6, step 3 above:** it said 150 sequential requests should all return 200. With the per-account limit of 120 per minute per instance, an unpaced burst of 150 from one account can legitimately receive 429. The test was therefore paced at about one request per second (about 56 per minute): below that limit, and nearly twice the old shared cap of 30 per minute that the fix removed. It passed.
+
+### 8.4 What this does and does not establish
+* **Established:** in production, established (role-bearing) requests at about 56 per minute from one account are all served, bad tokens are a cheap 401 that does not affect them, and forged role claims are refused. The first-time path still works from the earlier happy-path test (version 1), but was **not re-exercised on version 2**.
+* **Not established:** production **first-time** per-account and project-wide throttling on version 2 (the 429 and `Retry-After: 600` path) has not been observed in production; it rests on unit tests, the real-database race test and the local pgTAP suite. Expiry behaviour, real revocation and disabled-user error strings, and the function logs are also still unverified in production.
+* **How the run was carried out:** a local-only sign-in page (loopback, one-time key, UID safety check). Earlier attempts timed out without a hand-off; the diagnostic version showed every stage (page loaded, sign-in clicked, completed, Run clicked, callback received, test started) and the run completed when opened in Chrome. The earlier timeouts are most plausibly a link without its one-time key and the Brave default browser; that was not proven.

@@ -1,102 +1,110 @@
 "use client"
 
-import { useEffect, useState } from "react"
-import { CalendarBlank, CaretLeft, CaretRight } from "@phosphor-icons/react"
+import { useEffect, useMemo, useState } from "react"
+import { CalendarBlank, CaretLeft, CaretRight, X } from "@phosphor-icons/react"
 import { localDate, parseLocalDate } from "@/lib/attendance"
 
 interface DatePickerProps {
-  /** YYYY-MM-DD */
+  /** YYYY-MM-DD; an empty value means no date selected yet. */
   value: string
   onChange: (date: string) => void
   label?: string
+  minDate?: string
+  maxDate?: string
+  allowClear?: boolean
+  /** Dates rendered with the small app-style marker below the day number. */
+  markedDates?: string[]
+  /** Optional domain rule, e.g. only dates matching a recurring lecture weekday. */
+  isDateDisabled?: (date: string) => boolean
 }
 
-/** Monday first, like the rest of the app */
 const WEEKDAYS = ["M", "T", "W", "T", "F", "S", "S"]
+const dateString = (date: Date) => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`
 
-/**
- * The app's own date picker: a field that opens a month grid in place. It replaces the browser's built-in
- * calendar popup, which looks different on every device and doesn't match the rest of the screens.
- */
-export default function DatePicker({ value, onChange, label = "Due date" }: DatePickerProps) {
+/** The shared Attendance Tracker calendar. Never relies on the browser's native date-picker UI. */
+export default function DatePicker({ value, onChange, label = "Date", minDate, maxDate, allowClear = false, markedDates = [], isDateDisabled }: DatePickerProps) {
   const [open, setOpen] = useState(false)
   const picked = value ? parseLocalDate(value) : new Date()
   const [view, setView] = useState(() => new Date(picked.getFullYear(), picked.getMonth(), 1))
+  const today = localDate()
+  const markers = useMemo(() => new Set(markedDates), [markedDates])
 
-  // Follow the value when it changes from outside (the quick chips), so the grid is never on the wrong month
   useEffect(() => {
-    if (value) setView(new Date(parseLocalDate(value).getFullYear(), parseLocalDate(value).getMonth(), 1))
+    if (!value) return
+    const date = parseLocalDate(value)
+    setView(new Date(date.getFullYear(), date.getMonth(), 1))
   }, [value])
 
-  const today = localDate()
   const daysInMonth = new Date(view.getFullYear(), view.getMonth() + 1, 0).getDate()
   const lead = (view.getDay() + 6) % 7
   const cells: (null | { date: string; day: number })[] = [
     ...Array.from({ length: lead }, () => null),
-    ...Array.from({ length: daysInMonth }, (_, i) => ({ date: localDate(new Date(view.getFullYear(), view.getMonth(), i + 1)), day: i + 1 })),
+    ...Array.from({ length: daysInMonth }, (_, i) => ({ date: dateString(new Date(view.getFullYear(), view.getMonth(), i + 1)), day: i + 1 })),
   ]
-
   const step = (n: number) => setView((v) => new Date(v.getFullYear(), v.getMonth() + n, 1))
+  const disabled = (date: string) => Boolean((minDate && date < minDate) || (maxDate && date > maxDate) || isDateDisabled?.(date))
 
   return (
-    <div>
-      <button
-        type="button"
-        onClick={() => setOpen(!open)}
-        aria-expanded={open}
-        aria-label={`${label}: ${value ? picked.toLocaleDateString("en-US", { weekday: "long", day: "numeric", month: "long", year: "numeric" }) : "not set"}. Change date`}
-        className={`w-full h-12 rounded-xl bg-secondary px-4 flex items-center justify-between text-[17px] text-left outline-none transition ${open ? "ring-1 ring-ink/40" : ""}`}
-      >
-        <span className="num">{value ? picked.toLocaleDateString("en-US", { weekday: "short", day: "numeric", month: "long", year: "numeric" }) : "Pick a date"}</span>
-        <CalendarBlank weight="regular" className="w-5 h-5 text-mute" />
-      </button>
+    <div className="w-full min-w-0">
+      <div className={`flex w-full items-center gap-2 rounded-2xl bg-secondary px-3.5 ${open ? "ring-1 ring-ink/35" : ""}`}>
+        <button
+          type="button"
+          onClick={() => setOpen((v) => !v)}
+          aria-expanded={open}
+          aria-label={`${label}: ${value ? picked.toLocaleDateString("en-US", { weekday: "long", day: "numeric", month: "long", year: "numeric" }) : "not set"}. Change date`}
+          className="flex h-12 min-w-0 flex-1 items-center justify-between gap-2 text-left outline-none"
+        >
+          <span className={`truncate text-[15px] font-semibold ${value ? "text-ink" : "text-mute"}`}>{value ? picked.toLocaleDateString("en-US", { weekday: "short", day: "numeric", month: "short", year: "numeric" }) : `Pick ${label.toLowerCase()}`}</span>
+          <CalendarBlank weight="regular" className="h-5 w-5 flex-shrink-0 text-mute" />
+        </button>
+        {allowClear && value && (
+          <button type="button" aria-label={`Clear ${label}`} onClick={() => { onChange(""); setOpen(false) }} className="grid h-7 w-7 flex-shrink-0 place-items-center rounded-full bg-card text-mute">
+            <X className="h-3.5 w-3.5" />
+          </button>
+        )}
+      </div>
 
       {open && (
-        <div className="mt-2 rounded-2xl bg-secondary p-3">
-          <div className="flex items-center justify-between px-1 pb-2">
-            <span className="text-[16px] font-bold tracking-tight">{view.toLocaleDateString("en-US", { month: "long", year: "numeric" })}</span>
-            <span className="flex gap-1.5">
-              <button type="button" onClick={() => step(-1)} aria-label="Previous month" className="w-8 h-8 grid place-items-center rounded-full bg-card">
-                <CaretLeft weight="bold" className="w-4 h-4" />
+        <div className="mt-2 rounded-2xl bg-card p-4 shadow-sm">
+          <div className="mb-3 flex items-center justify-between gap-2 px-0.5">
+            <h2 className="text-[19px] font-bold tracking-tight">{view.toLocaleDateString("en-US", { month: "long", year: "numeric" })}</h2>
+            <div className="flex gap-1.5">
+              <button type="button" onClick={() => step(-1)} aria-label="Previous month" className="grid h-8 w-8 place-items-center rounded-full bg-secondary transition hover:bg-ink/10">
+                <CaretLeft weight="bold" className="h-4 w-4" />
               </button>
-              <button type="button" onClick={() => step(1)} aria-label="Next month" className="w-8 h-8 grid place-items-center rounded-full bg-card">
-                <CaretRight weight="bold" className="w-4 h-4" />
+              <button type="button" onClick={() => step(1)} aria-label="Next month" className="grid h-8 w-8 place-items-center rounded-full bg-secondary transition hover:bg-ink/10">
+                <CaretRight weight="bold" className="h-4 w-4" />
               </button>
-            </span>
+            </div>
           </div>
-
-          <div className="grid grid-cols-7">
-            {WEEKDAYS.map((w, i) => (
-              <span key={i} className="text-center text-[11px] font-semibold text-mute pb-1">
-                {w}
-              </span>
-            ))}
-            {cells.map((c, i) =>
-              c === null ? (
-                <span key={`b${i}`} />
-              ) : (
+          <div className="grid grid-cols-7 gap-y-0.5">
+            {WEEKDAYS.map((weekday, i) => <span key={`${weekday}-${i}`} className="pb-1.5 text-center text-[11px] font-semibold text-mute">{weekday}</span>)}
+            {cells.map((cell, i) => {
+              if (!cell) return <span key={`blank-${i}`} className="h-[46px]" />
+              const isSelected = value === cell.date
+              const isToday = cell.date === today
+              const isDisabled = disabled(cell.date)
+              return (
                 <button
-                  key={c.date}
+                  key={cell.date}
                   type="button"
-                  onClick={() => {
-                    onChange(c.date)
-                    setOpen(false)
-                  }}
-                  aria-pressed={c.date === value}
-                  aria-label={parseLocalDate(c.date).toLocaleDateString("en-US", { weekday: "long", day: "numeric", month: "long" })}
-                  className="h-10 grid place-items-center"
+                  disabled={isDisabled}
+                  onClick={() => { onChange(cell.date); setOpen(false) }}
+                  aria-pressed={isSelected}
+                  aria-label={parseLocalDate(cell.date).toLocaleDateString("en-US", { weekday: "long", day: "numeric", month: "long" })}
+                  className="grid h-[46px] place-items-center disabled:cursor-not-allowed"
                 >
-                  <span
-                    className={`w-9 h-9 rounded-full grid place-items-center text-[15px] num transition ${
-                      c.date === value ? "bg-ink text-paper font-semibold" : c.date === today ? "ring-2 ring-ink font-semibold" : "hover:bg-ink/10"
-                    }`}
-                  >
-                    {c.day}
+                  <span className="flex flex-col items-center gap-[3px]">
+                    <span className={`grid h-8 w-8 place-items-center rounded-full text-[15px] num transition ${isSelected ? "bg-ink font-semibold text-paper" : isToday ? "font-semibold ring-2 ring-ink" : isDisabled ? "text-mute/30" : "hover:bg-ink/10"}`}>
+                      {cell.day}
+                    </span>
+                    <span className={`h-[5px] w-[5px] rounded-full ${markers.has(cell.date) ? "bg-amber-500" : "bg-transparent"}`} aria-hidden />
                   </span>
                 </button>
-              ),
-            )}
+              )
+            })}
           </div>
+          {allowClear && <div className="mt-2 flex justify-between border-t border-ink/[0.06] pt-2 text-[12px]"><button type="button" onClick={() => { onChange(""); setOpen(false) }} className="font-semibold text-info">Clear date</button><button type="button" onClick={() => { onChange(today); setOpen(false) }} className="font-semibold text-info">Today</button></div>}
         </div>
       )}
     </div>

@@ -374,6 +374,11 @@ describe("production stays inactive", () => {
         const p = path.join(d, e.name)
         return e.isDirectory() ? walk(p) : /\.(ts|tsx|js|mjs)$/.test(e.name) ? [p] : []
       })
-    for (const f of walk(ROOT)) expect(fs.readFileSync(f, "utf8"), f).not.toMatch(/auth-role-bootstrap\/handler|proposed\/functions|ALLOWED_ORIGINS/)
+    // The ONE deliberate exception: the local-only test gateway runs the real handler against the Firebase Auth EMULATOR (scripts/local-supabase-gateway.mjs;
+    // it refuses to start unless everything is loopback, and tests/hook-integration-guards.test.ts pins that). No app, hook or library file may.
+    const exception = path.join(ROOT, "scripts", "local-supabase-gateway.mjs")
+    const importers = walk(ROOT).filter((f) => /auth-role-bootstrap\/handler/.test(fs.readFileSync(f, "utf8")))
+    expect(importers.map((f) => path.relative(ROOT, f).split(path.sep).join("/"))).toEqual(["scripts/local-supabase-gateway.mjs"])
+    for (const f of walk(ROOT).filter((f) => f !== exception)) expect(fs.readFileSync(f, "utf8"), f).not.toMatch(/auth-role-bootstrap\/handler|proposed\/functions|ALLOWED_ORIGINS/)
   })
 })

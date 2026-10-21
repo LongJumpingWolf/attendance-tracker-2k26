@@ -82,7 +82,10 @@ const phone = async (ctx) => {
 }
 const seed = async (page, extra = {}) => {
   await page.goto(BASE + "/manifest.json")
-  await page.evaluate(() => localStorage.setItem("onboardingDone", "1"))
+  await page.evaluate(() => {
+    localStorage.setItem("onboardingDone", "1")
+    localStorage.setItem("wrappedSeenWeek", ((n) => { const s = new Date(n.getFullYear(), n.getMonth(), n.getDate() - ((n.getDay() + 6) % 7) - 7); return [s.getFullYear(), String(s.getMonth() + 1).padStart(2, "0"), String(s.getDate()).padStart(2, "0")].join("-") })(new Date())) // last week's "wrapped" story counts as seen: on a Monday it would otherwise cover the toasts these checks read (lib/wrapped.ts: last week = the Monday-to-Sunday week before today's)
+  })
   await idbPut(page, { subjects: [PH, BI, ET], tasks: [], tags: [], mates: [], ...extra })
 }
 
@@ -278,6 +281,7 @@ const seed = async (page, extra = {}) => {
     localStorage.setItem("syncOwner", owner)
     localStorage.setItem("syncRev", "1")
     localStorage.setItem("onboardingDone", "1")
+    localStorage.setItem("wrappedSeenWeek", ((n) => { const s = new Date(n.getFullYear(), n.getMonth(), n.getDate() - ((n.getDay() + 6) % 7) - 7); return [s.getFullYear(), String(s.getMonth() + 1).padStart(2, "0"), String(s.getDate()).padStart(2, "0")].join("-") })(new Date())) // last week's "wrapped" story counts as seen: on a Monday it would otherwise cover the toasts these checks read (lib/wrapped.ts: last week = the Monday-to-Sunday week before today's)
   }, owner)
   await idbPut(page, { subjects: [PH, BI], tasks: [], tags: [], mates: baseBackup.data.mates, syncBase: baseBackup.data })
   await page.goto(BASE + "/", { waitUntil: "networkidle0" })

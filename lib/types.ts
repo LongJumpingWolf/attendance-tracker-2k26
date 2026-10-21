@@ -33,6 +33,30 @@ export interface Subject {
   log?: LogEntry[]
   /** Planned future lectures: date -> attend / skip */
   plan?: Record<string, "attend" | "skip">
+  /** Hide recurring classes without deleting the subject or attendance history. */
+  sleeping?: boolean
+  /** Inclusive local YYYY-MM-DD wake date, or "forever". Missing with sleeping=true means forever for legacy safety. */
+  sleepUntil?: string | "forever"
+  /** Inclusive local YYYY-MM-DD start date for a scheduled sleep. Missing means active from the past (legacy-safe). */
+  sleepFrom?: string
+}
+
+/** A user-created holiday. `date` is the first day; optional `endDate` is inclusive. */
+export interface Holiday {
+  id: string
+  date: string
+  endDate?: string
+  name: string
+}
+
+/** A date-specific exception to one weekly timetable slot. */
+export interface ScheduleOverride {
+  id: string
+  date: string
+  originalSubjectId: string
+  start: string
+  kind: "cancelled" | "substitute"
+  substituteSubjectId?: string
 }
 
 /** Anything with a due date: an exam, an assignment, a submission. They are all just deadlines. */
@@ -81,6 +105,8 @@ export interface PingItem {
   name: string
   /** Class start time ("HH:MM"), when the class has one */
   t?: string
+  /** This occurrence exists because the original subject was substituted for this date; its start may not be in the replacement's weekly slots. */
+  substituted?: boolean
   answer: "yes" | "no" | null
 }
 
@@ -102,14 +128,18 @@ export interface Ping {
   date: string
   items: PingItem[]
   /** asking -> answered (by the mate) -> processed (the asker's device applied the answer, exactly once) */
-  status: "asking" | "answered" | "processed"
+  status: "asking" | "answered" | "processed" | "cancelled"
   /** When the mate answered. A Firestore timestamp from the server (null while pending), a number elsewhere. */
   respondedAt?: unknown
-  /** When the server created it (its own clock). A Ping lives 3 days from this. */
+  /** When the server created it (its own clock). Direct in-app Pings live 3 days from this. */
   createdAt?: unknown
+  /** Explicit deadline for one-time share-link Pings (24 hours). */
+  expiresAt?: unknown
   /** The device of the asker that is applying the answer, and since when (a lease that runs out) */
   claimedBy?: string
   claimedAt?: unknown
+  /** This Ping was created for a one-time share link, answered by a recipient in a browser. */
+  shareLink?: boolean
 }
 
 /** A connection request between two accounts. Accepted requests are the mate connections. */

@@ -12,11 +12,10 @@
  * Output follows the stored copy's order (then this device's additions), so merging a copy that has no local changes
  * returns it unchanged and two devices can never keep rewriting each other's ordering.
  *
- * With no base (first sign-in on a device that already has data), items are matched by id, subjects and mates also by
- * name, and counts take the larger side rather than adding, so nothing is counted twice.
+ * With no base (first sign-in on a device that already has data), subjects may align by id/name while connected mates align only by immutable account UID or stable local id. Display names are never treated as proof that two connected accounts are the same person; counters take the larger side rather than adding.
  */
 import type { FullBackupData } from "./backup"
-import type { LogEntry, Mate, Subject, Task } from "./types"
+import type { Holiday, LogEntry, Mate, ScheduleOverride, Subject, Task } from "./types"
 import type { ScheduleEntry } from "./reminders"
 
 export interface MergeResult {
@@ -237,11 +236,38 @@ function alignRemote(local: FullBackupData, remote: FullBackupData): FullBackupD
     return mine ? { ...s, id: mine.id } : s
   })
   const mates = remote.mates.map((m) => {
-    const mine = local.mates.find((x) => x.id === m.id) ?? local.mates.find((x) => (m.uid && x.uid === m.uid) || norm(x.name) === norm(m.name))
+    // A display name is not an identity. Link only by row ID or immutable account UID.
+    const mine = local.mates.find((x) => x.id === m.id) ?? (m.uid ? local.mates.find((x) => x.uid === m.uid) : undefined)
     return mine ? { ...m, id: mine.id } : m
   })
   const tasks = remote.tasks.map((k) => (k.subjectId && subjectIds.has(k.subjectId) ? { ...k, subjectId: subjectIds.get(k.subjectId) } : k))
   return { ...remote, subjects, mates, tasks }
+}
+
+function mergeHolidays(base: Holiday[] | undefined, local: Holiday[], remote: Holiday[], t: Tally): Holiday[] {
+  const merged = mergeList<Holiday>(base, local, remote, (b,l,r) => mergeObject(b,l,r,t), t)
+  const seen = new Set<string>()
+  return merged.filter(h => {
+    const key = `${h.date}|${h.endDate ?? h.date}|${norm(h.name).replace(/\s+/g," ")}`
+    if (seen.has(key)) return false
+    seen.add(key); return true
+  })
+}
+const slotOverrideKey = (o: ScheduleOverride) => `${o.originalSubjectId}|${o.date}|${o.start}`
+const sameOverride = (a: ScheduleOverride | undefined, b: ScheduleOverride | undefined) => a === undefined || b === undefined ? a === b : a.originalSubjectId === b.originalSubjectId && a.date === b.date && a.start === b.start && a.kind === b.kind && a.substituteSubjectId === b.substituteSubjectId
+function mergeOverrides(base: ScheduleOverride[] | undefined, local: ScheduleOverride[], remote: ScheduleOverride[], t: Tally): ScheduleOverride[] {
+  const index = (xs: ScheduleOverride[]) => new Map(xs.map(x => [slotOverrideKey(x),x]))
+  const b=index(base??[]), l=index(local), r=index(remote), out:ScheduleOverride[]=[]
+  for (const key of new Set([...r.keys(),...l.keys()])) {
+    const before=b.get(key), mine=l.get(key), theirs=r.get(key)
+    let chosen:ScheduleOverride|undefined
+    if(sameOverride(mine,theirs)) chosen=mine??theirs
+    else if(sameOverride(before,mine)) chosen=theirs
+    else if(sameOverride(before,theirs)) chosen=mine
+    else { t.n++; chosen=mine??theirs }
+    if(chosen) out.push(chosen)
+  }
+  return out
 }
 
 export function mergeData(base: FullBackupData | null, local: FullBackupData, remoteIn: FullBackupData): MergeResult {
@@ -253,6 +279,8 @@ export function mergeData(base: FullBackupData | null, local: FullBackupData, re
     tags: mergeSet(base?.tags, local.tags, remote.tags),
     mates: mergeList(base?.mates, local.mates, remote.mates, (b, l, r) => mergeMate(b, l, r, t), t),
     reminders: mergeList<ScheduleEntry>(base?.reminders, local.reminders, remote.reminders, (b, l, r) => mergeObject(b, l, r, t), t),
+    ...((base?.holidays || local.holidays || remote.holidays) ? { holidays: mergeHolidays(base?.holidays, local.holidays ?? [], remote.holidays ?? [], t) } : {}),
+    ...((base?.scheduleOverrides || local.scheduleOverrides || remote.scheduleOverrides) ? { scheduleOverrides: mergeOverrides(base?.scheduleOverrides, local.scheduleOverrides ?? [], remote.scheduleOverrides ?? [], t) } : {}),
   }
   return { data, conflicts: t.n }
 }

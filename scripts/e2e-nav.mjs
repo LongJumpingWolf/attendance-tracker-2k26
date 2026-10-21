@@ -75,6 +75,7 @@ await page.setViewport({ width: 420, height: 900, isMobile: true })
 await page.goto(BASE + "/manifest.json")
 await page.evaluate(() => {
   localStorage.setItem("onboardingDone", "1")
+  localStorage.setItem("wrappedSeenWeek", ((n) => { const s = new Date(n.getFullYear(), n.getMonth(), n.getDate() - ((n.getDay() + 6) % 7) - 7); return [s.getFullYear(), String(s.getMonth() + 1).padStart(2, "0"), String(s.getDate()).padStart(2, "0")].join("-") })(new Date())) // last week's "wrapped" story counts as seen: on a Monday it would otherwise cover the toasts these checks read (lib/wrapped.ts: last week = the Monday-to-Sunday week before today's)
   localStorage.setItem("subjectsView", "timetable") // a view chosen under the old three-view screen
 })
 await idbPut(page, { subjects: SUBJECTS, tasks: [], tags: [], mates: [] })
@@ -208,7 +209,10 @@ const ctx2 = await browser.createBrowserContext()
 const p2 = await ctx2.newPage()
 await p2.setViewport({ width: 420, height: 900, isMobile: true })
 await p2.goto(BASE + "/manifest.json")
-await p2.evaluate(() => localStorage.setItem("onboardingDone", "1"))
+await p2.evaluate(() => {
+  localStorage.setItem("onboardingDone", "1")
+  localStorage.setItem("wrappedSeenWeek", ((n) => { const s = new Date(n.getFullYear(), n.getMonth(), n.getDate() - ((n.getDay() + 6) % 7) - 7); return [s.getFullYear(), String(s.getMonth() + 1).padStart(2, "0"), String(s.getDate()).padStart(2, "0")].join("-") })(new Date())) // last week's "wrapped" story counts as seen: on a Monday it would otherwise cover the toasts these checks read (lib/wrapped.ts: last week = the Monday-to-Sunday week before today's)
+})
 await idbPut(p2, { subjects: SUBJECTS, tasks: [], tags: [], mates: [] })
 for (const [go, expect, label] of [["subjects", /5 subjects/, "Subjects"], ["calendar", /open/, "Calendar"], ["mates", /mates?/i, "Mates"]]) {
   await p2.goto(`${BASE}/?go=${go}`, { waitUntil: "networkidle0" })

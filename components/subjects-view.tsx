@@ -2,9 +2,10 @@
 
 import { useMemo, useState } from "react"
 import { MagnifyingGlass, WarningCircle } from "@phosphor-icons/react"
+import ClassActionMenu from "./class-action-menu"
 import type { Subject } from "@/lib/types"
 import { DAY_ORDER } from "@/lib/reminders"
-import { getAttendance, needsAttention, bySafety, STATUS_STYLES, DAY_SHORT, type AttendanceInfo } from "@/lib/attendance"
+import { getAttendance, needsAttention, bySafety, STATUS_STYLES, DAY_SHORT, isSubjectSleeping, localDate, type AttendanceInfo } from "@/lib/attendance"
 import { primaryButton } from "./sheet"
 
 interface SubjectsViewProps {
@@ -12,6 +13,7 @@ interface SubjectsViewProps {
   onOpen: (id: string) => void
   onAdd: () => void
   onImport: () => void
+  onSleep?: (subject: Subject) => void
 }
 
 type Item = { s: Subject; info: AttendanceInfo }
@@ -36,24 +38,21 @@ function classDays(s: Subject) {
   return days.size ? DAY_ORDER.filter((d) => days.has(d)).map((d) => DAY_SHORT[d]).join(" · ") : "No class days yet"
 }
 
-function SubjectRow({ s, info, onOpen }: Item & { onOpen: (id: string) => void }) {
+function SubjectRow({ s, info, onOpen, onSleep }: Item & { onOpen: (id: string) => void; onSleep?: (subject: Subject) => void }) {
   return (
-    <li>
-      <button
-        data-testid="subject-row"
-        onClick={() => onOpen(s.id)}
-        className="w-full text-left rounded-2xl bg-card px-4 py-3.5 flex items-center gap-3.5 min-h-[76px] active:bg-ink/[0.04] transition"
-      >
+    <li className="relative rounded-2xl bg-card flex items-stretch gap-1 pr-2">
+      <button data-testid="subject-row" onClick={() => onOpen(s.id)} className="flex-1 min-w-0 text-left rounded-2xl px-4 py-3.5 flex items-center gap-3.5 min-h-[76px] active:bg-ink/[0.04] transition">
         <span className="w-1.5 self-stretch rounded-full flex-shrink-0" style={{ background: s.glowColor }} />
         <span className="min-w-0 flex-1">
           <span className="block text-[16px] font-semibold leading-snug truncate">{s.name}</span>
           <span className={`block text-[13px] leading-snug ${STATUS_TEXT[info.status]}`}>
             {info.total ? `${info.pct}% · ${s.requirement}% needed · ${info.short}` : `${s.requirement}% needed · Not started`}
           </span>
-          <span className="block text-[12px] text-mute leading-snug truncate">{[s.tags?.length ? s.tags.join(", ") : null, classDays(s)].filter(Boolean).join(" · ")}</span>
+          <span className="block text-[12px] text-mute leading-snug truncate">{[s.tags?.length ? s.tags.join(", ") : null, classDays(s), isSubjectSleeping(s, localDate()) ? "Sleeping" : null].filter(Boolean).join(" · ")}</span>
         </span>
         <PctPill info={info} />
       </button>
+      {onSleep && <div className="flex items-center"><ClassActionMenu subject={s} onSleep={onSleep} /></div>}
     </li>
   )
 }
@@ -62,7 +61,7 @@ function SubjectRow({ s, info, onOpen }: Item & { onOpen: (id: string) => void }
  * Every subject in one list, least safe first, each with where it stands and what it needs. Search finds a subject;
  * "Needs attention" and the tag chips narrow the list. Today's classes live on Today, not here.
  */
-export default function SubjectsView({ subjects, onOpen, onAdd, onImport }: SubjectsViewProps) {
+export default function SubjectsView({ subjects, onOpen, onAdd, onImport, onSleep }: SubjectsViewProps) {
   const [tag, setTag] = useState<string | null>(null)
   const [attention, setAttention] = useState(false)
   const [query, setQuery] = useState("")
@@ -144,7 +143,7 @@ export default function SubjectsView({ subjects, onOpen, onAdd, onImport }: Subj
         ) : (
           <ul className="space-y-2 lg:space-y-0 lg:grid lg:grid-cols-2 2xl:grid-cols-3 lg:gap-3 mt-4">
             {visible.map((it) => (
-              <SubjectRow key={it.s.id} {...it} onOpen={onOpen} />
+              <SubjectRow key={it.s.id} {...it} onOpen={onOpen} onSleep={onSleep} />
             ))}
           </ul>
         )}

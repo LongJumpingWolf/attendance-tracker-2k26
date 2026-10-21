@@ -40,7 +40,9 @@ function findMate(mates: Mate[], ping: Ping) {
 }
 
 export function applyPingResult(subjects: Subject[], mates: Mate[], ping: Ping): ApplyOutcome {
-  const at = findMate(mates, ping)
+  // A share-link recipient is not an enrolled Mate. Their yes/no response can update the requested
+  // attendance records, but must not invent a social connection or increment the favour ledger.
+  const at = ping.shareLink ? -1 : findMate(mates, ping)
   const already = new Set(at !== -1 ? (mates[at].coveredPings ?? []) : [])
   let nextSubjects = subjects
   const helped: string[] = []
@@ -65,7 +67,9 @@ export function applyPingResult(subjects: Subject[], mates: Mate[], ping: Ping):
       continue
     }
     const slot = item.t ? subject.slots?.find((x) => x.start === item.t) : undefined
-    if (item.t && !slot) {
+    // Normally reject a stale class time. A `substituted` item was explicitly picked from the date-specific
+    // timetable override, so its start time may legitimately not exist in this subject's recurring weekly slots.
+    if (item.t && !slot && !item.substituted) {
       skipped.push({ key: item.key, reason: "class-missing" })
       continue
     }
@@ -74,13 +78,13 @@ export function applyPingResult(subjects: Subject[], mates: Mate[], ping: Ping):
       expectPresent.push({ subjectId: subject.id, date: ping.date, t })
       continue
     }
-    nextSubjects = nextSubjects.map((s) => (s.id === subject.id ? withSet(s, ping.date, "P", { ...(item.t ? { t: item.t } : {}), ...(slot?.kind ? { k: slot.kind } : {}), by: ping.toName }) : s))
+    nextSubjects = nextSubjects.map((s) => (s.id === subject.id ? withSet(s, ping.date, "P", { ...(item.t ? { t: item.t } : {}), ...(slot?.kind ? { k: slot.kind } : {}), by: ping.shareLink ? "Shared Ping link" : ping.toName }) : s))
     helped.push(id)
     expectPresent.push({ subjectId: subject.id, date: ping.date, t })
   }
 
   let nextMates = mates
-  if (helped.length > 0) {
+  if (helped.length > 0 && !ping.shareLink) {
     const bump = (m: Mate): Mate => ({
       ...m,
       uid: m.uid ?? ping.to,
@@ -102,7 +106,7 @@ export function resultIsSaved(saved: { subjects: Subject[]; mates: Mate[] }, out
     const s = saved.subjects.find((x) => x.id === e.subjectId)
     if (!s || markFor(s, e.date, e.t) !== "P") return false
   }
-  if (outcome.helped.length === 0) return true
+  if (outcome.helped.length === 0 || ping.shareLink) return true
   const m = saved.mates.find((x) => x.uid === ping.to) ?? saved.mates.find((x) => !x.uid && norm(x.name) === norm(ping.toName))
   const have = new Set(m?.coveredPings ?? [])
   return outcome.helped.every((id) => have.has(id))

@@ -1,5 +1,7 @@
 /**
- * The ONE place that decides which backend answers. Everything else asks `getBackend()` and never checks a flag.
+ * The ONE place that decides which backend answers. Everything else asks `getDomainBackend("sync" | "social" | "ping" | "push")` and never
+ * checks a flag. Each domain has its own optional NEXT_PUBLIC_BACKEND_<DOMAIN> value (see resolveDomainKind below); with none set, every domain
+ * follows NEXT_PUBLIC_BACKEND, described next, whose default is Firebase.
  *
  *   NEXT_PUBLIC_BACKEND   unset or "firebase"  -> Firebase (the production backend, the default)
  *                         "supabase"           -> the Supabase skeleton, which refuses every call (fails closed): nothing
@@ -18,7 +20,8 @@ import type { Backend, BackendKind } from "./contracts"
 import { createFirebaseBackend } from "./firebase"
 import { createSupabaseBackend, createSupabaseGuard, readBuildSupabaseConfig } from "./supabase"
 import { createFetchTransport } from "./supabase/transport"
-import { anyShadowFlag, authBridgeEnabled, shadowFlags, shadowReadEnabled, type ShadowFlags } from "./flags"
+import { createPhoenixRealtimeTransport } from "./supabase/realtime-transport"
+import { anyShadowFlag, authBridgeEnabled, realtimeEnabled, shadowFlags, shadowReadEnabled, type ShadowFlags } from "./flags"
 import { isolateShadowFailures } from "./shadow"
 import { createSupabaseShadowWriter } from "./shadow-supabase"
 import { withShadow } from "./shadow-backend"
@@ -106,22 +109,83 @@ function buildSupabaseTransport() {
   }
 }
 
-let cached: Backend | null = null
-let cachedKey: string | null = null
-let override: Backend | null = null
+/**
+ * Phase 8: live delivery of the sync document. Only built inside the `supabase` branch of getBackend() (so never while Firebase is
+ * selected, which is the production default), only with NEXT_PUBLIC_SUPABASE_REALTIME=true, and only with the configuration present.
+ */
+function buildRealtime() {
+  if (!realtimeEnabled()) return undefined
+  const config = readBuildSupabaseConfig()
+  if (!config) return undefined
+  return {
+    bridge: getAuthBridge(),
+    createTransport: (owner: string) => createPhoenixRealtimeTransport({ config, table: "syncs", filter: `uid=eq.${owner}` }),
+  }
+}
 
+/** The four independently routable areas of the app. Each one is served by exactly one backend kind. */
+export type BackendDomain = "sync" | "social" | "ping" | "push"
+export const BACKEND_DOMAINS: readonly BackendDomain[] = ["sync", "social", "ping", "push"]
+
+/**
+ * Per-domain choice (Phase 9-12 cutover, one domain at a time). Each domain has its own optional build-time value; when it is unset or
+ * empty the domain follows NEXT_PUBLIC_BACKEND, which itself defaults to Firebase. So with nothing set every domain is Firebase, and a
+ * domain value always wins over the global one (a domain can be pinned to Firebase even if the global value says supabase).
+ *
+ *   NEXT_PUBLIC_BACKEND_SYNC     the synced backup copy (lib/cloud-sync.ts)
+ *   NEXT_PUBLIC_BACKEND_SOCIAL   profile names, invites, connections
+ *   NEXT_PUBLIC_BACKEND_PING     Pings
+ *   NEXT_PUBLIC_BACKEND_PUSH     push tokens
+ *
+ * "supabase" for a domain without the Supabase configuration, the bridge flag or a valid bridge token does NOT fall back to Firebase:
+ * that backend refuses every call (the established fail-closed rule, lib/backend/supabase/guard.ts), so a half-configured build cannot
+ * silently keep using, or silently stop using, the other system. An unknown value throws, as before.
+ */
+export function resolveDomainKind(raw: { global?: string; domain?: string }): BackendKind {
+  const specific = raw.domain?.trim()
+  return resolveBackendKind(specific ? specific : raw.global)
+}
+
+/** The static references let Next.js inline the build-time values */
+const rawDomainValue = (d: BackendDomain): string | undefined =>
+  d === "sync"
+    ? process.env.NEXT_PUBLIC_BACKEND_SYNC
+    : d === "social"
+      ? process.env.NEXT_PUBLIC_BACKEND_SOCIAL
+      : d === "ping"
+        ? process.env.NEXT_PUBLIC_BACKEND_PING
+        : process.env.NEXT_PUBLIC_BACKEND_PUSH
+
+export const backendKindFor = (d: BackendDomain): BackendKind => resolveDomainKind({ global: process.env.NEXT_PUBLIC_BACKEND, domain: rawDomainValue(d) })
+
+// One instance per kind (and per flag combination), shared by every domain that uses that kind: a Firebase domain and another Firebase
+// domain get the very same backend object, and the Supabase backend (with its watchers) exists only if some domain actually uses it.
+const instances = new Map<string, Backend>()
+let override: Backend | null = null
+const domainOverride = new Map<BackendDomain, Backend>()
+
+function backendOfKind(kind: BackendKind): Backend {
+  const flags = shadowFlags()
+  const key = `${kind}|${flags.sync}|${flags.social}|${flags.push}|${authBridgeEnabled()}|${realtimeEnabled()}`
+  const hit = instances.get(key)
+  if (hit) return hit
+  const made =
+    kind === "supabase"
+      ? createSupabaseBackend({ guard: createSupabaseGuard({ flagEnabled: authBridgeEnabled, config: readBuildSupabaseConfig, bridge: getAuthBridge() }), transport: buildSupabaseTransport(), realtime: buildRealtime(), watchPollMs: realtimeEnabled() ? 5_000 : undefined })
+      : firebaseWithOptionalShadow(createFirebaseBackend({ db, ensureSignedIn }), flags)
+  instances.set(key, made)
+  return made
+}
+
+/** The backend that answers for ONE domain. Application code asks for its domain and never checks a flag. */
+export function getDomainBackend(domain: BackendDomain): Backend {
+  return domainOverride.get(domain) ?? override ?? backendOfKind(backendKindFor(domain))
+}
+
+/** The backend selected by NEXT_PUBLIC_BACKEND alone (what a domain with no value of its own follows). Application code uses getDomainBackend. */
 export function getBackend(): Backend {
   if (override) return override
-  const kind = configured() // throws on an invalid value: fail closed
-  const flags = shadowFlags()
-  const key = `${kind}|${flags.sync}|${flags.social}|${flags.push}|${authBridgeEnabled()}`
-  if (cached && cachedKey === key) return cached
-  cached =
-    kind === "supabase"
-      ? createSupabaseBackend({ guard: createSupabaseGuard({ flagEnabled: authBridgeEnabled, config: readBuildSupabaseConfig, bridge: getAuthBridge() }), transport: buildSupabaseTransport() })
-      : firebaseWithOptionalShadow(createFirebaseBackend({ db, ensureSignedIn }), flags)
-  cachedKey = key
-  return cached
+  return backendOfKind(resolveBackendKind(process.env.NEXT_PUBLIC_BACKEND)) // throws on an invalid value: fail closed
 }
 
 /**
@@ -156,4 +220,10 @@ export function getShadowReader(): ShadowReader | null {
 /** Tests only: install a backend (or null to go back to the configured one) */
 export function setBackendForTests(b: Backend | null) {
   override = b
+}
+
+/** Tests only: install a backend for one domain (or null to remove it) */
+export function setDomainBackendForTests(domain: BackendDomain, b: Backend | null) {
+  if (b) domainOverride.set(domain, b)
+  else domainOverride.delete(domain)
 }

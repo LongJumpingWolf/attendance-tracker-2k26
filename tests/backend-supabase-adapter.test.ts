@@ -115,9 +115,33 @@ describe("with an injected fake transport (argument mapping only; the identity b
   })
 
   it("sync.get returns the caller's row as plain values, or null", async () => {
-    const be = make(ok(null), async () => ({ data: [{ data: "gz1:z", rev: 3, updated_at: "1790000000000" }], error: null }))
+    const be = make(ok(null), async () => ({ data: [{ uid: A, data: "gz1:z", rev: 3, updated_at: "1790000000000" }], error: null }))
     expect(await be.sync.get(A)).toEqual({ data: "gz1:z", rev: 3, updatedAt: 1790000000000 })
     expect(await make(ok(null)).sync.get(A)).toBeNull()
+  })
+
+  it("sync.get never returns a row that is not the requested owner's (different uid, or no uid): it refuses, it does not say 'nothing stored'", async () => {
+    const B = "b".repeat(28)
+    const other = make(ok(null), async () => ({ data: [{ uid: B, data: "gz1:theirs", rev: 9, updated_at: 1 }], error: null }))
+    await expect(other.sync.get(A)).rejects.toMatchObject({ kind: "unauthorized", code: "sync-owner-mismatch", retryable: false })
+    const bare = make(ok(null), async () => ({ data: [{ data: "gz1:x", rev: 1, updated_at: 1 }], error: null }))
+    await expect(bare.sync.get(A)).rejects.toMatchObject({ code: "sync-owner-mismatch" })
+    const noLeak = await other.sync.get(A).then(() => "returned", (e) => JSON.stringify(e.message))
+    expect(noLeak).not.toContain("theirs")
+  })
+
+  it("the watcher built on it never delivers another account's row either", async () => {
+    const B = "b".repeat(28)
+    const got: unknown[] = []
+    const be = createSupabaseBackend({
+      transport: { rpc: async () => ({ data: null, error: null }), select: async () => ({ data: [{ uid: B, data: "gz1:theirs", rev: 2, updated_at: 1 }], error: null }) },
+      guard: async () => "x".repeat(40),
+      realtime: { bridge: { ensureAuthenticated: async () => ({ status: "unauthorized" }) as never, getToken: async () => null, onToken: () => () => {} }, createTransport: () => ({ setAuth: () => {}, subscribe: () => () => {} }), pollMs: 1000 },
+    })
+    const off = be.sync.watch(A, { onData: (d) => void got.push(d) })
+    await new Promise((r) => setTimeout(r, 20))
+    off()
+    expect(got).toEqual([])
   })
 
   it("maps requests, pings, profiles, invites and push tokens to the Phase 3 functions", async () => {

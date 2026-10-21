@@ -7,9 +7,9 @@
  *
  * This follows the sign-in state: when the account changes it detaches from the old one, clears what the old one
  * brought in, and attaches to the new one. The same account signing in with Google (anonymous account becoming a Google
- * account, same uid) changes nothing, because nothing about who you are to your mates changed.
+ * account, same uid) keeps the same listeners and data, but notifies the UI that the account is no longer anonymous.
  */
-import { onAuthStateChanged, type Auth } from "firebase/auth"
+import { onIdTokenChanged, type Auth } from "firebase/auth"
 import type { Firestore } from "firebase/firestore"
 import type { FriendRequest, Ping } from "./types"
 import { watchPings, watchRequests } from "./social"
@@ -17,6 +17,8 @@ import { watchPings, watchRequests } from "./social"
 export interface IdentityHandlers {
   /** The account changed (null = signed out). Not called again for the same account. */
   onIdentity: (uid: string | null, anonymous: boolean) => void
+  /** Auth provider changed for the same UID (e.g. anonymous account linked to Google). */
+  onAuthMode?: (uid: string, anonymous: boolean) => void
   onRequests: (requests: FriendRequest[]) => void
   onPings: (pings: Ping[]) => void
   onError: (e: Error) => void
@@ -24,21 +26,31 @@ export interface IdentityHandlers {
 
 export function followIdentity({ auth, db }: { auth: Auth; db: Firestore }, h: IdentityHandlers): () => void {
   let current: string | null | undefined
+  let currentAnonymous: boolean | undefined
   let detachers: Array<() => void> = []
   const detach = () => {
     detachers.forEach((f) => f())
     detachers = []
   }
 
-  const stop = onAuthStateChanged(auth, (user) => {
+  const stop = onIdTokenChanged(auth, (user) => {
     const uid = user?.uid ?? null
-    if (uid === current) return
+    const anonymous = user?.isAnonymous ?? true
+    if (uid === current && anonymous === currentAnonymous) return
+    // Linking Google to an anonymous account keeps the same UID but changes permissions/policy. Notify the app about
+    // that transition without tearing down the existing connection listeners or clearing its data.
+    if (uid === current && anonymous !== currentAnonymous) {
+      currentAnonymous = anonymous
+      if (uid) h.onAuthMode?.(uid, anonymous)
+      return
+    }
     detach()
     current = uid
+    currentAnonymous = anonymous
     // Nothing the old identity brought in stays on screen
     h.onRequests([])
     h.onPings([])
-    h.onIdentity(uid, user?.isAnonymous ?? true)
+    h.onIdentity(uid, anonymous)
     if (!uid) return
     // A late callback from a listener that has just been replaced must not land on the new identity
     const mine = <T,>(fn: (v: T) => void) => (v: T) => {
@@ -54,5 +66,6 @@ export function followIdentity({ auth, db }: { auth: Auth; db: Firestore }, h: I
     stop()
     detach()
     current = undefined
+    currentAnonymous = undefined
   }
 }

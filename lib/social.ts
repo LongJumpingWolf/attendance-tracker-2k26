@@ -36,13 +36,27 @@ export function ensureSignedIn(): Promise<User> {
   if (auth.currentUser) return Promise.resolve(auth.currentUser)
   if (!signingIn) {
     signingIn = new Promise<User>((resolve, reject) => {
-      const off = onAuthStateChanged(auth, async (user) => {
+      let settled = false
+      let off = () => {}
+      const finish = (error: unknown, user?: User) => {
+        if (settled) return
+        settled = true
+        clearTimeout(timer)
         off()
-        if (user) return resolve(user)
+        if (error) reject(error)
+        else if (user) resolve(user)
+        else reject(new Error("Firebase sign-in finished without an account."))
+      }
+      const timer = setTimeout(() => {
+        finish(new Error("Firebase sign-in timed out. Check the connection and Firebase project, then retry."))
+      }, 10000)
+      off = onAuthStateChanged(auth, async (user) => {
+        if (settled) return
+        if (user) return finish(null, user)
         try {
-          resolve((await signInAnonymously(auth)).user)
+          finish(null, (await signInAnonymously(auth)).user)
         } catch (e) {
-          reject(e)
+          finish(e)
         }
       })
     }).finally(() => {

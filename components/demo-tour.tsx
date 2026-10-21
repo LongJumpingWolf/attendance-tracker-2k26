@@ -44,9 +44,9 @@ const STEPS: Step[] = [
   },
   {
     page: "mates",
-    selector: "mates-wrapped",
-    title: "Your week, wrapped",
-    body: "Every Monday, a quick recap: your best subject, your longest streak, who covered you. Let's take a look.",
+    selector: "mates-quick-ping",
+    title: "Quick WhatsApp Ping",
+    body: "Send a secure one-time Yes/No link for selected classes. It expires after 24 hours. Weekly Wrapped appears here on Saturdays only.",
   },
 ]
 
@@ -59,7 +59,6 @@ const MARGIN = 16
 interface Props {
   open: boolean
   onGoto: (page: string) => void
-  onOpenWrapped: () => void
   onEnd: () => void
 }
 
@@ -75,7 +74,7 @@ interface Props {
  *     each step scrolls the page itself so the highlighted element lands in whatever room is left between the two
  *     — never behind either of them — reading their real, current heights rather than assuming fixed numbers.
  */
-export default function DemoTour({ open, onGoto, onOpenWrapped, onEnd }: Props) {
+export default function DemoTour({ open, onGoto, onEnd }: Props) {
   const [i, setI] = useState(0)
   const target = useRef<HTMLElement | null>(null)
   const frames = useRef<number[]>([])
@@ -211,7 +210,6 @@ export default function DemoTour({ open, onGoto, onOpenWrapped, onEnd }: Props) 
             <button
               onClick={() => {
                 if (last) {
-                  onOpenWrapped()
                   onEnd()
                 } else {
                   setI((n) => n + 1)
@@ -219,7 +217,7 @@ export default function DemoTour({ open, onGoto, onOpenWrapped, onEnd }: Props) 
               }}
               className="flex-1 h-[52px] rounded-2xl bg-ink text-paper text-[17px] font-semibold hover:bg-ink/90 transition"
             >
-              {last ? "See your Wrapped" : "Next"}
+              {last ? "Finish tour" : "Next"}
             </button>
           </div>
         </div>

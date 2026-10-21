@@ -1,7 +1,7 @@
 /**
  * Reads a full JSON backup file (the one "Save a full backup" makes) into app data.
  */
-import type { Mate, Subject, Task } from "./types"
+import type { Holiday, Mate, ScheduleOverride, Subject, Task } from "./types"
 import type { ScheduleEntry } from "./reminders"
 import { parseFullBackup } from "./backup"
 
@@ -10,6 +10,8 @@ export interface BackupData {
   tasks: Task[]
   tags: string[]
   mates?: Mate[]
+  holidays?: Holiday[]
+  scheduleOverrides?: ScheduleOverride[]
   reminders?: ScheduleEntry[]
   /** Always true for a JSON backup: everything comes back exactly as saved */
   full?: boolean

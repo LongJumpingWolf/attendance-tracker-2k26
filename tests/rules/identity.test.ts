@@ -25,6 +25,7 @@ interface Device {
   requests: FriendRequest[]
   pings: Ping[]
   identities: (string | null)[]
+  authModes: boolean[]
   stop: () => void
 }
 
@@ -36,14 +37,14 @@ function browser(): Device {
   connectAuthEmulator(auth, "http://127.0.0.1:9099", { disableWarnings: true })
   const db = getFirestore(app)
   connectFirestoreEmulator(db, "127.0.0.1", 8080)
-  return { auth, db, requests: [], pings: [], identities: [], stop: () => {} }
+  return { auth, db, requests: [], pings: [], identities: [], authModes: [], stop: () => {} }
 }
 /** ...which starts following the signed-in account, as the app does */
 function follow(d: Device) {
   followers.push(d)
   d.stop = session.followIdentity(
     { auth: d.auth, db: d.db },
-    { onIdentity: (uid) => d.identities.push(uid), onRequests: (r) => (d.requests = r), onPings: (p) => (d.pings = p), onError: () => {} },
+    { onIdentity: (uid) => d.identities.push(uid), onAuthMode: (_uid, anonymous) => d.authModes.push(anonymous), onRequests: (r) => (d.requests = r), onPings: (p) => (d.pings = p), onError: () => {} },
   )
   return d
 }
@@ -126,7 +127,8 @@ describe("1. anonymous -> Google sign-in keeps who you are", () => {
     expect(result).toEqual({ kind: "linked", uid: before }) // 1. the identity is the same
     expect(uidOf(me)).toBe(before)
     expect(me.auth.currentUser?.isAnonymous).toBe(false)
-    expect(me.identities).toEqual([before]) // the listeners were never torn down or re-pointed: nothing changed
+    await waitFor(() => me.authModes.includes(false), "the same UID's provider change to reach the app")
+    expect(me.identities).toEqual([before]) // listeners were never torn down or re-pointed
     expect(me.requests.filter((r) => r.status === "accepted")).toHaveLength(1) // 2. the mate is still there
     // 4. Pings keep working after the transition: one arrives, and one can be sent
     await aPing("ping-in-after-bbbb", friend, "Rahul", me, "Asha", requestId)
@@ -209,11 +211,12 @@ describe("2. a Google account that already exists elsewhere", () => {
     await updateDoc(doc(friend.db, "requests", request.id), { status: "accepted", respondedAt: new Date() })
     await waitFor(() => second.requests.some((r) => r.status === "accepted"), "the new connection to be accepted")
 
-    // their ledger: the old row for the same person takes the new id and keeps its history
+    // A new account UID must not inherit an old ledger merely because the display name matches.
     const rahulsLedger = [{ id: "m1", name: "Asha", uid: uidOf(second) === homeUid ? "the-old-id" : "x", covered: 3, repaid: 1 }]
     const adopted = identity.adoptConnections(rahulsLedger, [{ uid: homeUid, name: "Asha" }])
-    expect(adopted).toHaveLength(1)
-    expect(adopted[0]).toMatchObject({ id: "m1", uid: homeUid, covered: 3, repaid: 1 })
+    expect(adopted).toHaveLength(2)
+    expect(adopted.find((m) => m.id === "m1")).toMatchObject({ uid: "the-old-id", covered: 3, repaid: 1 })
+    expect(adopted.find((m) => m.uid === homeUid)).toMatchObject({ id: homeUid, uid: homeUid, name: "Asha", covered: 0, repaid: 0 })
 
     // and Pings work from the new identity, in both directions
     const connection = second.requests.find((r) => r.status === "accepted") as FriendRequest
@@ -288,5 +291,20 @@ describe("the ledger", () => {
   it("an unconnected mate added by hand takes the account when that person connects", () => {
     const ledger = identity.adoptConnections([{ id: "m1", name: "Rahul", covered: 4, repaid: 1 }], [{ uid: "r1", name: "rahul" }])
     expect(ledger).toEqual([{ id: "m1", name: "Rahul", uid: "r1", covered: 4, repaid: 1 }])
+  })
+
+  it("does not merge a stale account ledger or ambiguous same-name contacts into another UID", () => {
+    const ledger = identity.adoptConnections([
+      { id: "old", name: "Asha", uid: "old-uid", covered: 8, repaid: 2 },
+      { id: "manual-1", name: "Rahul", covered: 4, repaid: 1 },
+      { id: "manual-2", name: "rahul", covered: 2, repaid: 0 },
+    ], [
+      { uid: "new-uid", name: "Asha" },
+      { uid: "rahul-uid", name: "Rahul" },
+    ])
+    expect(ledger.find((m) => m.id === "old")).toMatchObject({ uid: "old-uid", covered: 8, repaid: 2 })
+    expect(ledger.find((m) => m.uid === "new-uid")).toMatchObject({ covered: 0, repaid: 0 })
+    expect(ledger.filter((m) => !m.uid)).toHaveLength(2)
+    expect(ledger.filter((m) => m.uid === "rahul-uid")).toHaveLength(1)
   })
 })

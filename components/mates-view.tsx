@@ -2,11 +2,13 @@
 
 import { useEffect, useState } from "react"
 import QRCode from "qrcode"
-import { Check, X, Copy, ShareNetwork, CaretDown, Link as LinkIcon } from "@phosphor-icons/react"
-import type { Mate, Ping, Subject } from "@/lib/types"
+import { Check, X, Copy, ShareNetwork, CaretDown, Link as LinkIcon, ChatCircleDots, LockKey } from "@phosphor-icons/react"
+import type { Mate, Ping, ScheduleOverride, Subject } from "@/lib/types"
 import { localDate } from "@/lib/attendance"
+import { shareableAppOrigin } from "@/lib/share-ping-link"
 import { copyText } from "@/lib/clipboard"
 import { PING_HISTORY_DAYS, daysSince, isAnswered, isExpired, whenLabel } from "@/lib/pings"
+import { canSendInAppPing, canUseInAppPing } from "@/lib/ping-capabilities"
 import PingSheet from "./ping-sheet"
 import type { SocialApi } from "@/lib/use-social"
 import Sheet, { Field, inputClass, primaryButton, SectionHeader, tintButton } from "./sheet"
@@ -16,12 +18,14 @@ interface MatesViewProps {
   social: SocialApi
   addOpen: boolean
   onCloseAdd: () => void
-  onAdd: (name: string) => void
+  onOpenAdd: () => void
   onRemove: (id: string) => void
   /** Your subjects, so a ping can name the exact classes you were away for */
   subjects: Subject[]
-  /** Open the month-end wrapped story */
+  scheduleOverrides?: ScheduleOverride[]
+  /** Open the weekly recap, only exposed on Saturday from the Ping section. */
   onOpenWrapped: () => void
+  showWrappedInPingSection?: boolean
   onToast: (message: string) => void
 }
 
@@ -41,31 +45,56 @@ function Avatar({ name, i = 0, size = 48 }: { name: string; i?: number; size?: n
 }
 
 async function shareOrCopy(text: string, url: string, onToast: (m: string) => void) {
-  try {
-    if (navigator.share) {
+  if (navigator.share) {
+    try {
       await navigator.share({ text, url })
       return
+    } catch (error) {
+      // User cancellation is normal. Other share failures should still fall back to copying the usable link.
+      if (error instanceof Error && error.name === "AbortError") return
     }
-  } catch {
-    return // the share sheet was dismissed
   }
-  onToast((await copyText(url)) ? "Link copied" : "Couldn't copy the link")
+  onToast((await copyText(url)) ? "Sharing wasn't available; link copied instead" : "Couldn't share or copy the link. Select it and copy manually.")
 }
 
 /* ---------- connect: QR + links ---------- */
 
 function ConnectCard({ social, onToast }: { social: SocialApi; onToast: (m: string) => void }) {
   const [qr, setQr] = useState("")
-  const [nameDraft, setNameDraft] = useState("")
+  const [qrError, setQrError] = useState(false)
   const [invite, setInvite] = useState<{ link: string; expiresAt: number } | null>(null)
   const [busy, setBusy] = useState(false)
   const [tick, setTick] = useState(Date.now())
+  const [originChecked, setOriginChecked] = useState(false)
+  const [originMessage, setOriginMessage] = useState("")
+  const [waitingLong, setWaitingLong] = useState(false)
+
+  // This component also initiates setup when opened, so an idle state cannot leave the card loading forever.
+  useEffect(() => {
+    if (!social.configured || social.status === "ready" || social.status === "error") {
+      setWaitingLong(false)
+      return
+    }
+    if (social.status === "idle" || social.status === "off") social.enable()
+    const timer = window.setTimeout(() => setWaitingLong(true), 5000)
+    return () => window.clearTimeout(timer)
+  }, [social.configured, social.status, social.enable])
 
   useEffect(() => {
-    if (!social.addLink) return
+    const result = shareableAppOrigin(window.location.origin, process.env.NEXT_PUBLIC_APP_URL)
+    setOriginMessage(result.ok ? "" : result.message)
+    setOriginChecked(true)
+  }, [])
+
+  useEffect(() => {
+    let current = true
+    setQr("")
+    setQrError(false)
+    if (!social.addLink) return () => { current = false }
     QRCode.toDataURL(social.addLink, { margin: 1, width: 480, color: { dark: "#000000", light: "#ffffff" } })
-      .then(setQr)
-      .catch(() => setQr(""))
+      .then((url) => { if (current) setQr(url) })
+      .catch(() => { if (current) { setQr(""); setQrError(true) } })
+    return () => { current = false }
   }, [social.addLink])
 
   useEffect(() => {
@@ -81,7 +110,7 @@ function ConnectCard({ social, onToast }: { social: SocialApi; onToast: (m: stri
         <p className="text-[15px] text-mute mt-1.5 leading-snug">
           Your QR code, share links and request inbox run on a free Firebase project. Add its keys to{" "}
           <span className="text-ink">.env.local</span> (see <span className="text-ink">.env.local.example</span>),
-          turn on Anonymous sign-in, and deploy the rules. Everything else in the app keeps working without it.
+          turn on Anonymous sign-in, and deploy the rules. If you&apos;re testing on localhost, also set <span className="text-ink">NEXT_PUBLIC_APP_URL</span> to a deployed HTTPS preview running the same Firebase project; localhost links cannot open on another person&apos;s device. Everything else in the app keeps working without it.
         </p>
       </div>
     )
@@ -101,37 +130,27 @@ function ConnectCard({ social, onToast }: { social: SocialApi; onToast: (m: stri
 
   if (social.status !== "ready") {
     return (
-      <div className={`${card} p-5`}>
-        <p className="text-[15px] text-mute">Setting up your account…</p>
+      <div className={`${card} p-5`} role="status" aria-live="polite">
+        <p className="text-[16px] font-semibold">{waitingLong ? "Still connecting to Firebase" : "Connecting to Firebase…"}</p>
+        <p className="text-[13px] text-mute mt-1.5 leading-snug">
+          {waitingLong
+            ? "Local sign-in should finish within a few seconds. If it does not, check the Firebase project keys and local emulator settings; this screen will show the specific error when sign-in fails."
+            : "Creating this browser's unique account. Public HTTPS is only needed for links opened on another device, not for sign-in on localhost."}
+        </p>
+        <button type="button" onClick={social.enable} className="mt-3 h-10 px-4 rounded-xl bg-secondary text-[14px] font-semibold">Retry connection</button>
       </div>
     )
   }
 
-  if (!social.name) {
-    return (
-      <form
-        className={`${card} p-5`}
-        onSubmit={(e) => {
-          e.preventDefault()
-          if (nameDraft.trim()) social.setName(nameDraft)
-        }}
-      >
-        <p className="text-[17px] font-semibold">What should friends call you?</p>
-        <p className="text-[15px] text-mute mt-1 mb-3 leading-snug">
-          Your name is shown on your QR code and in requests. Nothing else about you is shared.
-        </p>
-        <input autoFocus value={nameDraft} onChange={(e) => setNameDraft(e.target.value)} placeholder="Your name" className={inputClass} />
-        <button type="submit" className={`${primaryButton} mt-3`}>
-          Continue
-        </button>
-      </form>
-    )
-  }
 
   const left = invite ? Math.max(0, Math.round((invite.expiresAt - tick) / 1000)) : 0
   const expired = invite !== null && left === 0
 
   const generate = async () => {
+    if (!originChecked || originMessage) {
+      onToast(originMessage || "Checking this website address. Try again in a moment.")
+      return
+    }
     setBusy(true)
     try {
       const made = await social.makeInvite()
@@ -145,27 +164,45 @@ function ConnectCard({ social, onToast }: { social: SocialApi; onToast: (m: stri
 
   return (
     <div className={`${card} p-5`}>
-      <p className="text-[13px] text-mute">Sharing as {social.name}</p>
-      <p className="text-[22px] font-bold tracking-tight leading-tight mt-0.5">Add friends</p>
+      <p className="text-[13px] text-mute">Your unique friend identity</p>
+      <p className="text-[22px] font-bold tracking-tight leading-tight mt-0.5">Connect with friends</p>
+      {social.uid && (
+        <div className="mt-3 rounded-xl bg-secondary p-3">
+          <p className="text-[11px] uppercase tracking-wider text-mute font-semibold">Unique account code</p>
+          <p className="mt-1 text-[12px] font-mono break-all select-all" aria-label="Your unique account code">{social.uid}</p>
+          <button
+            type="button"
+            onClick={async () => onToast((await copyText(social.uid as string)) ? "Unique code copied" : "Couldn't copy the code")}
+            className="mt-2 h-9 px-3 rounded-lg bg-card text-[13px] font-semibold flex items-center gap-1.5"
+          ><Copy weight="bold" className="w-4 h-4" /> Copy code</button>
+        </div>
+      )}
       <p className="text-[15px] text-mute mt-1 leading-snug">
-        Friends scan this code with their camera, or open a link. You&rsquo;ll get their request in your inbox.
+        Friends scan this code, open your permanent link, or enter your unique account code. You’ll get their request in your inbox. The code identifies the account; display names are only labels.
       </p>
 
+      {originMessage && (
+        <div className="mt-3 rounded-2xl bg-warn/10 p-3.5 text-[13px] leading-relaxed" role="status">
+          <b className="block mb-1">Configure the recipient-facing website URL</b>
+          {originMessage} Set NEXT_PUBLIC_APP_URL to the deployed HTTPS app URL and restart the dev server to create working one-day Ping links while testing locally.
+        </div>
+      )}
       <div className="mx-auto mt-4 w-[208px] h-[208px] rounded-2xl bg-[#ffffff] p-3 grid place-items-center">
-        {qr ? <img src={qr} alt="Your QR code" width={184} height={184} className="w-full h-full" /> : <span className="text-black/40 text-sm">…</span>}
+        {originMessage ? <div className="text-center px-3 text-black/70"><p className="text-sm font-semibold">Open the deployed site</p><p className="text-xs mt-1">QR links need a public website address.</p></div> : qr ? <img src={qr} alt="Your permanent friend-connection QR code" width={184} height={184} className="w-full h-full" /> : qrError ? <div className="text-center px-3 text-black/70"><p className="text-sm font-semibold">QR code unavailable</p><p className="text-xs mt-1">Use Share link below instead.</p></div> : <span className="text-black/40 text-sm">Preparing QR…</span>}
       </div>
       <p className="text-[12px] text-mute text-center mt-2">This code is permanent. It never changes.</p>
 
       <div className="grid grid-cols-2 gap-2.5 mt-4">
         <button
-          onClick={() => shareOrCopy(`Add me as a proxy-mate, I'm ${social.name}.`, social.addLink, onToast)}
-          className="h-11 rounded-xl bg-ink text-paper text-[15px] font-semibold flex items-center justify-center gap-2"
+          onClick={() => originMessage ? onToast(originMessage) : void shareOrCopy(`Add me as a proxy-mate, I'm ${social.name}.`, social.addLink, onToast)}
+          disabled={!originChecked || !!originMessage || !social.addLink}
+          className="h-11 rounded-xl bg-ink text-paper text-[15px] font-semibold flex items-center justify-center gap-2 disabled:opacity-45"
         >
           <ShareNetwork weight="bold" className="w-4 h-4" /> Share link
         </button>
         <button
           onClick={generate}
-          disabled={busy}
+          disabled={busy || !originChecked || !!originMessage}
           className="h-11 rounded-xl bg-secondary text-[15px] font-semibold flex items-center justify-center gap-2 disabled:opacity-50"
         >
           <LinkIcon weight="bold" className="w-4 h-4" /> Magic link
@@ -198,8 +235,8 @@ function ConnectCard({ social, onToast }: { social: SocialApi; onToast: (m: stri
             >
               <ShareNetwork weight="bold" className="w-4 h-4" /> Share
             </button>
-            <button onClick={generate} className="h-9 px-3 rounded-lg text-[13px] font-semibold text-info ml-auto">
-              New link
+            <button onClick={generate} disabled={busy} className="h-9 px-3 rounded-lg text-[13px] font-semibold text-info ml-auto disabled:opacity-40">
+              {busy ? "Creating…" : "New link"}
             </button>
           </div>
         </div>
@@ -227,7 +264,7 @@ const timeLabel = (t?: string) => {
   return `${h % 12 || 12}:${String(m).padStart(2, "0")} ${h >= 12 ? "PM" : "AM"}`
 }
 
-function PingCard({ ping, index, onSend }: { ping: Ping; index: number; onSend: (answers: Record<string, "yes" | "no">) => Promise<void> }) {
+function PingCard({ ping, index, disabled = false, onSend }: { ping: Ping; index: number; disabled?: boolean; onSend: (answers: Record<string, "yes" | "no">) => Promise<void> }) {
   const [ans, setAns] = useState<Record<string, "yes" | "no">>({})
   const [busy, setBusy] = useState(false)
   const complete = ping.items.every((i) => ans[i.key])
@@ -250,6 +287,7 @@ function PingCard({ ping, index, onSend }: { ping: Ping; index: number; onSend: 
             </span>
             <span className="flex gap-1.5 flex-shrink-0">
               <button
+                disabled={disabled}
                 onClick={() => set(i.key, "no")}
                 aria-pressed={ans[i.key] === "no"}
                 className={`h-9 px-3.5 rounded-full text-[14px] font-semibold transition ${ans[i.key] === "no" ? "bg-bad text-paper" : "bg-card text-mute"}`}
@@ -257,6 +295,7 @@ function PingCard({ ping, index, onSend }: { ping: Ping; index: number; onSend: 
                 No
               </button>
               <button
+                disabled={disabled}
                 onClick={() => set(i.key, "yes")}
                 aria-pressed={ans[i.key] === "yes"}
                 className={`h-9 px-3.5 rounded-full text-[14px] font-semibold transition ${ans[i.key] === "yes" ? "bg-good text-paper" : "bg-card text-mute"}`}
@@ -267,17 +306,19 @@ function PingCard({ ping, index, onSend }: { ping: Ping; index: number; onSend: 
           </li>
         ))}
       </ul>
+      {disabled && <p className="mt-3 text-[13px] text-mute">In-app Pings require Google sign-in. Sign in with Google to answer this request; WhatsApp Ping links remain available.</p>}
       <div className="flex items-center gap-3 mt-3.5">
         {ping.items.length > 1 && (
           <button
+            disabled={disabled}
             onClick={() => setAns(Object.fromEntries(ping.items.map((i) => [i.key, "yes" as const])))}
-            className="text-[14px] font-medium text-mute"
+            className="text-[14px] font-medium text-mute disabled:opacity-40"
           >
             Yes to all
           </button>
         )}
         <button
-          disabled={!complete || busy}
+          disabled={disabled || !complete || busy}
           onClick={async () => {
             setBusy(true)
             await onSend(ans).catch(() => {})
@@ -372,12 +413,15 @@ function PingHistory({ sent, received, onClear }: { sent: Ping[]; received: Ping
 
 /* ---------- main view ---------- */
 
-export default function MatesView({ mates, social, subjects, addOpen, onCloseAdd, onAdd, onRemove, onOpenWrapped, onToast }: MatesViewProps) {
-  const [name, setName] = useState("")
+export default function MatesView({ mates, social, subjects, scheduleOverrides = [], addOpen, onCloseAdd, onOpenAdd, onRemove, onOpenWrapped, showWrappedInPingSection = false, onToast }: MatesViewProps) {
+  const [mateCode, setMateCode] = useState("")
+  const [connectingCode, setConnectingCode] = useState(false)
   // Removing a mate wipes their favour history (and ends a connection), so it needs a second tap
   const [removing, setRemoving] = useState<Mate | null>(null)
   // The mate you are about to ping
   const [pinging, setPinging] = useState<Mate | null>(null)
+  const [directChooserOpen, setDirectChooserOpen] = useState(false)
+  const [connectingMateId, setConnectingMateId] = useState<string | null>(null)
 
   const owed = (m: Mate) => Math.max(0, m.covered - m.repaid)
   const ranked = [...mates].sort((a, b) => owed(b) - owed(a) || b.covered - a.covered || a.name.localeCompare(b.name))
@@ -390,20 +434,103 @@ export default function MatesView({ mates, social, subjects, addOpen, onCloseAdd
   // "Connected" means connected under the account that is signed in now, not merely having once been
   const connectedUids = new Set(social.requests.filter((r) => r.status === "accepted").map((r) => r.participants.find((p) => p !== me)))
   const isConnected = (m: Mate) => !!m.uid && connectedUids.has(m.uid)
+  const connectedMates = ranked.filter(isConnected)
+  const canUseDirectPings = canUseInAppPing({ configured: social.configured, ready: social.status === "ready", anonymous: social.anonymous })
   const incoming = social.requests.filter((r) => r.status === "pending" && r.to === me)
   const outgoing = social.requests.filter((r) => r.status === "pending" && r.from === me)
   const toAnswer = social.received.filter((p) => p.status === "asking" && !isExpired(p))
 
-  const submit = (e: React.FormEvent) => {
+  // Existing Mate rows may already contain the other account's Firebase UID.
+  // Use it to send a real connection request instead of forcing the user to re-copy the code.
+  // The recipient still has to accept; this never grants an unconnected account Ping permissions.
+  const requestMateConnection = async (mate: Mate) => {
+    if (!mate.uid) {
+      onToast("Connect using your friend's unique account code or link.")
+      onOpenAdd()
+      return
+    }
+    if (connectingMateId !== null) return
+    setConnectingMateId(mate.id)
+    try {
+      const result = await social.connectViaUid(mate.uid)
+      onToast(result.message)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Couldn't send the connection request. Check the account code and try again."
+      onToast(message)
+    } finally {
+      setConnectingMateId(null)
+    }
+  }
+
+  const submit = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!name.trim()) return
-    onAdd(name.trim())
-    setName("")
-    onCloseAdd()
+    const raw = mateCode.trim()
+    if (!raw || connectingCode) return
+    let addUid = raw
+    let inviteToken = ""
+    try {
+      if (/^https?:\/\//i.test(raw)) {
+        const parsed = new URL(raw)
+        addUid = parsed.searchParams.get("add") || ""
+        inviteToken = parsed.searchParams.get("invite") || ""
+      }
+    } catch { /* treat as a raw code below */ }
+    if (!addUid && !inviteToken) {
+      onToast("Enter a friend's unique account code, permanent link, or 15-minute invite link.")
+      return
+    }
+    setConnectingCode(true)
+    try {
+      const result = inviteToken ? await social.connectViaInvite(inviteToken) : await social.connectViaUid(addUid)
+      onToast(result.message)
+      if (result.ok) {
+        setMateCode("")
+        onCloseAdd()
+      }
+    } catch {
+      onToast("Couldn't send the connection request. Check the code or link and try again.")
+    } finally {
+      setConnectingCode(false)
+    }
   }
 
   return (
     <div className="space-y-7 lg:space-y-0 lg:columns-2 lg:gap-x-10 lg:[&>*]:break-inside-avoid lg:[&>*]:mb-7">
+      <section className={`${card} p-4 sm:p-5`} data-tour="mates-quick-ping">
+        <div className="flex items-start gap-3">
+          <span className="w-11 h-11 rounded-2xl bg-good/15 text-good grid place-items-center flex-shrink-0"><ShareNetwork weight="bold" className="w-5 h-5" /></span>
+          <div className="min-w-0 flex-1">
+            <h2 className="text-[17px] font-bold">Quick WhatsApp Ping</h2>
+            <p className="text-[13px] text-mute leading-snug mt-1">Create a one-time Yes/No link for selected classes. It works without adding the recipient as a Mate and expires after 24 hours.</p>
+            <div className={`mt-3 grid ${canUseDirectPings && connectedMates.length > 0 ? "grid-cols-2" : "grid-cols-1"} gap-2`}>
+              <button onClick={() => setPinging({ id: "__general__", name: "", covered: 0, repaid: 0 })} className={`${primaryButton} flex items-center justify-center gap-2`}><ShareNetwork className="w-4 h-4" />WhatsApp Ping · 24h</button>
+              {canUseDirectPings && connectedMates.length > 0 && (
+                <button onClick={() => setDirectChooserOpen(true)} className="h-12 px-3 rounded-2xl bg-secondary text-[14px] font-semibold flex items-center justify-center gap-2"><ChatCircleDots className="w-4 h-4" />In-app Ping</button>
+              )}
+              {social.configured && social.anonymous && (
+                <button type="button" disabled title="Sign in with Google to enable direct Pings" className="h-11 px-3 rounded-2xl bg-secondary/70 text-[13px] text-mute font-semibold flex items-center justify-center gap-2 disabled:opacity-70"><LockKey className="w-4 h-4" />In-app Ping · Google sign-in required</button>
+              )}
+              {canUseDirectPings && connectedMates.length === 0 && (
+                <button type="button" disabled title="Connect with a friend and wait for them to accept first" className="h-11 px-3 rounded-2xl bg-secondary/70 text-[13px] text-mute font-semibold flex items-center justify-center gap-2 disabled:opacity-70"><LockKey className="w-4 h-4" />In-app Ping · connect a friend first</button>
+              )}
+            </div>
+            {social.configured && social.anonymous && <p className="text-[12px] text-mute mt-2">This browser is using an anonymous account. Sign in with Google, then connect with a friend to enable direct in-app Pings. WhatsApp links remain available.</p>}
+            {canUseDirectPings && connectedMates.length === 0 && <p className="text-[12px] text-mute mt-2">Enter a friend&apos;s unique account code with the + button. Direct Pings become available after the connection is accepted by both accounts.</p>}
+          </div>
+        </div>
+        <p className="text-[12px] text-mute leading-relaxed mt-3">A Yes response can update the selected attendance records; in-app Pings also update the connected Mate&apos;s favour count.</p>
+        {showWrappedInPingSection && (
+          <div className="mt-4 rounded-2xl border border-ink/[0.07] bg-secondary/70 p-3.5 flex items-center gap-3">
+            <span className="w-10 h-10 rounded-xl bg-card grid place-items-center text-[20px] flex-shrink-0" aria-hidden>✦</span>
+            <div className="min-w-0 flex-1">
+              <p className="text-[10px] uppercase tracking-[0.12em] font-extrabold text-mute">Saturday · Weekly wrapped</p>
+              <p className="text-[14px] font-bold mt-0.5">Your week, in review</p>
+              <p className="text-[12px] text-mute leading-snug mt-0.5">See your attendance highlights and the people who helped.</p>
+            </div>
+            <button onClick={onOpenWrapped} className="h-9 px-3 rounded-full bg-ink text-paper text-[12px] font-bold flex-shrink-0">Open</button>
+          </div>
+        )}
+      </section>
       {/* Mates asking whether you marked them present */}
       {toAnswer.length > 0 && (
         <section>
@@ -414,12 +541,13 @@ export default function MatesView({ mates, social, subjects, addOpen, onCloseAdd
                 key={p.id}
                 ping={p}
                 index={i}
+                disabled={social.anonymous && social.configured}
                 onSend={(answers) => social.answerPing(p.id, answers).then((r) => onToast(r.message))}
               />
             ))}
           </ul>
           <p className="text-[13px] text-mute px-1 mt-2 leading-snug">
-            A yes marks that class present for them. Only say yes if you really did.
+            A Yes response marks the selected class present on the sender&apos;s attendance record.
           </p>
         </section>
       )}
@@ -457,7 +585,7 @@ export default function MatesView({ mates, social, subjects, addOpen, onCloseAdd
       )}
 
       {/* Month-end */}
-      <div className="rounded-2xl bg-card p-4" data-tour="mates-wrapped">
+      <div className="rounded-2xl bg-card p-4" data-tour="mates-favour-balance">
         <p className="text-[13px] text-mute">
           Month ends in {daysLeft} {daysLeft === 1 ? "day" : "days"}
         </p>
@@ -469,14 +597,9 @@ export default function MatesView({ mates, social, subjects, addOpen, onCloseAdd
             ? "Repay your mates before the month ends: a treat, a party, notes."
             : "Nobody has covered for you without being repaid."}
         </p>
-        <button
-          onClick={onOpenWrapped}
-          className="mt-4 w-full h-12 rounded-xl text-[16px] font-bold text-[#ffffff] shadow-sm"
-          style={{ background: "linear-gradient(120deg,#3730a3,#86198f)" }}
-        >
-          See your week wrapped
-        </button>
       </div>
+
+
 
       {/* Leaderboard */}
       <section data-tour="mates-leaderboard">
@@ -535,14 +658,28 @@ export default function MatesView({ mates, social, subjects, addOpen, onCloseAdd
                     </p>
                   )
                 })()}
-                <div className="flex items-center gap-1.5 mt-3.5">
-                  <button onClick={() => setPinging(m)} className={chip}>
-                    Ping
+                <div className="flex flex-wrap items-center gap-1.5 mt-3.5">
+                  <button onClick={() => setPinging(m)} title={canSendInAppPing({ configured: social.configured, ready: social.status === "ready", anonymous: social.anonymous, connected: isConnected(m) }) ? "Send an in-app Ping or a WhatsApp link" : "Create a 24-hour WhatsApp Ping link; Google sign-in and an accepted connection enable in-app Pings"} className={chip}>
+                    {canSendInAppPing({ configured: social.configured, ready: social.status === "ready", anonymous: social.anonymous, connected: isConnected(m) }) ? "In-app Ping" : "WhatsApp Ping"}
                   </button>
+                  {m.uid && !isConnected(m) && social.configured && (
+                    <button
+                      type="button"
+                      onClick={() => void requestMateConnection(m)}
+                      disabled={social.status !== "ready" || connectingMateId !== null}
+                      title="Send a connection request to this account. They must accept before an in-app Ping can be sent."
+                      className={`${chip} disabled:opacity-45`}
+                    >
+                      {connectingMateId === m.id ? "Sending…" : "Connect"}
+                    </button>
+                  )}
                   <button onClick={() => setRemoving(m)} className="ml-auto text-[13px] text-mute hover:text-bad pl-1">
                     Remove
                   </button>
                 </div>
+                {m.uid && !isConnected(m) && (
+                  <p className="text-[12px] text-mute mt-2">In-app Ping unlocks after this account accepts your connection request. Google sign-in is also required.</p>
+                )}
               </li>
             ))}
           </ul>
@@ -576,9 +713,7 @@ export default function MatesView({ mates, social, subjects, addOpen, onCloseAdd
       </section>
 
       <p className="text-[13px] text-mute px-1 leading-snug -mt-2">
-        Ping a connected mate to ask if they marked you present in the classes you missed. Their yes marks the class
-        present and adds a favour automatically. For mates who aren&rsquo;t connected, Ping opens your share sheet.
-        The favour count is private to you.
+        Send an in-app Ping to an accepted connection, or create a one-time WhatsApp response link for anyone else. An in-app Yes marks the selected class present and records a favour. A response-link Yes can update the selected attendance record; favour tracking is available only for connected Mates.
       </p>
 
       <Sheet open={removing !== null} onClose={() => setRemoving(null)} title={removing ? `Remove ${removing.name}?` : "Remove mate"}>
@@ -606,23 +741,45 @@ export default function MatesView({ mates, social, subjects, addOpen, onCloseAdd
         )}
       </Sheet>
 
+      <Sheet open={directChooserOpen} onClose={() => setDirectChooserOpen(false)} title="Send an in-app Ping">
+        <p className="text-[14px] text-mute leading-snug mb-4">Choose a connected friend. They&apos;ll receive the request inside Attendance Tracker.</p>
+        <ul className="space-y-2">
+          {connectedMates.map((mate) => (
+            <li key={mate.id}>
+              <button type="button" onClick={() => { setDirectChooserOpen(false); setPinging(mate) }} className="w-full flex items-center gap-3 rounded-2xl bg-secondary px-3.5 py-3 text-left">
+                <Avatar name={mate.name} size={40} />
+                <span className="min-w-0 flex-1"><span className="block font-semibold truncate">{mate.name}</span><span className="block text-[12px] text-mute">Connected account</span></span>
+                <ChatCircleDots className="w-5 h-5" />
+              </button>
+            </li>
+          ))}
+        </ul>
+        {connectedMates.length === 0 && <button type="button" onClick={() => { setDirectChooserOpen(false); onOpenAdd() }} className={`${primaryButton} mt-3`}>Connect with a friend</button>}
+      </Sheet>
+
       <PingSheet
         open={pinging !== null}
         onClose={() => setPinging(null)}
         mate={pinging && !isConnected(pinging) ? { ...pinging, uid: undefined } : pinging}
         subjects={subjects}
-        waiting={pinging ? social.sent.filter((p) => p.status === "asking" && !isExpired(p) && (p.to === pinging.uid || p.toName === pinging.name)) : []}
+        scheduleOverrides={scheduleOverrides}
+        waiting={pinging && pinging.id !== "__general__" ? social.sent.filter((p) => p.status === "asking" && !isExpired(p) && (pinging.uid ? p.to === pinging.uid : !p.to && p.toName.trim().toLowerCase() === pinging.name.trim().toLowerCase())) : []}
         onAsk={(m, date, items) => social.sendPing({ uid: m.uid as string, name: m.name }, date, items)}
+        canDirect={!!pinging && pinging.id !== "__general__" && canSendInAppPing({ configured: social.configured, ready: social.status === "ready", anonymous: social.anonymous, connected: isConnected(pinging) })}
+        canChooseDirectMate={canUseDirectPings && connectedMates.length > 0}
+        onChooseDirectMate={() => { setPinging(null); setDirectChooserOpen(true) }}
+        onCreateSharePing={(toName, date, items) => social.createSharePing(toName, date, items)}
         onToast={onToast}
       />
 
-      <Sheet open={addOpen} onClose={onCloseAdd} title="Add a mate">
-        <form onSubmit={submit}>
-          <Field label="Name">
-            <input autoFocus value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Priya" className={inputClass} />
+      <Sheet open={addOpen} onClose={onCloseAdd} title="Connect with a Mate">
+        <form onSubmit={submit} className="space-y-3">
+          <Field label="Unique account code or link">
+            <input autoFocus value={mateCode} onChange={(e) => setMateCode(e.target.value)} placeholder="Paste code or friend link" className={inputClass} autoCapitalize="none" autoCorrect="off" spellCheck={false} />
           </Field>
-          <button type="submit" className={primaryButton}>
-            Add mate
+          <p className="text-[13px] text-mute leading-snug">Names are not unique, so connect using the person&apos;s full account code, permanent QR/link, or one-time invite link. They must accept the request before appearing as a connected Mate.</p>
+          <button type="submit" disabled={!mateCode.trim() || connectingCode} className={`${primaryButton} disabled:opacity-50`}>
+            {connectingCode ? "Sending request…" : "Send connection request"}
           </button>
         </form>
       </Sheet>

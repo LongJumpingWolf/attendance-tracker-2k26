@@ -139,7 +139,9 @@ function Plain({ result, onPick, onClose }: { result: ScanResult; onPick: (t: Cl
   let body = ""
   if (result.kind === "already") {
     title = result.status === "P" ? "Already marked present" : "Already marked absent"
-    body = `${result.target.subject.name}, ${formatTime(result.target.slot.start)}`
+    body = result.target.override?.kind === "substitute"
+      ? `${result.target.attendanceSubject?.name ?? result.target.originalSubjectName ?? result.target.subject.name}, held as ${result.target.subject.name}, ${formatTime(result.target.slot.start)}`
+      : `${result.target.subject.name}, ${formatTime(result.target.slot.start)}`
   } else if (result.kind === "idle") {
     title =
       result.reason === "no-subjects" ? "No subjects yet" : result.reason === "no-classes" ? "No classes today" : "Everything is marked"
@@ -174,7 +176,7 @@ function Plain({ result, onPick, onClose }: { result: ScanResult; onPick: (t: Cl
                 className="w-full rounded-2xl bg-card px-4 py-3.5 text-left flex items-center gap-3"
               >
                 <span className="min-w-0 flex-1">
-                  <span className="block text-[16px] font-semibold truncate">{c.subject.name}</span>
+                  <span className="block text-[16px] font-semibold truncate">{c.override?.kind === "substitute" ? `${c.attendanceSubject?.name ?? c.originalSubjectName ?? c.subject.name} (held as ${c.subject.name})` : c.subject.name}</span>
                   <span className="num block text-[13px] text-mute">
                     {formatTime(c.slot.start)} – {formatTime(c.slot.end)}
                   </span>

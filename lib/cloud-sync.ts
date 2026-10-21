@@ -4,7 +4,7 @@
  * instead (app/api/dev-sync), so a laptop and a phone on the same Wi-Fi can already sync.
  */
 import { firebaseConfigured } from "./firebase"
-import { getBackend } from "./backend"
+import { getDomainBackend } from "./backend"
 import { DOC_LIMIT_BYTES, firestoreDocBytes } from "./backend/limits"
 
 export { DOC_LIMIT_BYTES, firestoreDocBytes }
@@ -50,7 +50,7 @@ export const cloudKind = (): CloudKind =>
 export async function cloudGet(owner: string): Promise<CloudDoc | null> {
   const kind = cloudKind()
   if (kind === "firebase") {
-    const d = await getBackend().sync.get(owner)
+    const d = await getDomainBackend("sync").sync.get(owner)
     if (!d) return null
     return { ...d, data: await unpack(d.data) }
   }
@@ -72,7 +72,7 @@ export async function cloudPut(owner: string, text: string, expectedRev: number 
     // Checked before any network call. Nothing is sent, and nothing on this device is touched.
     if (firestoreDocBytes(owner, data) > DOC_LIMIT_BYTES) return { ok: false, reason: "too-large" }
     if (kind === "firebase") {
-      return await getBackend().sync.put(owner, data, expectedRev)
+      return await getDomainBackend("sync").sync.put(owner, data, expectedRev)
     }
     if (kind === "dev") {
       const res = await fetch(`/api/dev-sync/${owner}`, {
@@ -98,7 +98,7 @@ export async function cloudPut(owner: string, text: string, expectedRev: number 
 export function watchCloud(owner: string, onDoc: (d: CloudDoc) => void, onLive: (live: boolean) => void): () => void {
   const kind = cloudKind()
   if (kind === "firebase") {
-    return getBackend().sync.watch(owner, {
+    return getDomainBackend("sync").sync.watch(owner, {
       onData: (d) => {
         unpack(d.data).then((data) => onDoc({ ...d, data }), () => {})
       },

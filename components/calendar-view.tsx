@@ -1,8 +1,12 @@
 "use client"
 
 import { useRef, useState } from "react"
-import { CaretDown, CaretLeft, CaretRight, Check, Plus, X } from "@phosphor-icons/react"
-import type { Subject, Task } from "@/lib/types"
+import { CaretDown, CaretLeft, CaretRight, Check, Plus, X, CalendarPlus, Trash } from "@phosphor-icons/react"
+import type { Holiday, ScheduleOverride, Subject, Task } from "@/lib/types"
+import { DEFAULT_HOLIDAYS, holidaysForDate, isHolidayOnDate } from "@/lib/holidays"
+import ClassActionMenu from "./class-action-menu"
+import DatePicker from "./date-picker"
+import type { ClassActionTarget } from "./class-action-menu"
 import { classesOn, countdown, coveredBy, daysUntil, formatShortDate, formatTime, localDate, markFor, parseLocalDate, slotMeta, type MarkMeta } from "@/lib/attendance"
 import { SectionHeader, cardClass, primaryButton } from "./sheet"
 
@@ -15,6 +19,12 @@ interface CalendarViewProps {
   onToggleDone: (task: Task) => void
   /** Mark, change or clear one class on any past or present date: the same call Today uses */
   onSet: (subjectId: string, date: string, status: "P" | "A" | null, meta?: MarkMeta) => void
+  holidays?: Holiday[]
+  scheduleOverrides?: ScheduleOverride[]
+  onAddHoliday?: (holiday: { date: string; endDate?: string; name: string }) => void
+  onDeleteHoliday?: (id: string) => void
+  onClassActions?: (target: ClassActionTarget) => void
+  onSleep?: (subject: Subject) => void
 }
 
 /** Monday first, like the rest of the newer screens */
@@ -26,11 +36,15 @@ const relative = (date: string) => {
 }
 
 /** A month grid with a dot for every deadline, the day you pick, and everything due and scheduled that day */
-export default function CalendarView({ tasks, subjects, onAdd, onEdit, onToggleDone, onSet }: CalendarViewProps) {
+export default function CalendarView({ tasks, subjects, onAdd, onEdit, onToggleDone, onSet, holidays = [], scheduleOverrides = [], onAddHoliday, onDeleteHoliday, onClassActions, onSleep }: CalendarViewProps) {
   const today = localDate()
   const [offset, setOffset] = useState(0)
   const [selected, setSelected] = useState(today)
   const [showDone, setShowDone] = useState(false)
+  const [showHolidayForm, setShowHolidayForm] = useState(false)
+  const [holidayName, setHolidayName] = useState("")
+  const [holidayStart, setHolidayStart] = useState(today)
+  const [holidayEnd, setHolidayEnd] = useState("")
   const touchX = useRef<number | null>(null)
 
   const base = new Date()
@@ -52,7 +66,8 @@ export default function CalendarView({ tasks, subjects, onAdd, onEdit, onToggleD
 
   // ---- the picked day ----
   const dayTasks = byDate.get(selected) ?? []
-  const dayClasses = classesOn(subjects, parseLocalDate(selected))
+  const dayClasses = classesOn(subjects, parseLocalDate(selected), scheduleOverrides)
+  const dayHolidays = holidaysForDate(selected, holidays)
   // Older marks that were saved without a class time (before marks were tied to a timetable slot). Kept, shown apart.
   const untimedMarks = subjects.flatMap((s) => (s.log ?? []).filter((e) => e.d === selected && !e.t).map((e) => ({ subject: s, status: e.s })))
   const isPast = selected < today
@@ -157,6 +172,7 @@ export default function CalendarView({ tasks, subjects, onAdd, onEdit, onToggleD
           {cells.map((c, i) => {
             if (c === null) return <span key={`b${i}`} />
             const list = byDate.get(c.date) ?? []
+            const hasHoliday = [...DEFAULT_HOLIDAYS, ...holidays].some((h) => isHolidayOnDate(h, c.date))
             const isSel = selected === c.date
             const isToday = c.date === today
             return (
@@ -164,15 +180,16 @@ export default function CalendarView({ tasks, subjects, onAdd, onEdit, onToggleD
                 key={c.date}
                 onClick={() => setSelected(c.date)}
                 aria-pressed={isSel}
-                aria-label={`${parseLocalDate(c.date).toLocaleDateString("en-US", { weekday: "long", day: "numeric", month: "long" })}${list.length ? `, ${list.length} due` : ""}${isToday ? ", today" : ""}`}
+                aria-label={`${parseLocalDate(c.date).toLocaleDateString("en-US", { weekday: "long", day: "numeric", month: "long" })}${list.length ? `, ${list.length} due` : ""}${hasHoliday ? ", holiday" : ""}${isToday ? ", today" : ""}`}
                 className="h-[46px] grid place-items-center"
               >
                 <span className="flex flex-col items-center gap-[3px]">
                   <span className={`w-8 h-8 rounded-full grid place-items-center text-[15px] num ${isSel ? "bg-ink text-paper font-semibold" : isToday ? "ring-2 ring-ink font-semibold" : ""}`}>{c.day}</span>
-                  <span className="flex gap-[3px] h-[5px]">
-                    {list.slice(0, 3).map((t) => (
+                  <span className="flex gap-[3px] h-[5px] items-center">
+                    {list.slice(0, 2).map((t) => (
                       <span key={t.id} className="w-[5px] h-[5px] rounded-full" style={{ background: dotColor(t, c.date) }} />
                     ))}
+                    {hasHoliday && <span className="w-[5px] h-[5px] rounded-full bg-amber-500" aria-hidden />}
                   </span>
                 </span>
               </button>
@@ -188,13 +205,37 @@ export default function CalendarView({ tasks, subjects, onAdd, onEdit, onToggleD
             <h2 className="text-[22px] font-bold tracking-tight leading-tight">{relative(selected) ?? pickedDate.toLocaleDateString("en-US", { weekday: "long" })}</h2>
             <p className="text-[13px] text-mute">{pickedDate.toLocaleDateString("en-US", { weekday: "long", day: "numeric", month: "long" })}</p>
           </div>
-          <button onClick={() => onAdd(selected)} className="h-9 pl-3 pr-4 rounded-full bg-ink text-paper text-[14px] font-semibold flex items-center gap-1.5">
-            <Plus weight="bold" className="w-4 h-4" /> Deadline
-          </button>
+          <div className="flex items-center gap-2">
+            <button onClick={() => { setHolidayStart(selected); setHolidayEnd(""); setShowHolidayForm(v => !v) }} className="h-9 px-3 rounded-full bg-secondary text-[13px] font-semibold flex items-center gap-1.5">
+              <CalendarPlus className="w-4 h-4" /> Holiday
+            </button>
+            <button onClick={() => onAdd(selected)} className="h-9 pl-3 pr-4 rounded-full bg-ink text-paper text-[14px] font-semibold flex items-center gap-1.5">
+              <Plus weight="bold" className="w-4 h-4" /> Deadline
+            </button>
+          </div>
         </div>
 
+        {showHolidayForm && (
+          <form className={`${cardClass} p-4 mb-3 space-y-3`} onSubmit={(e) => {
+            e.preventDefault(); const name = holidayName.trim();
+            if (!name || !holidayStart || (holidayEnd && holidayEnd < holidayStart)) return
+            onAddHoliday?.({ date: holidayStart, ...(holidayEnd ? { endDate: holidayEnd } : {}), name })
+            setHolidayName(""); setHolidayEnd(""); setShowHolidayForm(false)
+          }}>
+            <h3 className="text-[16px] font-bold">Add a holiday or holiday break</h3>
+            <label className="block text-[12px] font-semibold text-mute">Name<input value={holidayName} onChange={e=>setHolidayName(e.target.value)} required maxLength={100} placeholder="e.g. College vacation" className="w-full h-11 mt-1 rounded-xl bg-secondary px-3 text-[15px] text-ink"/></label>
+            <div className="grid grid-cols-2 gap-2">
+              <div><p className="text-[12px] font-semibold text-mute mb-1.5">Starts</p><DatePicker label="Holiday start date" value={holidayStart} onChange={(d) => { setHolidayStart(d); if (holidayEnd && holidayEnd < d) setHolidayEnd("") }} /></div>
+              <div><p className="text-[12px] font-semibold text-mute mb-1.5">Ends (optional)</p><DatePicker label="Holiday end date" value={holidayEnd} onChange={setHolidayEnd} minDate={holidayStart} allowClear /></div>
+            </div>
+            <p className="text-[12px] text-mute">Leave the end date empty for a single-day holiday. A range includes both start and end dates.</p>
+            <div className="grid grid-cols-2 gap-2"><button type="button" onClick={()=>setShowHolidayForm(false)} className="h-11 rounded-xl bg-secondary font-semibold text-[14px]">Cancel</button><button type="submit" className="h-11 rounded-xl bg-ink text-paper font-semibold text-[14px]">Save holiday</button></div>
+          </form>
+        )}
+
         <div className={`${cardClass} divide-y divide-ink/[0.08]`}>
-          {dayTasks.length === 0 && dayClasses.length === 0 && untimedMarks.length === 0 ? (
+          {dayHolidays.length > 0 && <div className="px-4 py-3 bg-amber-500/[0.06]"><p className="text-[12px] font-bold uppercase tracking-wider text-mute mb-2">Holiday{dayHolidays.length>1?"s":""} · {dayHolidays.length}</p><ul className="space-y-2">{dayHolidays.map(h=><li key={h.id} className="flex items-center gap-2 text-[14px]"><span className="w-2 h-2 rounded-full bg-amber-500"/><span className="min-w-0 flex-1"><span className="block font-semibold">{h.name}</span>{(h.endDate && h.endDate!==h.date)&&<span className="block text-[12px] text-mute">{formatShortDate(h.date)} – {formatShortDate(h.endDate)}</span>}</span>{!h.id.startsWith("default-holiday-")&&<button aria-label={`Delete ${h.name}`} onClick={()=>onDeleteHoliday?.(h.id)} className="w-8 h-8 rounded-lg bg-secondary grid place-items-center"><Trash className="w-4 h-4"/></button>}</li>)}</ul></div>}
+          {dayTasks.length === 0 && dayClasses.length === 0 && untimedMarks.length === 0 && dayHolidays.length === 0 ? (
             <p className="px-4 py-6 text-[15px] text-mute text-center">{isPast ? "Nothing was scheduled." : "Nothing due and no classes. A free day."}</p>
           ) : (
             <>
@@ -212,43 +253,50 @@ export default function CalendarView({ tasks, subjects, onAdd, onEdit, onToggleD
                 <div>
                   <p className="px-4 pt-3 text-[12px] font-medium uppercase tracking-wider text-mute">Classes · {dayClasses.length}</p>
                   <ul className="divide-y divide-ink/[0.08]">
-                    {dayClasses.map(({ subject, slot }) => {
-                      const st = markFor(subject, selected, slot.start)
-                      const by = coveredBy(subject, selected, slot.start)
-                      const plan = subject.plan?.[selected]
+                    {dayClasses.map((entry) => {
+                      const { subject, slot } = entry
+                      const sourceId = entry.originalSubjectId ?? subject.id
+                      const attendanceSubject = entry.attendanceSubject ?? subjects.find((s) => s.id === sourceId) ?? subject
+                      const st = entry.cancelled ? null : markFor(attendanceSubject, selected, slot.start)
+                      const by = coveredBy(attendanceSubject, selected, slot.start)
+                      const plan = attendanceSubject.plan?.[selected]
                       return (
-                        <li key={`${subject.id}-${slot.start}`} className="flex items-center gap-3 px-4 py-3">
+                        <li key={`${sourceId}-${slot.start}-${selected}`} className="flex items-center gap-3 px-4 py-3">
                           <span className="w-1.5 self-stretch rounded-full flex-shrink-0" style={{ background: subject.glowColor }} />
                           <span className="min-w-0 flex-1">
-                            <span className="block text-[16px] font-semibold truncate leading-snug">{subject.name}</span>
+                            <span className={`block text-[16px] font-semibold truncate leading-snug ${entry.cancelled ? "line-through text-mute" : ""}`}>{entry.cancelled ? entry.originalSubjectName ?? subject.name : subject.name}</span>
+                            {entry.override?.kind === "substitute" && <span className="block text-[11px] text-info">Substitutes for {entry.originalSubjectName ?? "original class"}; attendance goes under {attendanceSubject.name}</span>}
+                            {entry.cancelled && <span className="block text-[11px] text-bad font-semibold">Cancelled for this date</span>}
                             <span className="block num text-[13px] text-mute">
                               {formatTime(slot.start)} – {formatTime(slot.end)}
                               {slot.kind ? ` · ${slot.kind}` : ""}
                             </span>
                           </span>
-                          {!isFuture ? (
+                          {!entry.cancelled && !isFuture ? (
                             // Today and any earlier day: mark, change, or tap the marked one again to leave it unmarked
                             <span className="flex items-center gap-1.5 flex-shrink-0">
                               {by && st === "P" && <span className="text-[12px] text-mute mr-1">via {by}</span>}
                               <button
                                 data-testid="cal-present"
-                                onClick={() => onSet(subject.id, selected, st === "P" ? null : "P", slotMeta(slot))}
+                                onClick={() => onSet(attendanceSubject.id, selected, st === "P" ? null : "P", slotMeta(slot))}
                                 aria-pressed={st === "P"}
-                                aria-label={`${subject.name} ${formatTime(slot.start)}: ${st === "P" ? "present, tap to clear" : "mark present"}`}
+                                aria-label={`${attendanceSubject.name} ${formatTime(slot.start)}: ${st === "P" ? "present, tap to clear" : "mark present"}`}
                                 className={`w-10 h-10 rounded-full grid place-items-center ${st === "P" ? "bg-good text-paper" : "bg-good/10 text-good"}`}
                               >
                                 <Check weight="bold" className="w-5 h-5" />
                               </button>
                               <button
                                 data-testid="cal-absent"
-                                onClick={() => onSet(subject.id, selected, st === "A" ? null : "A", slotMeta(slot))}
+                                onClick={() => onSet(attendanceSubject.id, selected, st === "A" ? null : "A", slotMeta(slot))}
                                 aria-pressed={st === "A"}
-                                aria-label={`${subject.name} ${formatTime(slot.start)}: ${st === "A" ? "absent, tap to clear" : "mark absent"}`}
+                                aria-label={`${attendanceSubject.name} ${formatTime(slot.start)}: ${st === "A" ? "absent, tap to clear" : "mark absent"}`}
                                 className={`w-10 h-10 rounded-full grid place-items-center ${st === "A" ? "bg-bad text-paper" : "bg-bad/10 text-bad"}`}
                               >
                                 <X weight="bold" className="w-5 h-5" />
                               </button>
                             </span>
+                          ) : entry.cancelled ? (
+                            <span className="rounded-full px-2.5 py-1 text-[12px] font-bold bg-bad/10 text-bad">Cancelled</span>
                           ) : st ? (
                             <span className={`rounded-full px-2.5 py-1 text-[12px] font-bold whitespace-nowrap ${st === "P" ? "bg-good/15 text-good" : "bg-bad/10 text-bad"}`}>
                               {st === "P" ? (by ? `Present · ${by}` : "Present") : "Absent"}
@@ -260,6 +308,7 @@ export default function CalendarView({ tasks, subjects, onAdd, onEdit, onToggleD
                               </span>
                             )
                           ) : null}
+                          {onClassActions && <div className="ml-1"><ClassActionMenu subject={attendanceSubject} target={{ subjectId: sourceId, date: selected, slot, subjectName: entry.originalSubjectName ?? subject.name }} onReplace={onClassActions} onCancel={onClassActions} onSleep={onSleep} /></div>}
                         </li>
                       )
                     })}

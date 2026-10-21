@@ -10,11 +10,13 @@
  * Without a transport every operation fails with a clear "Supabase backend not configured/authorized" error, and
  * realtime is not implemented at all: a subscription reports that it is not live. It never contacts anything by itself.
  */
-import type { FriendRequest } from "../../types"
+import type { FriendRequest, Ping } from "../../types"
 import { BackendError, fromPostgresError, notConfigured } from "../errors"
 import type { Backend, RealtimeAuth, CloudSyncStore, ConnectionStore, InviteStore, PingStore, ProfileStore, PushTokenStore, StoredSync, Subscription } from "../contracts"
 import { randomToken } from "../token"
 import type { SupabaseGuard } from "./guard"
+import { createSyncWatcher, type SyncWatchDeps } from "./sync-watch"
+import { createPollWatcher } from "./poll-watch"
 
 export { readSupabaseConfig, readBuildSupabaseConfig, createSupabaseGuard, type SupabaseConfig, type SupabaseGuard } from "./guard"
 
@@ -38,6 +40,16 @@ export interface SupabaseDeps {
   transport?: SupabaseTransport
   /** Asked before EVERY operation. The app always passes one (lib/backend/index.ts); without a transport nothing can be sent anyway. */
   guard?: SupabaseGuard
+  /**
+   * Phase 8, OFF unless the caller passes it (lib/backend/index.ts does so only behind NEXT_PUBLIC_SUPABASE_REALTIME): live delivery of
+   * the one stored sync document. Without it `sync.watch` reports "not live" exactly as before. Only the sync document is covered.
+   */
+  realtime?: Omit<SyncWatchDeps, "fetchSync">
+  /**
+   * Phase 9 slice, OFF unless the caller passes it (lib/backend/index.ts only behind NEXT_PUBLIC_SUPABASE_REALTIME): live lists of
+   * connections and Pings by polling the normal RLS-checked read every this many ms. Without it those `watch` calls report "not live".
+   */
+  watchPollMs?: number
 }
 
 const ms = (v: unknown): number | null => {
@@ -46,7 +58,7 @@ const ms = (v: unknown): number | null => {
   return Number.isNaN(t) ? null : t
 }
 
-export function createSupabaseBackend({ transport, guard }: SupabaseDeps = {}): Backend {
+export function createSupabaseBackend({ transport, guard, realtime, watchPollMs }: SupabaseDeps = {}): Backend {
   const need = (what: string): SupabaseTransport => {
     if (!transport) throw notConfigured(what)
     return transport
@@ -73,10 +85,14 @@ export function createSupabaseBackend({ transport, guard }: SupabaseDeps = {}): 
     return () => {}
   }
 
+  let watchSync: ReturnType<typeof createSyncWatcher> | undefined
   const sync: CloudSyncStore = {
-    async get(_owner) {
+    async get(owner) {
       const rows = await run("syncs", (t) => t.select("syncs")) // RLS returns only the caller's row
       const r = rows?.[0]
+      // The caller asked for ONE owner's copy. A row that is not that owner's (a token for a different account, or a row without
+      // an owner) is never handed back as theirs: it would be merged into, or uploaded over, the wrong account's data.
+      if (r && r.uid !== owner) throw new BackendError("unauthorized", "the stored copy does not belong to the requested account", { code: "sync-owner-mismatch" })
       return r ? { data: r.data as string, rev: r.rev as number, updatedAt: Number(r.updated_at) } : null
     },
     async put(_owner, data, expectedRev) {
@@ -89,7 +105,11 @@ export function createSupabaseBackend({ transport, guard }: SupabaseDeps = {}): 
         throw e
       }
     },
-    watch: (_owner, sub: Subscription<StoredSync>) => offline(sub),
+    watch: (owner, sub: Subscription<StoredSync>) => {
+      if (!realtime) return offline(sub)
+      watchSync ??= createSyncWatcher({ ...realtime, fetchSync: (o) => sync.get(o) })
+      return watchSync(owner, sub)
+    },
   }
 
   const profiles: ProfileStore = {
@@ -130,8 +150,20 @@ export function createSupabaseBackend({ transport, guard }: SupabaseDeps = {}): 
       respondedAt: ms(r.responded_at),
     }) as FriendRequest
 
+  const byAge = <T extends { id: string; createdAt?: unknown }>(a: T, b: T) => (Number(a.createdAt ?? 0) - Number(b.createdAt ?? 0)) || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0)
+  let watchConnections: ReturnType<typeof createPollWatcher<FriendRequest>> | undefined
+  let watchPings: ReturnType<typeof createPollWatcher<Ping>> | undefined
+
   const connections: ConnectionStore = {
-    watch: (_uid, sub) => offline(sub),
+    watch: (uid, sub) => {
+      if (watchPollMs === undefined) return offline(sub)
+      watchConnections ??= createPollWatcher<FriendRequest>({
+        read: async () => ((await run("connections", (t) => t.select("connections"))) ?? []).map(toRequest).sort(byAge),
+        involves: (r, u) => r.participants.includes(u),
+        pollMs: watchPollMs,
+      })
+      return watchConnections(uid, sub)
+    },
     async list(_uid) {
       const rows = await run("connections", (t) => t.select("connections")) // RLS: only the caller's own
       return (rows ?? []).map(toRequest)
@@ -147,8 +179,33 @@ export function createSupabaseBackend({ transport, guard }: SupabaseDeps = {}): 
     },
   }
 
+  const toPing = (r: Record<string, unknown>): Ping => ({
+    id: r.id as string,
+    from: r.from_uid as string,
+    to: r.to_uid as string,
+    fromName: (r.from_name as string | null) ?? "",
+    toName: (r.to_name as string | null) ?? "",
+    participants: [r.from_uid as string, r.to_uid as string],
+    requestId: (r.request_id as string | null) ?? undefined,
+    date: r.class_date as string,
+    items: Array.isArray(r.items) ? (r.items as Ping["items"]) : [],
+    status: r.status as Ping["status"],
+    respondedAt: ms(r.responded_at) ?? undefined,
+    createdAt: ms(r.created_at) ?? undefined,
+    claimedBy: (r.claimed_by as string | null) ?? undefined,
+    claimedAt: ms(r.claimed_at) ?? undefined,
+  })
+
   const pings: PingStore = {
-    watch: (_uid, sub) => offline(sub),
+    watch: (uid, sub) => {
+      if (watchPollMs === undefined) return offline(sub)
+      watchPings ??= createPollWatcher<Ping>({
+        read: async () => ((await run("pings", (t) => t.select("pings"))) ?? []).map(toPing).sort(byAge), // RLS: only Pings that involve the caller
+        involves: (p, u) => p.participants.includes(u),
+        pollMs: watchPollMs,
+      })
+      return watchPings(uid, sub)
+    },
     async create(p) {
       const r = await rpc("create_ping", {
         p_id: p.id,

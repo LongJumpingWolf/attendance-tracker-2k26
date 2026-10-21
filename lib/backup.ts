@@ -2,7 +2,7 @@
  * The full backup: one JSON file that holds everything the app keeps on this device, so restoring it
  * brings back exactly what was saved (class days, every mark, plans, mates and reminders included).
  */
-import type { Mate, Subject, Task } from "./types"
+import type { Holiday, Mate, ScheduleOverride, Subject, Task } from "./types"
 import type { ScheduleEntry } from "./reminders"
 
 export const BACKUP_APP = "college-tracker"
@@ -14,6 +14,10 @@ export interface FullBackupData {
   tags: string[]
   mates: Mate[]
   reminders: ScheduleEntry[]
+  /** Custom holiday ranges. Optional so older backups remain readable. */
+  holidays?: Holiday[]
+  /** Date-specific cancellations/substitutions. Optional so older backups remain readable. */
+  scheduleOverrides?: ScheduleOverride[]
 }
 
 export interface FullBackup {
@@ -35,8 +39,10 @@ const isSubject = (x: unknown): x is Subject =>
 const isTask = (x: unknown): x is Task => isObj(x) && typeof x.id === "string" && typeof x.title === "string" && typeof x.dueDate === "string"
 const isMate = (x: unknown): x is Mate => isObj(x) && typeof x.id === "string" && typeof x.name === "string" && typeof x.covered === "number" && typeof x.repaid === "number"
 const isReminder = (x: unknown): x is ScheduleEntry =>
-  isObj(x) && typeof x.id === "string" && typeof x.day === "number" && typeof x.startTime === "string" && typeof x.endTime === "string" && typeof x.subjectName === "string"
+  isObj(x) && typeof x.id === "string" && (x.subjectId === undefined || typeof x.subjectId === "string") && typeof x.day === "number" && typeof x.startTime === "string" && typeof x.endTime === "string" && typeof x.subjectName === "string"
 const isString = (x: unknown): x is string => typeof x === "string"
+const isHoliday = (x: unknown): x is Holiday => isObj(x) && typeof x.id === "string" && typeof x.date === "string" && typeof x.name === "string" && (x.endDate === undefined || typeof x.endDate === "string")
+const isOverride = (x: unknown): x is ScheduleOverride => isObj(x) && typeof x.id === "string" && typeof x.date === "string" && typeof x.originalSubjectId === "string" && typeof x.start === "string" && (x.kind === "cancelled" || x.kind === "substitute") && (x.kind !== "substitute" || typeof x.substituteSubjectId === "string")
 
 /** Reads a backup file's text. Anything that isn't a backup from this app is rejected rather than half-loaded. */
 export function parseFullBackup(text: string): { ok: true; data: FullBackupData } | { ok: false; error: string } {
@@ -57,6 +63,8 @@ export function parseFullBackup(text: string): { ok: true; data: FullBackupData 
       tags: list(d.tags, isString),
       mates: list(d.mates, isMate),
       reminders: list(d.reminders, isReminder),
+      ...(Array.isArray(d.holidays) ? { holidays: list(d.holidays, isHoliday) } : {}),
+      ...(Array.isArray(d.scheduleOverrides) ? { scheduleOverrides: list(d.scheduleOverrides, isOverride) } : {}),
     },
   }
 }
@@ -70,5 +78,6 @@ export function downloadText(filename: string, text: string, mime = "application
   document.body.appendChild(a)
   a.click()
   document.body.removeChild(a)
-  URL.revokeObjectURL(url)
+  // Some mobile browsers start downloads asynchronously; revoking immediately can invalidate the blob URL.
+  window.setTimeout(() => URL.revokeObjectURL(url), 3000)
 }

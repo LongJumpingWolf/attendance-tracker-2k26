@@ -2,6 +2,8 @@
 
 import { useEffect, useRef, useState } from "react"
 import { CaretRight, Check, WarningCircle, X } from "@phosphor-icons/react"
+import ClassActionMenu from "./class-action-menu"
+import type { ScheduleOverride } from "@/lib/types"
 import type { Mate, Subject, Task } from "@/lib/types"
 import {
   getAttendance,
@@ -30,6 +32,9 @@ export interface Banner {
 
 interface TodayViewProps {
   subjects: Subject[]
+  scheduleOverrides?: ScheduleOverride[]
+  onClassActions?: (target: { subjectId: string; date: string; slot: { day: number; start: string; end: string; kind?: string }; subjectName?: string }) => void
+  onSleep?: (subject: Subject) => void
   /** For the "a mate covered you this week" note once the day is done */
   mates: Mate[]
   /** For the deadline widget */
@@ -62,6 +67,7 @@ const GUTTER = 16
 type Card = DayClass
 
 const keyOf = (c: Card) => c.key
+const attendanceSubjectName = (c: Card) => (c.attendanceSubject ?? c.subject).name
 const metaOf = (c: Card): MarkMeta => slotMeta(c.slot) ?? {}
 
 function duration(mins: number) {
@@ -94,6 +100,9 @@ export default function TodayView(props: TodayViewProps) {
 function TodayContent({
   now,
   subjects,
+  scheduleOverrides = [],
+  onClassActions,
+  onSleep,
   mates,
   tasks,
   banner,
@@ -114,13 +123,18 @@ function TodayContent({
     mq.addEventListener("change", sync)
     return () => mq.removeEventListener("change", sync)
   }, [])
-  const dragStart = useRef<{ x: number; scrollLeft: number } | null>(null)
+  const dragStart = useRef<{ x: number; y: number; scrollLeft: number; index: number } | null>(null)
+  const pointerDidDrag = useRef(false)
+  const touchDidDrag = useRef(false)
+  const suppressClickUntil = useRef(0)
+  const userNavigated = useRef(false)
+  const lastDay = useRef<string | null>(null)
 
   const today = localDate(now)
   const nowMin = now.getHours() * 60 + now.getMinutes()
 
   // Only classes that are really on today's timetable. A subject with no timetable, or none today, has no card.
-  const classes: Card[] = dayClasses(subjects, now)
+  const classes: Card[] = dayClasses(subjects, now, scheduleOverrides)
   const unscheduled = subjects.filter((s) => !s.slots?.length).length
 
   const stateOf = (c: Card) => c.state
@@ -128,6 +142,10 @@ function TodayContent({
   // Resolved cards dissolve out of the carousel
   const pending = classes.filter((c) => stateOf(c) === null || leaving.has(keyOf(c)))
   const live = pending.filter((c) => !leaving.has(keyOf(c)))
+  const liveRef = useRef<Card[]>(live)
+  liveRef.current = live
+  const activeRef = useRef(active)
+  activeRef.current = active
   const done = classes.filter((c) => stateOf(c) !== null && !leaving.has(keyOf(c)))
   // Nothing left to answer: the screen shows the evening scene instead of the carousel
   const allDone = dayProgress(classes).allDone && pending.length === 0
@@ -145,83 +163,140 @@ function TodayContent({
   const overdue = live.filter(hasEnded)
 
   useEffect(() => {
+    if (lastDay.current !== today) {
+      lastDay.current = today
+      userNavigated.current = false
+      lastFocus.current = null
+    }
     const box = scroller.current
-    if (!box || !focusKey) return
+    if (!box || !focusKey || userNavigated.current) return
     const el = box.querySelector<HTMLElement>(`[data-key="${focusKey}"]`)
     if (!el) return
     box.scrollTo({ left: el.offsetLeft - GUTTER, behavior: lastFocus.current === null ? "auto" : "smooth" })
     lastFocus.current = focusKey
-  }, [focusKey])
+  }, [focusKey, today])
 
-  const stepWidth = () => {
-    const first = scroller.current?.querySelector<HTMLElement>("[data-key]")
-    return first ? first.offsetWidth + 12 : 0
-  }
+  useEffect(() => {
+    const box = scroller.current
+    if (!box || typeof ResizeObserver === "undefined") return
+    let frame = 0
+    const observer = new ResizeObserver(() => {
+      cancelAnimationFrame(frame)
+      frame = requestAnimationFrame(() => {
+        const cards = liveRef.current
+          .map((card) => box.querySelector<HTMLElement>(`[data-key="${keyOf(card)}"]`))
+          .filter((el): el is HTMLElement => !!el)
+        const target = cards[Math.min(activeRef.current, cards.length - 1)]
+        if (!target) return
+        const left = target.getBoundingClientRect().left - box.getBoundingClientRect().left + box.scrollLeft - GUTTER
+        box.scrollTo({ left, behavior: "auto" })
+      })
+    })
+    observer.observe(box)
+    return () => { observer.disconnect(); cancelAnimationFrame(frame) }
+  }, [allDone, live.length])
 
   const clampIndex = (value: number) => Math.max(0, Math.min(live.length - 1, value))
-
-  const onScroll = () => {
+  // `pending` keeps the just-marked card in the DOM during its exit animation; index navigation must use only `live` cards.
+  const cardElements = () => live
+    .map((card) => scroller.current?.querySelector<HTMLElement>(`[data-key="${keyOf(card)}"]`))
+    .filter((el): el is HTMLElement => !!el)
+  const leftForCard = (el: HTMLElement) => {
     const box = scroller.current
-    const step = stepWidth()
-    if (!box || !step) return
-    setActive(clampIndex(Math.round(box.scrollLeft / step)))
+    if (!box) return 0
+    return el.getBoundingClientRect().left - box.getBoundingClientRect().left + box.scrollLeft - GUTTER
+  }
+  const nearestCardIndex = () => {
+    const box = scroller.current
+    const items = cardElements()
+    if (!box || !items.length) return 0
+    let nearest = 0
+    let distance = Number.POSITIVE_INFINITY
+    items.forEach((el, i) => {
+      const delta = Math.abs(leftForCard(el) - box.scrollLeft)
+      if (delta < distance) { nearest = i; distance = delta }
+    })
+    return nearest
+  }
+  const onScroll = () => {
+    if (!scroller.current) return
+    setActive(clampIndex(nearestCardIndex()))
   }
 
   const jumpTo = (c: Card) => {
     const el = scroller.current?.querySelector<HTMLElement>(`[data-key="${keyOf(c)}"]`)
-    if (el && scroller.current) scroller.current.scrollTo({ left: el.offsetLeft - GUTTER, behavior: "smooth" })
+    if (el && scroller.current) scroller.current.scrollTo({ left: leftForCard(el), behavior: "smooth" })
   }
 
   const jumpToIndex = (index: number) => {
-    const target = live[clampIndex(index)]
-    if (target) jumpTo(target)
+    const els = cardElements()
+    const target = els[clampIndex(index)]
+    if (target && scroller.current) scroller.current.scrollTo({ left: leftForCard(target), behavior: "smooth" })
   }
 
   const onPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
-    if (!scroller.current) return
-    // A press that starts on a button is a tap, not a drag. Capturing the pointer here would redirect the click away
-    // from the button, so on a desktop mouse Present and Absent did nothing.
-    if ((e.target as HTMLElement).closest("button, a")) return
-    dragStart.current = { x: e.clientX, scrollLeft: scroller.current.scrollLeft }
-    scroller.current.setPointerCapture(e.pointerId)
+    if (e.pointerType !== "mouse" || !scroller.current) return
+    // A fresh interaction must not inherit the click suppression from a previous swipe.
+    suppressClickUntil.current = 0
+    // Attendance, menu and link controls remain normal clicks. The rest of the card can start a drag.
+    if ((e.target as HTMLElement).closest("button, a, input, select, textarea")) return
+    pointerDidDrag.current = false
+    dragStart.current = { x: e.clientX, y: e.clientY, scrollLeft: scroller.current.scrollLeft, index: nearestCardIndex() }
   }
 
   const onPointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (e.pointerType !== "mouse") return
     const start = dragStart.current
     const box = scroller.current
     if (!start || !box) return
     const dx = e.clientX - start.x
+    const dy = e.clientY - start.y
+    if (!pointerDidDrag.current && Math.abs(dx) < 8) return
+    if (Math.abs(dx) < Math.abs(dy) * 1.15) return
+    pointerDidDrag.current = true
+    userNavigated.current = true
+    if (!box.hasPointerCapture(e.pointerId)) box.setPointerCapture(e.pointerId)
     box.scrollLeft = start.scrollLeft - dx
   }
 
   const onPointerUp = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (e.pointerType !== "mouse") return
     const start = dragStart.current
     const box = scroller.current
     if (!start || !box) return
-
     const dx = e.clientX - start.x
-    const step = stepWidth()
-    if (Math.abs(dx) > 60 && step > 0) {
-      jumpToIndex(active + (dx < 0 ? 1 : -1))
-    } else if (step > 0) {
-      jumpToIndex(Math.round(box.scrollLeft / step))
+    const didDrag = pointerDidDrag.current
+    if (didDrag) {
+      suppressClickUntil.current = Date.now() + 500
+      if (Math.abs(dx) > 60) jumpToIndex(start.index + (dx < 0 ? 1 : -1))
+      else jumpToIndex(nearestCardIndex())
+      if (box.hasPointerCapture(e.pointerId)) box.releasePointerCapture(e.pointerId)
     }
-
-    if (box.hasPointerCapture(e.pointerId)) box.releasePointerCapture(e.pointerId)
     dragStart.current = null
+    pointerDidDrag.current = false
   }
 
   const onPointerCancel = (e: React.PointerEvent<HTMLDivElement>) => {
-    const box = scroller.current
-    if (box && box.hasPointerCapture(e.pointerId)) box.releasePointerCapture(e.pointerId)
+    if (e.pointerType !== "mouse") return
     dragStart.current = null
+    pointerDidDrag.current = false
+  }
+
+  const cardClick = (e: React.MouseEvent<HTMLElement>, subjectId: string) => {
+    if (suppressClickUntil.current > Date.now()) {
+      e.preventDefault()
+      e.stopPropagation()
+      return
+    }
+    if ((e.target as HTMLElement).closest("button, a, input, select, textarea")) return
+    onOpenSubject(subjectId)
   }
 
   const resolve = (c: Card, status: "P" | "A") => {
     const k = keyOf(c)
     if (leaving.has(k)) return // a second tap on the same card while it is leaving does nothing
     setLeaving((s) => new Set(s).add(k))
-    onSet(c.subject.id, today, status, metaOf(c))
+    onSet((c.attendanceSubject ?? c.subject).id, today, status, metaOf(c))
     setTimeout(
       () =>
         setLeaving((s) => {
@@ -244,6 +319,7 @@ function TodayContent({
         <button onClick={onAddSubject} className={primaryButton}>
           Add a subject
         </button>
+        <div className="mt-6"><TodayWidgets subjects={subjects} tasks={tasks} now={now} scheduleOverrides={scheduleOverrides} /></div>
       </div>
     )
   }
@@ -304,9 +380,6 @@ function TodayContent({
           </button>
         )}
 
-        {/* The person's own widgets, or an invitation to choose some the first time */}
-        {allDone && <TodayWidgets subjects={subjects} tasks={tasks} now={now} />}
-
         {/* Carousel */}
         {!allDone && (
         <section data-tour="today-carousel">
@@ -339,11 +412,41 @@ function TodayContent({
               <div
                 ref={scroller}
                 onScroll={onScroll}
+                onTouchStart={(e) => {
+                  suppressClickUntil.current = 0
+                  touchDidDrag.current = false
+                  dragStart.current = { x: e.touches[0].clientX, y: e.touches[0].clientY, scrollLeft: scroller.current?.scrollLeft ?? 0, index: nearestCardIndex() }
+                }}
+                onTouchMove={(e) => {
+                  const start = dragStart.current
+                  if (!start) return
+                  const dx = e.touches[0].clientX - start.x
+                  const dy = e.touches[0].clientY - start.y
+                  if (Math.abs(dx) > 10 && Math.abs(dx) > Math.abs(dy) * 1.2) {
+                    touchDidDrag.current = true
+                    userNavigated.current = true
+                  }
+                }}
+                onTouchEnd={(e) => {
+                  const start = dragStart.current
+                  if (start) {
+                    const dx = e.changedTouches[0].clientX - start.x
+                    const dy = e.changedTouches[0].clientY - start.y
+                    if (touchDidDrag.current && Math.abs(dx) > 18 && Math.abs(dx) > Math.abs(dy) * 1.2) {
+                      userNavigated.current = true
+                      suppressClickUntil.current = Date.now() + 650
+                    }
+                  }
+                  // Let touch scrolling and CSS snap settle on their own. A second scrollTo here caused the tile to shift.
+                  dragStart.current = null
+                  touchDidDrag.current = false
+                }}
                 onPointerDown={onPointerDown}
                 onPointerMove={onPointerMove}
                 onPointerUp={onPointerUp}
                 onPointerCancel={onPointerCancel}
-                className="relative -mx-4 px-4 lg:mx-0 lg:px-0 flex gap-3 overflow-x-auto snap-x snap-mandatory scroll-px-4 lg:scroll-px-0 pb-1 no-scrollbar touch-pan-y cursor-grab active:cursor-grabbing select-none"
+                style={{ touchAction: "pan-x pan-y", WebkitOverflowScrolling: "touch", overscrollBehaviorX: "contain" }}
+                className="relative -mx-4 px-4 lg:mx-0 lg:px-0 flex gap-3 overflow-x-auto snap-x snap-mandatory scroll-px-4 lg:scroll-px-0 pb-1 no-scrollbar cursor-grab active:cursor-grabbing select-none"
               >
                 {pending.map((c) => {
                   const k = keyOf(c)
@@ -351,9 +454,10 @@ function TodayContent({
                   const end = toMin(c.slot.end)
                   const ongoing = isOngoing(c)
                   const ended = hasEnded(c)
-                  const info = getAttendance(c.subject.attended, c.subject.missed, c.subject.requirement)
+                  const attendanceSubject = c.attendanceSubject ?? c.subject
+                  const info = getAttendance(attendanceSubject.attended, attendanceSubject.missed, attendanceSubject.requirement)
                   const st = STATUS_STYLES[info.status]
-                  const verdict = classVerdict(c.subject)
+                  const verdict = classVerdict(attendanceSubject)
                   const gone = leaving.has(k)
 
                   const badge = ongoing
@@ -373,6 +477,10 @@ function TodayContent({
                     <article
                       key={k}
                       data-key={k}
+                      tabIndex={0}
+                      aria-label={c.override?.kind === "substitute" ? `Open ${attendanceSubjectName(c)} attendance details; class held as ${c.subject.name}` : `Open ${c.subject.name} subject details`}
+                      onClick={(e) => cardClick(e, (c.attendanceSubject ?? c.subject).id)}
+                      onKeyDown={(e) => { if (e.target === e.currentTarget && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); onOpenSubject((c.attendanceSubject ?? c.subject).id) } }}
                       style={wash(c.subject.glowColor)}
                       className={`snap-start shrink-0 w-[calc(100vw-3rem)] max-w-[680px] lg:w-full lg:max-w-none rounded-[24px] sm:rounded-[28px] bg-card p-4 sm:p-5 transition-all duration-300 ease-out ${
                         gone ? "opacity-0 scale-90 blur-sm pointer-events-none" : ""
@@ -382,13 +490,22 @@ function TodayContent({
                         <span className="num text-[13px] text-mute">
                           {`${formatTime(c.slot.start)} – ${formatTime(c.slot.end)}`}
                         </span>
-                        <span className={`rounded-md px-2 py-0.5 text-[10px] font-bold tracking-wide ${badge.cls}`}>
-                          {badge.text}
-                        </span>
+                        <div className="flex items-center gap-2">
+                          <span className={`rounded-md px-2 py-0.5 text-[10px] font-bold tracking-wide ${badge.cls}`}>
+                            {badge.text}
+                          </span>
+                          <ClassActionMenu
+                            subject={c.attendanceSubject ?? c.subject}
+                            target={{ subjectId: c.originalSubjectId ?? c.subject.id, date: today, slot: c.slot, subjectName: c.originalSubjectName ?? c.subject.name }}
+                            onReplace={onClassActions}
+                            onCancel={onClassActions}
+                            onSleep={onSleep}
+                          />
+                        </div>
                       </div>
 
                       <div className="flex items-center justify-between gap-3 mt-3 sm:mt-4">
-                        <button onClick={() => onOpenSubject(c.subject.id)} className="text-left min-w-0 flex-1">
+                        <div className="text-left min-w-0 flex-1 pointer-events-none">
                           <h3 className="text-[clamp(20px,5.6vw,28px)] leading-[1.1] font-bold tracking-tight line-clamp-3 break-words hyphens-auto">
                             {c.subject.name}
                           </h3>
@@ -399,14 +516,15 @@ function TodayContent({
                             {verdict.label}
                           </span>
                           <p data-testid="verdict-detail" className="text-[13px] text-mute mt-1 leading-snug">
-                            {verdict.pct === null ? verdict.detail : `${verdict.pct}% now · ${c.subject.requirement}% needed · ${verdict.detail}`}
+                            {verdict.pct === null ? verdict.detail : `${verdict.pct}% now · ${attendanceSubject.requirement}% needed · ${verdict.detail}`}
                           </p>
+                          {c.override?.kind === "substitute" && <p className="mt-1 text-[12px] font-medium text-info">Substitutes for {c.originalSubjectName}. Attendance is recorded under {attendanceSubject.name}.</p>}
                           {(c.slot.kind || c.subject.tags?.[0]) && (
                             <p className="text-[13px] text-mute mt-0.5">
                               {[c.slot.kind, c.subject.tags?.[0]].filter(Boolean).join(" · ")}
                             </p>
                           )}
-                        </button>
+                        </div>
                         <ProgressRing
                           pct={info.pct}
                           color={st.color}
@@ -428,13 +546,19 @@ function TodayContent({
 
                       <div className="grid grid-cols-2 gap-2.5 sm:gap-3 mt-3 sm:mt-4">
                         <button
-                          onClick={() => resolve(c, "P")}
+                          onClick={(e) => {
+                            if (suppressClickUntil.current > Date.now()) { e.preventDefault(); e.stopPropagation(); return }
+                            resolve(c, "P")
+                          }}
                           className="h-11 sm:h-[52px] rounded-2xl bg-good text-[#ffffff] dark:text-[#000000] text-[15px] sm:text-[17px] font-semibold flex items-center justify-center gap-2"
                         >
                           <Check weight="bold" className="w-5 h-5" /> Present
                         </button>
                         <button
-                          onClick={() => resolve(c, "A")}
+                          onClick={(e) => {
+                            if (suppressClickUntil.current > Date.now()) { e.preventDefault(); e.stopPropagation(); return }
+                            resolve(c, "A")
+                          }}
                           className="h-11 sm:h-[52px] rounded-2xl bg-card text-bad text-[15px] sm:text-[17px] font-semibold flex items-center justify-center gap-2"
                         >
                           <X weight="bold" className="w-5 h-5" /> Absent
@@ -467,6 +591,10 @@ function TodayContent({
         </section>
         )}
 
+        {/* Keep widgets immediately below the carousel, even before all classes are marked. */}
+        <div className="mt-6">
+          <TodayWidgets subjects={subjects} tasks={tasks} now={now} scheduleOverrides={scheduleOverrides} />
+        </div>
       </div>
 
       {/* The right-hand column on wide screens; on phones it simply continues below */}
@@ -500,11 +628,11 @@ function TodayContent({
                       <p className="num text-[12px] text-mute">
                         {formatTime(c.slot.start)}
                         {after.pct !== null && <span data-testid="marked-pct"> · {after.pct}% · {after.label.toLowerCase()}</span>}
-                        {coveredBy(c.subject, today, c.slot.start) && ` · Covered by ${coveredBy(c.subject, today, c.slot.start)}`}
+                        {coveredBy(c.attendanceSubject ?? c.subject, today, c.slot.start) && ` · Covered by ${coveredBy(c.attendanceSubject ?? c.subject, today, c.slot.start)}`}
                       </p>
                     </div>
                     <button
-                      onClick={() => onSet(c.subject.id, today, null, metaOf(c))}
+                      onClick={() => onSet((c.attendanceSubject ?? c.subject).id, today, null, metaOf(c))}
                       aria-label={`Clear mark for ${c.subject.name}`}
                       className="h-8 px-2 text-[13px] text-mute"
                     >

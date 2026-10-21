@@ -1,11 +1,11 @@
 "use client"
 
 import { useEffect, useMemo, useRef, useState } from "react"
-import { Check, ShareNetwork } from "@phosphor-icons/react"
+import { Check, ShareNetwork, X } from "@phosphor-icons/react"
 import Sheet, { Segmented, primaryButton } from "./sheet"
 import { classesOn, formatTime, localDate, markFor } from "@/lib/attendance"
 import { MAX_PING_ITEMS } from "@/lib/pings"
-import type { Mate, Ping, Subject } from "@/lib/types"
+import type { Mate, Ping, ScheduleOverride, Subject } from "@/lib/types"
 import type { PingInput } from "@/lib/use-social"
 
 interface Props {
@@ -13,21 +13,33 @@ interface Props {
   onClose: () => void
   mate: Mate | null
   subjects: Subject[]
+  scheduleOverrides?: ScheduleOverride[]
+  /** Direct in-app delivery is allowed only for a Google-authenticated, accepted Mate connection. */
+  canDirect?: boolean
+  /** Offers navigation to the connected-friend picker from the generic WhatsApp flow. */
+  canChooseDirectMate?: boolean
+  onChooseDirectMate?: () => void
   /** Pings already sent to this mate that still wait for a reply, so the same class isn't asked twice */
   waiting: Ping[]
   onAsk: (mate: Mate, date: string, items: PingInput[]) => Promise<{ ok: boolean; message: string }>
+  onCreateSharePing?: (toName: string, date: string, items: PingInput[]) => Promise<{ ok: boolean; message: string; link?: string }>
   onToast: (message: string) => void
 }
 
-type Row = { key: string; subject: Subject; t?: string; kind?: string; mark: "P" | "A" | null; waiting: boolean }
+type Row = { key: string; subject: Subject; attendanceSubjectId: string; displayName?: string; t?: string; kind?: string; substituted?: boolean; mark: "P" | "A" | null; waiting: boolean }
 
 const dayDate = (offset: number) => new Date(new Date().getFullYear(), new Date().getMonth(), new Date().getDate() - offset)
 
-export default function PingSheet({ open, onClose, mate, subjects, waiting, onAsk, onToast }: Props) {
+export default function PingSheet({ open, onClose, mate, subjects, scheduleOverrides = [], canDirect = false, canChooseDirectMate = false, onChooseDirectMate, waiting, onAsk, onCreateSharePing, onToast }: Props) {
   const [offset, setOffset] = useState(0)
   const [picked, setPicked] = useState<Set<string>>(new Set())
   const [showOther, setShowOther] = useState(false)
+  const [deliveryMode, setDeliveryMode] = useState<"in-app" | "whatsapp">("whatsapp")
   const [phase, setPhase] = useState<"pick" | "sending" | "sent">("pick")
+  const [shareLink, setShareLink] = useState<string | null>(null)
+  const [shareMessage, setShareMessage] = useState<string>("")
+  const [shareFallback, setShareFallback] = useState(false)
+  const [shareFailureReason, setShareFailureReason] = useState("")
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const date = localDate(dayDate(offset))
@@ -35,27 +47,35 @@ export default function PingSheet({ open, onClose, mate, subjects, waiting, onAs
 
   const { scheduled, other } = useMemo(() => {
     const isWaiting = (key: string) => waiting.some((p) => p.date === date && p.items.some((i) => i.key === key && i.answer === null))
-    const timed: Row[] = classesOn(subjects, dayDate(offset)).map(({ subject, slot }) => {
-      const key = `${subject.id}@${slot.start}`
-      return { key, subject, t: slot.start, kind: slot.kind, mark: markFor(subject, date, slot.start), waiting: isWaiting(key) }
+    const timed: Row[] = classesOn(subjects, dayDate(offset), scheduleOverrides).filter((entry) => !entry.cancelled).map((entry) => {
+      const { subject, slot } = entry
+      const attendanceSubject = entry.attendanceSubject ?? subjects.find((s) => s.id === (entry.originalSubjectId ?? subject.id)) ?? subject
+      const key = `${attendanceSubject.id}@${slot.start}`
+      const displayName = entry.override?.kind === "substitute" ? `${attendanceSubject.name} (held as ${subject.name})` : subject.name
+      return { key, subject, attendanceSubjectId: attendanceSubject.id, ...(displayName !== subject.name ? { displayName } : {}), t: slot.start, kind: slot.kind, ...(entry.override?.kind === "substitute" ? { substituted: true } : {}), mark: markFor(attendanceSubject, date, slot.start), waiting: isWaiting(key) }
     })
-    const used = new Set(timed.map((r) => r.subject.id))
+    const used = new Set(timed.flatMap((r) => [r.subject.id, r.attendanceSubjectId]))
     const rest: Row[] = subjects
       .filter((s) => !used.has(s.id))
       .map((subject) => {
         const key = `${subject.id}@`
-        return { key, subject, mark: markFor(subject, date, ""), waiting: isWaiting(key) }
+        return { key, subject, attendanceSubjectId: subject.id, mark: markFor(subject, date, ""), waiting: isWaiting(key) }
       })
     return { scheduled: timed, other: rest }
-  }, [subjects, offset, date, waiting])
+  }, [subjects, scheduleOverrides, offset, date, waiting])
 
   // Start with the classes that still need a present mark
   useEffect(() => {
     if (!open) return
     setPhase("pick")
+    setShareLink(null)
+    setShareMessage("")
+    setShareFallback(false)
+    setShareFailureReason("")
     setOffset(0)
     setShowOther(false)
-  }, [open])
+    setDeliveryMode(canDirect && mate?.id !== "__general__" ? "in-app" : "whatsapp")
+  }, [open, canDirect, mate?.id])
   useEffect(() => {
     if (!open) return
     setPicked(new Set(scheduled.filter((r) => r.mark !== "P" && !r.waiting).map((r) => r.key).slice(0, MAX_PING_ITEMS)))
@@ -66,6 +86,8 @@ export default function PingSheet({ open, onClose, mate, subjects, waiting, onAs
   }, [])
 
   if (!mate) return null
+  const general = mate.id === "__general__"
+  const directAvailable = canDirect && connected && !general
 
   const all = [...scheduled, ...other]
   const chosen = all.filter((r) => picked.has(r.key))
@@ -78,27 +100,63 @@ export default function PingSheet({ open, onClose, mate, subjects, waiting, onAs
       return next
     })
 
-  const label = (r: Row) => `${r.subject.name}${r.t ? ` (${formatTime(r.t)})` : ""}`
+  const label = (r: Row) => `${r.displayName ?? r.subject.name}${r.t ? ` (${formatTime(r.t)})` : ""}`
   const share = async () => {
-    const when = offset === 0 ? "today" : "yesterday"
-    const text = `Hey ${mate.name}, were you marking me present in ${chosen.map(label).join(", ")} ${when}? Let me know 🙏`
-    try {
-      if (navigator.share) await navigator.share({ text })
-      else window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, "_blank")
-    } catch {
-      /* share sheet dismissed */
-    }
-  }
-
-  const ask = async () => {
-    if (!mate.uid) {
-      await share()
-      onClose()
+    if (!onCreateSharePing) {
+      const text = `Hi, could you please confirm whether you marked me present for ${chosen.map(label).join(", ")} ${offset === 0 ? "today" : "yesterday"}?`
+      try {
+        if (navigator.share) await navigator.share({ text })
+        else window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, "_blank", "noopener,noreferrer")
+      } catch { /* share sheet dismissed */ }
       return
     }
     setPhase("sending")
-    const items: PingInput[] = chosen.map((r) => ({ key: r.key, subjectId: r.subject.id, name: r.subject.name, ...(r.t ? { t: r.t } : {}) }))
-    const res = await onAsk(mate, date, items)
+    const items: PingInput[] = chosen.map((r) => ({ key: r.key, subjectId: r.attendanceSubjectId, name: r.displayName ?? r.subject.name, ...(r.t ? { t: r.t } : {}), ...(r.substituted ? { substituted: true } : {}) }))
+    const result = await onCreateSharePing(mate?.id === "__general__" ? "" : mate?.name ?? "", date, items)
+    if (!result.ok || !result.link) {
+      // Even without a configured cloud account/rules, keep the plain WhatsApp workflow available.
+      // Make the limitation explicit: this message has no interactive link and cannot auto-update attendance.
+      const who = general ? "Hi!" : `Hey ${mate.name},`
+      const when = offset === 0 ? "today" : "yesterday"
+      const details = chosen.map(label).join(", ")
+      const localPreview = /localhost|private network|public https|preview has no firebase configuration/i.test(result.message)
+      const text = `${who} could you please confirm whether you marked me present for ${details} ${when}?
+
+Please reply YES or NO. ${localPreview ? "This local preview needs NEXT_PUBLIC_APP_URL set to the deployed HTTPS site before it can create the interactive link." : "An interactive response link could not be created for this request."} I will need to record your reply manually.`
+      setShareFailureReason(result.message)
+      setShareLink(null)
+      setShareMessage(text)
+      setShareFallback(true)
+      setPhase("sent")
+      onToast("An interactive 24-hour link was not created. Review the reason below; plain-message sharing is optional and requires manual attendance updates.")
+      return
+    }
+    const who = mate?.id === "__general__" ? "Hi!" : `Hey ${mate?.name},`
+    const when = offset === 0 ? "today" : "yesterday"
+    const details = chosen.map(label).join(", ")
+    const text = `${who} could you please confirm whether you marked me present for ${details} ${when}?
+
+Open this secure, one-time Ping link to answer Yes/No: ${result.link}
+
+This link expires in 24 hours. The selected classes and times are listed on the response page.`
+    setShareLink(result.link)
+    setShareMessage(text)
+    setShareFallback(false)
+    setShareFailureReason("")
+    setPhase("sent")
+    // Do not open navigator.share after awaiting Firestore: user activation may have expired. Show the created link
+    // first, then let the user explicitly choose Share or WhatsApp with a fresh click.
+    onToast("Official 24-hour Ping link created. Copy it or choose Share / WhatsApp below.")
+  }
+
+  const ask = async () => {
+    if (deliveryMode === "whatsapp" || !directAvailable) {
+      await share()
+      return
+    }
+    setPhase("sending")
+    const items: PingInput[] = chosen.map((r) => ({ key: r.key, subjectId: r.attendanceSubjectId, name: r.displayName ?? r.subject.name, ...(r.t ? { t: r.t } : {}), ...(r.substituted ? { substituted: true } : {}) }))
+    const res = await onAsk(mate as Mate, date, items)
     if (!res.ok) {
       setPhase("pick")
       return onToast(res.message)
@@ -124,7 +182,7 @@ export default function PingSheet({ open, onClose, mate, subjects, waiting, onAs
         >
           <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ background: r.subject.glowColor }} />
           <span className="min-w-0 flex-1">
-            <span className="block text-[16px] font-semibold leading-snug truncate">{r.subject.name}</span>
+            <span className="block text-[16px] font-semibold leading-snug truncate">{r.displayName ?? r.subject.name}</span>
             <span className="block text-[13px] text-mute leading-snug">
               {[r.t ? formatTime(r.t) : null, r.kind, r.waiting ? "Waiting for a reply" : r.mark === "P" ? "Already present" : r.mark === "A" ? "Marked absent" : null]
                 .filter(Boolean)
@@ -144,23 +202,26 @@ export default function PingSheet({ open, onClose, mate, subjects, waiting, onAs
   }
 
   return (
-    <Sheet open={open} onClose={onClose} title={connected ? "Ask a mate" : "Message a mate"}>
+    <Sheet open={open} onClose={onClose} title={connected ? "Ask a mate" : "24-hour Ping link"}>
       {phase === "sent" ? (
         <div className="py-8 text-center">
           <div className="relative mx-auto w-24 h-24 grid place-items-center">
-            <span className="ping-ring absolute inset-0 rounded-full bg-good/25" />
-            <span className="wrap-pop relative w-24 h-24 rounded-full bg-good grid place-items-center">
-              <svg viewBox="0 0 24 24" className="w-11 h-11" fill="none" stroke="#ffffff" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
-                <path className="ping-draw" d="M5 12.5l4.5 4.5L19 7.5" />
-              </svg>
+            <span className={`ping-ring absolute inset-0 rounded-full ${shareFallback ? "bg-bad/15" : "bg-good/25"}`} />
+            <span className={`wrap-pop relative w-24 h-24 rounded-full grid place-items-center ${shareFallback ? "bg-bad" : "bg-good"}`}>
+              {shareFallback ? <X weight="bold" className="w-11 h-11 text-paper" /> : (
+                <svg viewBox="0 0 24 24" className="w-11 h-11" fill="none" stroke="#ffffff" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                  <path className="ping-draw" d="M5 12.5l4.5 4.5L19 7.5" />
+                </svg>
+              )}
             </span>
           </div>
           <p className="wrap-rise text-[22px] font-bold tracking-tight mt-5" style={{ animationDelay: "0.4s" }}>
-            Asked {mate.name}
+            {shareLink ? "24-hour Ping link ready" : shareFallback ? "Interactive link not created" : `Ping sent to ${mate.name}`}
           </p>
           <p className="wrap-rise text-[15px] text-mute mt-1.5 leading-snug max-w-[17rem] mx-auto" style={{ animationDelay: "0.55s" }}>
-            You&rsquo;ll get a bubble on Mates when they reply.
+            {shareLink ? "Once the recipient answers, your app can apply the reply when it is open or next syncs." : shareFallback ? "No official response link exists for this message. A plain-message reply must be recorded manually." : "You’ll get a bubble on Mates when they reply."}
           </p>
+          {(shareLink || shareFallback) && <div className="mt-5 rounded-2xl bg-secondary p-3 text-left"><p className="text-[12px] text-mute mb-1">{shareLink ? "Unique response link · expires in 24 hours" : "Message without interactive link"}</p>{shareFallback && shareFailureReason && <div className="mb-2 rounded-xl border border-warn/20 bg-warn/10 p-2.5 text-[12px] leading-snug"><b>Why no link was created:</b> {shareFailureReason}</div>}<p className="text-[13px] whitespace-pre-wrap break-words leading-snug">{shareLink || shareMessage}</p><div className="flex flex-wrap gap-2 mt-3"><button onClick={async()=>{try{await navigator.clipboard.writeText(shareLink || shareMessage);onToast(shareLink ? "Ping link copied" : "Message copied")}catch{onToast("Copy was blocked. Select the text and copy it.")}}} className="h-10 px-3 rounded-xl bg-card font-semibold text-[13px]">{shareLink ? "Copy link" : "Copy plain message"}</button>{shareLink && typeof navigator !== "undefined" && typeof navigator.share === "function" && <button onClick={async()=>{try{await navigator.share({title:"Attendance Tracker Ping",text:shareMessage});onToast("Ping message shared")}catch(error){if (!(error instanceof DOMException && error.name === "AbortError")) onToast("The share sheet could not open. Copy the link or use WhatsApp.")}}} className="h-10 px-3 rounded-xl bg-card font-semibold text-[13px]">Share…</button>}<button onClick={()=>{window.open(`https://wa.me/?text=${encodeURIComponent(shareMessage)}`,"_blank","noopener,noreferrer")}} className="h-10 px-3 rounded-xl bg-ink text-paper font-semibold text-[13px]">{shareLink ? "Open WhatsApp" : "Share plain message"}</button></div>{shareFallback && <button onClick={()=>{setPhase("pick");setShareMessage("");setShareFallback(false);setShareFailureReason("")}} className="w-full mt-2 h-10 rounded-xl bg-secondary text-[13px] font-semibold">Try creating the official link again</button>}<p className="text-[12px] text-mute mt-3">{shareLink ? "A Yes response may update the selected attendance record." : "No interactive link was created. Plain-message replies do not update attendance automatically."}</p><button onClick={onClose} className="w-full mt-3 h-10 rounded-xl bg-card text-[13px] font-semibold">Done</button></div>}
         </div>
       ) : (
         <div>
@@ -173,12 +234,35 @@ export default function PingSheet({ open, onClose, mate, subjects, waiting, onAs
               </span>
             </div>
             <div className="min-w-0">
-              <h3 className="text-[22px] font-bold tracking-tight leading-tight truncate">{mate.name}</h3>
+              <h3 className="text-[22px] font-bold tracking-tight leading-tight truncate">{general ? "Create a 24-hour Ping link" : mate.name}</h3>
               <p className="text-[15px] text-mute leading-snug">
-                {connected ? "Did they mark you present?" : "Not connected in the app. This opens your share sheet."}
+                {directAvailable ? "Send directly inside Attendance Tracker or create a 24-hour WhatsApp link." : connected ? "In-app Pings require Google sign-in. You can still create a 24-hour WhatsApp link." : "Create a 24-hour link the recipient can open to answer Yes or No. Connect through a unique account code to enable in-app Pings."}
               </p>
             </div>
           </div>
+
+          {general && canChooseDirectMate && onChooseDirectMate && (
+            <div className="mb-4 rounded-2xl bg-secondary p-3.5">
+              <p className="text-[14px] font-semibold">Prefer an in-app Ping?</p>
+              <p className="text-[12px] text-mute leading-snug mt-1">Choose one of your Google-signed-in, connected friends instead of creating a response link.</p>
+              <button type="button" onClick={() => { onClose(); onChooseDirectMate() }} className="mt-2 h-10 w-full rounded-xl bg-card text-[13px] font-semibold">Choose a connected friend</button>
+            </div>
+          )}
+          {general && !canChooseDirectMate && (
+            <p className="mb-4 rounded-2xl bg-secondary p-3 text-[12px] text-mute leading-snug">This one-time link is valid for 24 hours. Direct in-app Pings need Google sign-in and a friend connection accepted by both accounts.</p>
+          )}
+
+          {directAvailable && (
+            <div className="mb-4">
+              <Segmented
+                label="Delivery method"
+                value={deliveryMode}
+                onChange={(value) => setDeliveryMode(value)}
+                options={[{ id: "in-app", label: "In-app Ping" }, { id: "whatsapp", label: "Official link · 24h" }]}
+              />
+              <p className="text-[12px] text-mute mt-2">In-app sends to this accepted connection. WhatsApp creates a separate one-time response link.</p>
+            </div>
+          )}
 
           <Segmented
             label="Which day"
@@ -211,6 +295,8 @@ export default function PingSheet({ open, onClose, mate, subjects, waiting, onAs
             </>
           )}
 
+          {!directAvailable && connected && <p className="text-[12px] text-mute mt-4 leading-snug">Sign in with Google to enable direct in-app Pings. WhatsApp links remain available without a Mates connection.</p>}
+          {!connected && !general && <p className="text-[12px] text-mute mt-4 leading-snug">This person is not connected in the app. You can use a WhatsApp link now; direct in-app Pings require both people to connect and accept the request.</p>}
           <button
             type="button"
             onClick={ask}
@@ -221,17 +307,17 @@ export default function PingSheet({ open, onClose, mate, subjects, waiting, onAs
               "Sending…"
             ) : chosen.length === 0 ? (
               "Pick a class"
-            ) : connected ? (
-              `Ask ${mate.name} about ${chosen.length} ${chosen.length === 1 ? "class" : "classes"}`
+            ) : deliveryMode === "in-app" && directAvailable ? (
+              `Send in-app Ping to ${mate.name}`
             ) : (
               <>
-                <ShareNetwork weight="bold" className="w-5 h-5" /> Share message
+                <ShareNetwork weight="bold" className="w-5 h-5" /> Create official 24-hour link
               </>
             )}
           </button>
-          {connected && chosen.length > 0 && (
-            <button type="button" onClick={share} className="block mx-auto mt-3 text-[15px] font-medium text-mute">
-              Send on WhatsApp instead
+          {directAvailable && deliveryMode === "in-app" && chosen.length > 0 && (
+            <button type="button" onClick={() => setDeliveryMode("whatsapp")} className="block mx-auto mt-3 text-[15px] font-medium text-mute">
+              Create the official 24-hour link instead
             </button>
           )}
         </div>

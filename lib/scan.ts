@@ -1,5 +1,5 @@
 import { classesOn, markFor, toMin, localDate, type ClassSlot } from "./attendance"
-import type { Subject } from "./types"
+import type { ScheduleOverride, Subject } from "./types"
 
 /** How far around a class a scan still counts for it, in minutes */
 export const JUST_ENDED_MINUTES = 20
@@ -24,14 +24,14 @@ export type ScanResult =
  * left the person chooses, and if all of them are marked the scan says so instead of marking twice.
  * Nothing near this time: unmarked classes from today are offered, never guessed.
  */
-export function pickScanTarget(subjects: Subject[], now: Date): ScanResult {
+export function pickScanTarget(subjects: Subject[], now: Date, overrides: ScheduleOverride[] = []): ScanResult {
   if (subjects.length === 0) return { kind: "idle", reason: "no-subjects" }
   const today = localDate(now)
   const nowMin = now.getHours() * 60 + now.getMinutes()
-  const all = classesOn(subjects, now)
+  const all = classesOn(subjects, now, overrides).filter((entry) => !entry.cancelled)
   if (all.length === 0) return { kind: "idle", reason: "no-classes" }
 
-  const statusOf = (c: ClassSlot) => markFor(c.subject, today, c.slot.start)
+  const statusOf = (c: ClassSlot) => markFor(c.attendanceSubject ?? c.subject, today, c.slot.start)
   const tiers: ((c: ClassSlot) => boolean)[] = [
     (c) => toMin(c.slot.start) <= nowMin && nowMin < toMin(c.slot.end),
     (c) => toMin(c.slot.end) <= nowMin && nowMin < toMin(c.slot.end) + JUST_ENDED_MINUTES,

@@ -60,3 +60,16 @@ export const parseShadowReadFlag = (raw: string | undefined): boolean => parseAu
 
 /** The static reference lets Next.js inline the build-time value */
 export const shadowReadEnabled = (): boolean => parseShadowReadFlag(process.env.NEXT_PUBLIC_SUPABASE_SHADOW_READ)
+
+/**
+ * Phase 8 Realtime flag (independent of the others). OFF unless the build says exactly "true".
+ *
+ *   NEXT_PUBLIC_SUPABASE_REALTIME   deliver the single sync document live through the Supabase adapter (with the polling fallback)
+ *
+ * It does nothing on its own: it is only read when the `supabase` backend kind is selected, which also needs the auth bridge flag, the
+ * Supabase configuration and a valid bridge token. It is never set in production.
+ */
+export const parseRealtimeFlag = (raw: string | undefined): boolean => parseAuthBridgeFlag(raw)
+
+/** The static reference lets Next.js inline the build-time value */
+export const realtimeEnabled = (): boolean => parseRealtimeFlag(process.env.NEXT_PUBLIC_SUPABASE_REALTIME)

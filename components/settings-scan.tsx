@@ -104,7 +104,7 @@ export default function ScanPanel({ testCount, onAddTest, onRemoveTest, onSimula
           <ol className="mt-3 space-y-2 text-[13px] leading-snug list-decimal list-inside text-mute">
             <li>Buy NFC stickers (NTAG213 or better, anti-metal if going on a desk or door).</li>
             <li>
-              Write the same link as the QR code to a tag using a free app like NFC Tools: Write → Add a record → URL, then paste it in.
+              Write the exact same <span className="font-semibold text-ink">/scan</span> URL used by the QR code to a tag using a free app like NFC Tools: Write → Add a record → URL, then paste it in. NFC and QR use the same timing rules: current class first, then a class that ended within 20 minutes, then one starting within 15 minutes; if the match is ambiguous, the app asks you to choose.
             </li>
             <li>Tap the tag with the top of an iPhone (XS or later) or any NFC Android phone.</li>
           </ol>

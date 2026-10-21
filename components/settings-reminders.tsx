@@ -87,13 +87,15 @@ export function RemindersList({ subjects, schedule, day, onDay, onAdd, onEdit, o
       ) : (
         <ul className="space-y-2.5">
           {entries.map((e) => {
-            const subject = subjects.find((s) => s.name === e.subjectName)
+            const sameName = subjects.filter((s) => s.name === e.subjectName)
+            const subject = e.subjectId ? subjects.find((s) => s.id === e.subjectId) : sameName.length === 1 ? sameName[0] : undefined
+            const displayName = subject?.name ?? e.subjectName
             return (
               <li key={e.id}>
                 <button onClick={() => onEdit(e)} className="w-full text-left rounded-2xl bg-secondary p-4 flex items-center gap-3.5 active:scale-[0.99] transition">
                   <span className="w-1.5 self-stretch rounded-full flex-shrink-0" style={{ background: subject?.glowColor ?? "#8e8e93" }} />
                   <span className="min-w-0 flex-1">
-                    <span className="block text-[17px] font-semibold leading-snug truncate">{e.subjectName}</span>
+                    <span className="block text-[17px] font-semibold leading-snug truncate">{displayName}</span>
                     <span className="block num text-[13px] text-mute mt-0.5">
                       {formatTime(e.startTime)} – {formatTime(e.endTime)}
                     </span>
@@ -133,6 +135,8 @@ interface EditorProps {
 }
 
 export function ReminderEditor({ subjects, editing, defaultDay, onSave, onDelete }: EditorProps) {
+  const initialMatches = subjects.filter((s) => s.name === editing?.subjectName)
+  const [subjectId, setSubjectId] = useState(editing?.subjectId ?? (initialMatches.length === 1 ? initialMatches[0].id : ""))
   const [subjectName, setSubjectName] = useState(editing?.subjectName ?? "")
   const [days, setDays] = useState<number[]>(editing ? [editing.day] : [defaultDay])
   const [start, setStart] = useState(editing?.startTime ?? "09:00")
@@ -143,18 +147,21 @@ export function ReminderEditor({ subjects, editing, defaultDay, onSave, onDelete
   const [confirmDelete, setConfirmDelete] = useState(false)
 
   // Picking a subject fills in its timetable time for the chosen day, so most reminders are two taps
-  const fillFrom = (name: string, day: number) => {
-    const slot = subjects.find((s) => s.name === name)?.slots?.find((x) => x.day === day)
+  const fillFrom = (id: string, day: number) => {
+    const slot = subjects.find((s) => s.id === id)?.slots?.find((x) => x.day === day)
     if (slot) {
       setStart(slot.start)
       setEnd(slot.end)
     }
   }
 
-  const pickSubject = (name: string) => {
-    setSubjectName(name)
+  const pickSubject = (id: string) => {
+    const selected = subjects.find((s) => s.id === id)
+    if (!selected) return
+    setSubjectId(selected.id)
+    setSubjectName(selected.name)
     setError("")
-    fillFrom(name, days[0])
+    fillFrom(selected.id, days[0])
   }
 
   const toggleDay = (d: number) => {
@@ -165,7 +172,7 @@ export function ReminderEditor({ subjects, editing, defaultDay, onSave, onDelete
     }
     setDays((prev) => {
       const next = prev.includes(d) ? prev.filter((x) => x !== d) : [...prev, d]
-      if (next.length === 1 && subjectName) fillFrom(subjectName, next[0])
+      if (next.length === 1 && subjectId) fillFrom(subjectId, next[0])
       return next
     })
   }
@@ -190,6 +197,7 @@ export function ReminderEditor({ subjects, editing, defaultDay, onSave, onDelete
           startTime: start,
           endTime: end,
           subjectName,
+          ...(subjects.some((s) => s.id === subjectId) ? { subjectId } : {}),
           notifyOffset: offset,
           notifyWhen: when,
         })),
@@ -204,13 +212,13 @@ export function ReminderEditor({ subjects, editing, defaultDay, onSave, onDelete
         ) : (
           <ul className="space-y-2 max-h-56 overflow-y-auto -mx-1 px-1">
             {subjects.map((s) => {
-              const on = s.name === subjectName
+              const on = s.id === subjectId || (!subjectId && subjects.filter((candidate) => candidate.name === subjectName).length === 1 && s.name === subjectName)
               return (
                 <li key={s.id}>
                   <button
                     type="button"
                     aria-pressed={on}
-                    onClick={() => pickSubject(s.name)}
+                    onClick={() => pickSubject(s.id)}
                     className={`w-full flex items-center gap-3 rounded-2xl px-3.5 py-3 text-left transition ${on ? "bg-ink/[0.07] ring-1 ring-ink/25" : "bg-secondary"}`}
                   >
                     <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ background: s.glowColor }} />

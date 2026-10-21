@@ -26,6 +26,14 @@ describe("weekly wrapped", () => {
     const sunday = new Date(2026, 8, 20) // last week (Sep 7-13) has nothing
     expect(computeWrapped([subject], mates, sunday).isCurrent).toBe(true)
   })
+
+  it("uses the current Monday-to-Saturday week for the Saturday release", () => {
+    const saturday = new Date(2026, 8, 19) // Saturday 19 Sep 2026
+    const info = lastWeekInfo([subject], saturday)
+    expect(info).toEqual({ key: "2026-09-14", hasData: true })
+    const wrapped = computeWrapped([subject], mates, saturday)
+    expect(wrapped).toMatchObject({ rangeLabel: "Sep 14 – 19", isCurrent: true, attended: 3, missed: 1 })
+  })
 })
 
 describe("ping expiry", () => {
@@ -35,5 +43,12 @@ describe("ping expiry", () => {
     expect(isExpired({ ...base, date: daysAgo(2) })).toBe(false)
     expect(isExpired({ ...base, date: daysAgo(4) })).toBe(true)
     expect(isExpired({ ...base, date: daysAgo(10), status: "answered" })).toBe(false)
+  })
+
+  it("expires share-link Pings by their explicit 24-hour expiry rather than the direct-Ping 3-day lifetime", () => {
+    const now = Date.now()
+    expect(isExpired({ ...base, shareLink: true, createdAt: now - 23 * 60 * 60_000, expiresAt: now + 60_000 })).toBe(false)
+    expect(isExpired({ ...base, shareLink: true, createdAt: now - 23 * 60 * 60_000, expiresAt: now - 1 })).toBe(true)
+    expect(isExpired({ ...base, shareLink: true, status: "answered", expiresAt: now - 1 })).toBe(false)
   })
 })

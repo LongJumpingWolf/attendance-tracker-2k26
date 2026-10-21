@@ -1,16 +1,17 @@
 "use client"
 
-import { useRef, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import { PencilSimple, Plus } from "@phosphor-icons/react"
 import Sheet, { primaryButton } from "./sheet"
 import { classesOn, daysUntil, formatShortDate, formatTime, getAttendance, skipVerdict } from "@/lib/attendance"
 import { loadWidgets, saveWidgets, WIDGETS, type WidgetId } from "@/lib/today-widgets"
-import type { Subject, Task } from "@/lib/types"
+import type { ScheduleOverride, Subject, Task } from "@/lib/types"
 
 interface Data {
   subjects: Subject[]
   tasks: Task[]
   now: Date
+  scheduleOverrides?: ScheduleOverride[]
 }
 
 /* ---------- the widgets: each is one fixed-height card ---------- */
@@ -18,13 +19,16 @@ interface Data {
 const CARD = "relative h-[330px] w-full rounded-[30px] overflow-hidden p-5 flex flex-col text-left"
 const KICKER = "text-[12px] font-extrabold uppercase tracking-[0.09em] opacity-80"
 
-function SkipTomorrow({ subjects, now }: Data) {
+function SkipTomorrow({ subjects, now, scheduleOverrides = [] }: Data) {
   const tomorrow = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1)
-  const rows = classesOn(subjects, tomorrow).map(({ subject, slot }) => {
-    const info = getAttendance(subject.attended, subject.missed, subject.requirement)
-    const after = Math.round((subject.attended / (info.total + 1)) * 100)
+  const rows = classesOn(subjects, tomorrow, scheduleOverrides).filter((entry) => !entry.cancelled).map((entry) => {
+    const { subject, slot } = entry
+    const attendanceSubject = entry.attendanceSubject ?? subject
+    const info = getAttendance(attendanceSubject.attended, attendanceSubject.missed, attendanceSubject.requirement)
+    const after = Math.round((attendanceSubject.attended / (info.total + 1)) * 100)
     const verdict = skipVerdict(info)
-    return { subject, slot, info, after, verdict }
+    const displayName = entry.override?.kind === "substitute" ? `${attendanceSubject.name} (held as ${subject.name})` : subject.name
+    return { subject, attendanceSubject, displayName, slot, info, after, verdict }
   })
   const shown = rows.slice(0, 3)
   const firstSafe = rows.find((r) => r.verdict === "skip")
@@ -41,7 +45,7 @@ function SkipTomorrow({ subjects, now }: Data) {
             {shown.map((r) => (
               <li key={`${r.subject.id}-${r.slot.start}`} className="flex items-center gap-2.5 rounded-2xl bg-white/15 px-3 py-2 mt-1.5">
                 <span className="min-w-0 flex-1">
-                  <b className="block text-[16px] tracking-tight truncate">{r.subject.name}</b>
+                  <b className="block text-[16px] tracking-tight truncate">{r.displayName}</b>
                   <small className="block text-[12px] font-semibold opacity-80">
                     {formatTime(r.slot.start)} · now {r.info.total ? `${r.info.pct}%` : "no marks"}
                   </small>
@@ -164,6 +168,31 @@ export default function TodayWidgets(data: Data) {
   const [open, setOpen] = useState(false)
   const box = useRef<HTMLDivElement>(null)
   const [active, setActive] = useState(0)
+  const activeRef = useRef(active)
+  activeRef.current = active
+  const gestureStart = useRef<{ x: number; y: number; scrollLeft: number; index: number } | null>(null)
+  const pointerDidDrag = useRef(false)
+  const suppressClickUntil = useRef(0)
+
+  const listSignature = list?.join("|") ?? "unset"
+
+  useEffect(() => {
+    const viewport = box.current
+    if (!viewport || typeof ResizeObserver === "undefined") return
+    let frame = 0
+    const observer = new ResizeObserver(() => {
+      cancelAnimationFrame(frame)
+      frame = requestAnimationFrame(() => {
+        const items = Array.from(viewport.children).filter((node): node is HTMLElement => node instanceof HTMLElement)
+        const card = items[Math.min(activeRef.current, items.length - 1)]
+        if (!card) return
+        const left = card.getBoundingClientRect().left - viewport.getBoundingClientRect().left + viewport.scrollLeft
+        viewport.scrollTo({ left, behavior: "auto" })
+      })
+    })
+    observer.observe(viewport)
+    return () => { observer.disconnect(); cancelAnimationFrame(frame) }
+  }, [listSignature])
 
   const update = (next: WidgetId[]) => {
     setList(next)
@@ -172,17 +201,100 @@ export default function TodayWidgets(data: Data) {
   // The order you tap them is the order they swipe in
   const toggle = (id: WidgetId) => update(list?.includes(id) ? list.filter((x) => x !== id) : [...(list ?? []), id])
 
-  const step = () => {
-    const first = box.current?.firstElementChild as HTMLElement | null
-    return first ? first.offsetWidth + 12 : 0
+  // Use each card's actual offset instead of assuming every viewport has an identical width.
+  // This avoids drift when mobile browser chrome changes the available width or fonts wrap differently.
+  const cards = () => Array.from(box.current?.children ?? []).filter((node): node is HTMLElement => node instanceof HTMLElement)
+  const leftFor = (card: HTMLElement) => {
+    const viewport = box.current
+    if (!viewport) return 0
+    return card.getBoundingClientRect().left - viewport.getBoundingClientRect().left + viewport.scrollLeft
+  }
+  const closestIndex = () => {
+    const viewport = box.current
+    const items = cards()
+    if (!viewport || !items.length) return 0
+    let nearest = 0
+    let distance = Number.POSITIVE_INFINITY
+    items.forEach((card, i) => {
+      const delta = Math.abs(leftFor(card) - viewport.scrollLeft)
+      if (delta < distance) { nearest = i; distance = delta }
+    })
+    return nearest
   }
   const onScroll = () => {
-    const el = box.current
-    const w = step()
-    if (!el || !w || !list) return
-    setActive(Math.min(list.length - 1, Math.max(0, Math.round(el.scrollLeft / w))))
+    if (!box.current || !list) return
+    const next = Math.min(list.length - 1, Math.max(0, closestIndex()))
+    setActive((current) => current === next ? current : next)
   }
-  const goTo = (i: number) => box.current?.scrollTo({ left: i * step(), behavior: "smooth" })
+  const goTo = (i: number) => {
+    const items = cards()
+    if (!items.length || !box.current) return
+    const index = Math.max(0, Math.min(items.length - 1, i))
+    const card = items[index]
+    box.current.scrollTo({ left: leftFor(card), behavior: "smooth" })
+  }
+  const startPointer = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (e.pointerType !== "mouse" || !box.current) return
+    suppressClickUntil.current = 0
+    pointerDidDrag.current = false
+    gestureStart.current = { x: e.clientX, y: e.clientY, scrollLeft: box.current.scrollLeft, index: closestIndex() }
+  }
+  const movePointer = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (e.pointerType !== "mouse") return
+    const start = gestureStart.current
+    const viewport = box.current
+    if (!start || !viewport) return
+    const dx = e.clientX - start.x
+    const dy = e.clientY - start.y
+    if (Math.abs(dx) < 8 || Math.abs(dx) < Math.abs(dy) * 1.15) return
+    pointerDidDrag.current = true
+    if (!viewport.hasPointerCapture(e.pointerId)) viewport.setPointerCapture(e.pointerId)
+    viewport.scrollLeft = start.scrollLeft - dx
+  }
+  const finishPointer = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (e.pointerType !== "mouse") return
+    const start = gestureStart.current
+    const viewport = box.current
+    if (!start || !viewport) return
+    const dx = e.clientX - start.x
+    if (pointerDidDrag.current) {
+      suppressClickUntil.current = Date.now() + 550
+      // The drag has already moved the track. Snap to the card that actually ended nearest the viewport,
+      // rather than assuming a fixed one-card jump from where the drag started.
+      goTo(closestIndex())
+      if (viewport.hasPointerCapture(e.pointerId)) viewport.releasePointerCapture(e.pointerId)
+    }
+    gestureStart.current = null
+    pointerDidDrag.current = false
+  }
+  const cancelPointer = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (e.pointerType !== "mouse") return
+    gestureStart.current = null
+    pointerDidDrag.current = false
+  }
+  const startTouch = (e: React.TouchEvent<HTMLDivElement>) => {
+    if (!box.current) return
+    suppressClickUntil.current = 0
+    gestureStart.current = { x: e.touches[0].clientX, y: e.touches[0].clientY, scrollLeft: box.current.scrollLeft, index: closestIndex() }
+  }
+  const finishTouch = (e: React.TouchEvent<HTMLDivElement>) => {
+    const start = gestureStart.current
+    if (!start) return
+    const dx = e.changedTouches[0].clientX - start.x
+    const dy = e.changedTouches[0].clientY - start.y
+    if (Math.abs(dx) > 24 && Math.abs(dx) > Math.abs(dy) * 1.2) {
+      // Native horizontal scrolling + CSS snap already chooses the settled card. An extra smooth goTo here fights
+      // the finger and causes visible tile shifting on mobile.
+      suppressClickUntil.current = Date.now() + 550
+    }
+    gestureStart.current = null
+  }
+  const suppressDraggedClick = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (suppressClickUntil.current > Date.now()) {
+      e.preventDefault()
+      e.stopPropagation()
+    }
+  }
 
   return (
     <section aria-label="Your widgets">
@@ -220,10 +332,18 @@ export default function TodayWidgets(data: Data) {
           <div
             ref={box}
             onScroll={onScroll}
-            className="flex gap-3 overflow-x-auto snap-x snap-mandatory no-scrollbar"
+            onPointerDown={startPointer}
+            onPointerMove={movePointer}
+            onPointerUp={finishPointer}
+            onPointerCancel={cancelPointer}
+            onTouchStart={startTouch}
+            onTouchEnd={finishTouch}
+            onClickCapture={suppressDraggedClick}
+            style={{ touchAction: "pan-x pan-y", WebkitOverflowScrolling: "touch", overscrollBehaviorX: "contain", scrollSnapStop: "always" }}
+            className="flex gap-3 overflow-x-auto snap-x snap-mandatory no-scrollbar scroll-px-0 cursor-grab active:cursor-grabbing select-none"
           >
             {list.map((id) => (
-              <div key={id} className="relative snap-center shrink-0 w-full">
+              <div key={id} className="relative snap-start shrink-0 w-full">
                 <Widget id={id} {...data} />
                 <button
                   onClick={() => setOpen(true)}

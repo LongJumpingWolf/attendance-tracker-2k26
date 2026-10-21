@@ -230,7 +230,7 @@ function Inner({ event, onAnswer, onFinish, onLater, onAcknowledge, alertsOffer,
                     Later
                   </button>
                 </div>
-                <p className="text-[12px] text-mute mt-4 leading-snug">YES marks that class present for {name}. Only say yes if you really did.</p>
+                <p className="text-[12px] text-mute mt-4 leading-snug">A YES response marks the selected class present for {name}.</p>
               </div>
             ) : (
               <div className="wrap-rise w-full mt-7" style={{ animationDelay: "0.55s" }}>

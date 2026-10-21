@@ -1,9 +1,17 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { registerServiceWorker, subscribeToPushNotifications } from '@/lib/notifications';
+import { isSubjectSleeping, localDate, toMin } from '@/lib/attendance';
+import type { ScheduleOverride, Subject } from '@/lib/types';
+import { normalizeScheduleEntry } from '@/lib/reminders';
 
-export function useNotifications() {
+export function useNotifications(subjects: Subject[] = [], scheduleOverrides: ScheduleOverride[] = []) {
+    const subjectsRef = useRef(subjects)
+    const overridesRef = useRef(scheduleOverrides)
+    subjectsRef.current = subjects
+    overridesRef.current = scheduleOverrides
+
     // --- Custom notification scheduling logic ---
     useEffect(() => {
       // Only run in browser
@@ -14,25 +22,28 @@ export function useNotifications() {
       // just woke up), and never fires twice in one day.
       const GRACE_MIN = 10;
 
-      const show = async (title: string, body: string) => {
-        if (!('Notification' in window) || Notification.permission !== 'granted') return;
-        const options = { body, icon: '/favicon-192.png', badge: '/favicon-192.png', data: { url: `${window.location.origin}/` } };
+      const inFlight = new Set<string>()
+      const firedInMemory = new Set<string>()
+      const show = async (title: string, body: string): Promise<boolean> => {
+        if (!('Notification' in window) || Notification.permission !== 'granted') return false
+        const options = { body, icon: '/favicon-192.png', badge: '/favicon-192.png', data: { url: `${window.location.origin}/` } }
         try {
-          // Phones only allow notifications made through the service worker
-          const registration = await navigator.serviceWorker?.ready;
+          // Phones only allow notifications made through the service worker.
+          const registration = await navigator.serviceWorker?.ready
           if (registration) {
-            await registration.showNotification(title, options);
-            return;
+            await registration.showNotification(title, options)
+            return true
           }
         } catch {
-          /* fall through to the page notification */
+          // Fall through to the page notification where supported.
         }
         try {
-          new Notification(title, options);
+          new Notification(title, options)
+          return true
         } catch {
-          /* not allowed here */
+          return false
         }
-      };
+      }
 
       const check = () => {
         let schedule: any[] = [];
@@ -49,36 +60,65 @@ export function useNotifications() {
         const nowDay = now.getDay();
         const nowMinutes = now.getHours() * 60 + now.getMinutes();
 
-        let fired: { date: string; ids: string[] } = { date: today, ids: [] };
-        try {
-          const saved = JSON.parse(localStorage.getItem(FIRED_KEY) || 'null');
-          if (saved && saved.date === today && Array.isArray(saved.ids)) fired = saved;
-        } catch {
-          /* start fresh */
-        }
-
-        let changed = false;
-        for (const entry of schedule) {
-          if (entry.day !== nowDay) continue;
-          const [startH, startM] = entry.startTime.split(':').map(Number);
-          const [endH, endM] = entry.endTime.split(':').map(Number);
-          const trigger = entry.notifyWhen === 'before' ? startH * 60 + startM - entry.notifyOffset : endH * 60 + endM + entry.notifyOffset;
-          const late = nowMinutes - trigger;
-          if (late < 0 || late > GRACE_MIN || fired.ids.includes(entry.id)) continue;
-
-          fired.ids.push(entry.id);
-          changed = true;
-          const timeStr = `${formatTime(entry.startTime)} - ${formatTime(entry.endTime)}`;
-          void show('Class Reminder', `${entry.subjectName}
-${timeStr}
-Tap to open the app.`);
-        }
-        if (changed) {
+        const readFired = (): { date: string; ids: string[] } => {
           try {
-            localStorage.setItem(FIRED_KEY, JSON.stringify(fired));
+            const saved = JSON.parse(localStorage.getItem(FIRED_KEY) || 'null');
+            if (saved && saved.date === today && Array.isArray(saved.ids)) {
+              return { date: today, ids: saved.ids.filter((id: unknown): id is string => typeof id === 'string') };
+            }
           } catch {
-            /* worst case it fires again on the next check */
+            /* start fresh */
           }
+          return { date: today, ids: [] };
+        };
+        const fired = readFired();
+        for (const rawEntry of schedule) {
+          // The shared normalizer keeps one malformed reminder from breaking other scheduled alerts.
+          const entry = normalizeScheduleEntry(rawEntry);
+          if (!entry || entry.day !== nowDay) continue;
+
+          // Legacy reminders may not have an immutable subject ID. Resolve a name only when it is unique;
+          // never hide/show a reminder based on an ambiguous same-name subject.
+          const currentSubjects = subjectsRef.current;
+          const subjectMatches = typeof entry.subjectId === 'string'
+            ? currentSubjects.filter((subject) => subject.id === entry.subjectId)
+            : currentSubjects.filter((subject) => subject.name === entry.subjectName);
+          const linkedSubject = subjectMatches.length === 1 ? subjectMatches[0] : undefined;
+          const todayKey = localDate(now);
+          if (linkedSubject && isSubjectSleeping(linkedSubject, todayKey)) continue;
+
+          let reminderName = linkedSubject?.name ?? (typeof entry.subjectName === 'string' && entry.subjectName.trim() ? entry.subjectName : 'Class');
+          const override = linkedSubject ? overridesRef.current.find((item) => item.date === todayKey && item.originalSubjectId === linkedSubject.id && item.start === entry.startTime) : undefined;
+          if (override?.kind === 'cancelled') continue;
+          if (override?.kind === 'substitute' && override.substituteSubjectId) {
+            const replacement = currentSubjects.find((subject) => subject.id === override.substituteSubjectId);
+            if (replacement && !isSubjectSleeping(replacement, todayKey)) reminderName = replacement.name;
+          }
+
+          const offset = typeof entry.notifyOffset === 'number' && Number.isFinite(entry.notifyOffset) && entry.notifyOffset >= 0 && entry.notifyOffset <= 240 ? entry.notifyOffset : 10;
+          const notifyWhen = entry.notifyWhen === 'after' ? 'after' : 'before';
+          const startMin = toMin(entry.startTime), endMin = toMin(entry.endTime);
+          const trigger = notifyWhen === 'before' ? startMin - offset : endMin + offset;
+          const late = nowMinutes - trigger;
+          const firedKey = `${today}:${entry.id}`
+          if (late < 0 || late > GRACE_MIN || fired.ids.includes(entry.id) || firedInMemory.has(firedKey) || inFlight.has(firedKey)) continue
+
+          const timeStr = `${formatTime(entry.startTime)} - ${formatTime(entry.endTime)}`
+          inFlight.add(firedKey)
+          void show('Class Reminder', `${reminderName}\n${timeStr}\nTap to open the app.`)
+            .then((shown) => {
+              if (!shown) return
+              // Persist only after the browser accepted the notification request. Failed attempts may retry in the grace window.
+              firedInMemory.add(firedKey)
+              try {
+                const latest = readFired()
+                if (!latest.ids.includes(entry.id)) latest.ids.push(entry.id)
+                localStorage.setItem(FIRED_KEY, JSON.stringify(latest))
+              } catch {
+                // In-memory dedupe still prevents a duplicate during this page session.
+              }
+            })
+            .finally(() => inFlight.delete(firedKey))
         }
       };
 
@@ -118,65 +158,65 @@ Tap to open the app.`);
 
     // Initialize service worker and notifications
     const initNotifications = async () => {
-      const swRegistration = await registerServiceWorker();
-      if (swRegistration) {
-        const subscription = await swRegistration.pushManager.getSubscription();
-        setIsSubscribed(!!subscription);
+      try {
+        const swRegistration = await registerServiceWorker();
+        if (swRegistration) {
+          const subscription = await swRegistration.pushManager.getSubscription();
+          setIsSubscribed(!!subscription);
+        } else {
+          setIsSubscribed(false);
+        }
+      } catch (error) {
+        // Browser push APIs can reject in private browsing or unsupported contexts; don't leave an unhandled promise.
+        console.warn('Notification initialization is unavailable in this browser context.', error);
+        setIsSubscribed(false);
       }
     };
 
-    initNotifications();
+    void initNotifications();
   }, []);
 
   const enableNotifications = async () => {
     if (!notificationSupported) {
-      console.error('❌ Notifications not supported on this device')
-      alert('Your device does not support notifications');
-      return;
+      alert('Your device does not support notifications')
+      return
     }
 
     try {
-      console.log('📱 Step 1: Checking notification support...')
       if (!('Notification' in window)) {
-        console.error('❌ Notification API not available')
+        alert('This browser does not support notifications.')
         return
       }
 
-      console.log('📱 Step 2: Current permission:', Notification.permission)
-      
-      // If already granted, no need to request
-      if (Notification.permission === 'granted') {
-        console.log('✅ Permission already granted')
+      // Permission may have been granted on a previous visit before setup completed. In that case
+      // we must still register the worker and try FCM token setup rather than returning early.
+      const permission = Notification.permission === 'granted'
+        ? 'granted'
+        : await Notification.requestPermission()
+      setNotificationPermission(permission)
+      if (permission !== 'granted') {
+        setIsSubscribed(false)
+        alert(permission === 'denied'
+          ? 'Notifications are blocked. Allow them in this site’s browser settings, then try again.'
+          : 'Notification permission was not granted. You can enable it later in browser settings.')
         return
       }
 
-      // Request permission - this shows the browser prompt
-      console.log('📱 Step 3: Requesting permission from browser (this should show a prompt)...')
-      const permission = await Notification.requestPermission();
-      console.log('📱 Step 4: User responded with:', permission)
-
-      // Update state with new permission
-      setNotificationPermission(permission);
-
-      if (permission === 'granted') {
-        console.log('✅ Permission granted! Setting up notifications...')
-        // Register service worker
-        const swRegistration = await registerServiceWorker();
-        if (swRegistration) {
-          console.log('✅ Service worker registered')
-          // Try to subscribe to push notifications (optional, falls back to local)
-          const pushSubscription = await subscribeToPushNotifications();
-          setIsSubscribed(!!pushSubscription);
-          console.log('✅ Notifications enabled! Local notifications will work immediately.');
-        }
-      } else if (permission === 'default') {
-        console.log('ℹ️ User dismissed the prompt (permission: default)')
-      } else {
-        console.warn('⚠️ User denied notification permission')
-        alert('Notifications were blocked.\n\nTo enable them:\n1. Click the lock/info icon in the address bar\n2. Find "Notifications" and change it to "Allow"\n3. Come back and click Enable again');
+      const registration = await registerServiceWorker()
+      if (!registration) {
+        setIsSubscribed(false)
+        alert('Permission is enabled, but the service worker could not be registered. Local reminders may only work while this page is open.')
+        return
       }
+
+      const token = await subscribeToPushNotifications()
+      setIsSubscribed(!!token)
+      alert(token
+        ? 'Browser notifications are enabled and an FCM token is available. This does not guarantee background delivery; a configured Firebase sender and device testing are still required.'
+        : 'Browser notifications are enabled. No FCM token was obtained, so remote push delivery is not confirmed.')
     } catch (error) {
-      console.error('❌ Error enabling notifications:', error);
+      console.error('Error enabling notifications:', error)
+      alert('Could not finish notification setup. Check this site’s notification permission and try again.')
     }
   };
 

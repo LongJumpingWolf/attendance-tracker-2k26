@@ -191,3 +191,142 @@ BOOTSTRAP LIMITER FIX — IMPLEMENTED AND TESTED LOCALLY (24 new tests; Deno typ
 PRODUCTION / FLAGS / FIREBASE / VERCEL — UNCHANGED; APPLICATION BACKEND — STILL FIREBASE; ALL FLAGS OFF
 NEXT — owner review, then (with approval) commit and redeploy, then the production smoke tests in PHASE6E_LIMITER_FIX.md section 6
 ```
+
+## 16. Status update after the limiter fix was deployed and smoke-tested (supersedes section 15)
+
+```
+CURRENT MIGRATION STATUS:
+BOOTSTRAP FUNCTION — DEPLOYED, VERSION 2 (limiter fix, commit f08c412); ACTIVE; verify_jwt off
+PRODUCTION SMOKE (v2) — ESTABLISHED ACCOUNT: 150 PACED REQUESTS ALL 200 (162 s, no 429); GARBAGE BEARER 401; ACCOUNT STILL SERVED; FORGED ROLE CLAIMS 401
+STILL NOT RUN IN PRODUCTION — FIRST-TIME PER-ACCOUNT RATE LIMIT (needs a second account and separate authorization), EXPIRY, REVOCATION/DISABLED ERRORS, FUNCTION LOGS
+APPLICATION BACKEND — STILL FIREBASE; ALL BRIDGE / SHADOW / BACKEND FLAGS OFF; NO CUTOVER
+NEXT — see the Phase 7 audit recommendation (Realtime and mirroring are not built)
+```
+
+Section 15's statements "local only, uncommitted" and "deployed function is still version 1" are historical. Details: `PHASE6E_LIMITER_FIX.md` section 8.
+
+## 17. Status update: sign-in reconciliation and safe-replacement work (local only, uncommitted)
+
+```
+CURRENT STATE:
+SIGN-IN RECONCILIATION + SAFE REPLACEMENT (restore / restore point / reset / demo / uncertain writes) — IMPLEMENTED AND TESTED LOCALLY; NOT COMMITTED, NOT PUSHED, NOT DEPLOYED
+NOT PART OF THE MIGRATION: no backend, schema, rules, function, environment, flag, Firebase or Vercel change; stored document format unchanged
+APPLICATION BACKEND — STILL FIREBASE; ALL BRIDGE / SHADOW / BACKEND FLAGS OFF; PRODUCTION UNTOUCHED
+```
+
+Full description: `SIGNIN_RECONCILIATION.md`. HEAD is `f08c412`; the working tree also holds the uncommitted evidence edits to `PHASE6E_*` and `PHASE7_*` documents.
+
+**Protected files changed on purpose (hash pins updated by hand, key order kept):**
+* `hooks/use-cloud-sync.ts`: first-sign-in choice instead of a silent merge; write-ahead markers and revision-based settlement of uncertain writes; base and revision stored together (`syncBaseV2`); prompt identity; paused status. A product-behaviour change, not a migration change.
+* `lib/restore-points.ts`: **behaviour change.** (1) Tags-only and reminders-only copies are now saved (they used to count as empty and were silently not saved); one rule `holdsSomething`. (2) Points written before reminders/tags/mates were kept are read with empty lists and flagged `remindersKnown: false` instead of crashing the screen, and writes start from the stored list, never the normalised view, so an older point is never rewritten as something it was not. (3) Saves are serialized and read back, failing with `RestorePointError` (earlier, same file); the error message now tells the person to delete older restore points when storage is full. (4) `contents()` labels a point with tags, mates and reminders. `lib/merge.ts` and `lib/db.ts` are untouched.
+
+**Validation actually run on this tree:**
+* Full unit suite in a clean unlinked copy (`node scripts/test-unlinked.mjs`): **36 files, 848 / 848**. Baseline updated to these numbers only after that run was green.
+* `tsc --noEmit` clean; `eslint .` 0 errors, 75 warnings (baseline).
+* `migration-invariants` on the linked checkout: 55 pass, 1 environmental failure ("no remote link": `supabase/.temp/project-ref` exists because the checkout is linked to production). It passes in the clean copy. The link file was not touched.
+* **Not run:** browser E2E, the rules suite, `npm run build`, `npm run migration:health`. The e2e baseline entry `reconcile: 44` is inherited from an earlier run on an earlier design and has not been re-verified.
+
+NEXT — owner review of the diff; then (with approval) browser E2E, commit, and deploy. Open decision: the ambiguous-revision counter under-count needs a document-schema change to remove (see `SIGNIN_RECONCILIATION.md` section 4); nothing was done about it.
+
+## 18. Status update: background sync tied to the safety lock, bounded network waits (local only, uncommitted; supersedes the validation lines of section 17)
+
+```
+CURRENT STATE:
+SIGN-IN RECONCILIATION + SAFE REPLACEMENT — LOCAL ONLY, NOT COMMITTED, NOT PUSHED, NOT DEPLOYED
+THIS ROUND — background sync (pull / live listener / push / reconcile) now respects the operation lock, the demo and an epoch; sign-in reads and writes and reset's sign-out are time-bounded; restore verification no longer undoes a legitimate concurrent update; write-in-doubt markers keep a digest instead of the sent text; older restore points that never recorded tags or mates no longer wipe them
+APPLICATION BACKEND — STILL FIREBASE; ALL BRIDGE / SHADOW / BACKEND FLAGS OFF; PRODUCTION UNTOUCHED; STORED DOCUMENT FORMAT UNCHANGED
+FULL HEALTH (npm run migration:health, run on this tree) — HEALTHY: unit 37 files / 892 (clean unlinked copy), rules 64, typecheck ok, lint 0 errors / 75 warnings, e2e 8 suites / 247 (local mode, Firebase keys blanked), build ok
+```
+
+Details and reasoning: `SIGNIN_RECONCILIATION.md` sections 4, 5, 5b, 5c. The confirmed risks and their fixes:
+* **Background sync could write during a restore, reset or demo.** Fixed: every apply path checks owner, pause (prop or `isDemoLive()`), epoch and `lockHolder()` before and after its awaits and again immediately before applying; deferred data is retried on lock release and when a pause ends (no loop, nothing discarded). Markers are kept on deferral.
+* **Hung network calls.** Fixed: `cloudGet` 6 s and `cloudPut` 12 s bounds; reset's sign-out bounded at 8 s (refused before any wipe); the lock is released by `finally`, never expired while an operation is running. Without Firebase keys a local-only reset is possible; real sign-out failures still propagate.
+* **False revert.** Fixed: a restore is undone only if the data is still exactly what it applied, and the undo is verified before it is claimed.
+* **Marker storage.** Fixed: digest markers (compatible with old text markers).
+* **Legacy restore points** missing tags/mates are distinguishable from empty ones and no longer wipe current tags/mates.
+
+**Protected files changed (hashes hand-edited, key order kept):** `hooks/use-cloud-sync.ts` (now 14e054b0…) and `lib/restore-points.ts` (now 5cf7147f…; adds `tagsKnown`/`matesKnown`, still read-only normalisation). `lib/account.ts`, `lib/merge.ts` and `lib/db.ts` are untouched. Baseline raised to unit 37 files / 892 tests only after the clean-copy run was green.
+
+**Environmental:** `migration-invariants` run directly on this linked checkout fails one test ("no remote link", because `supabase/.temp/project-ref` exists); `migration:health` runs the unit suite on a clean unlinked copy, where it passes. The link file was not touched.
+
+**Still open:** the `N >= R+2` counter under-count needs a document-schema change and approval (section 4 of `SIGNIN_RECONCILIATION.md`). Nothing has been committed, pushed or deployed.
+
+## 19. Status update: first-connection upload race fixed (local only, uncommitted; supersedes the test counts and the hook hash in section 18)
+
+The first upload recorded the data as it was after the request (not the uploaded snapshot) as synced, so an edit made during the upload was never sent. Fixed in `hooks/use-cloud-sync.ts` via `settleFirstConnection` (`lib/signin-reconcile.ts`); 6 new tests in `tests/first-connection.test.ts`. Hook hash is now 74fab375…; baseline unit 38 files / 898 (clean unlinked copy, green). Typecheck clean, lint 0 errors / 75 warnings. After this change only the unit suite, typecheck and lint were re-run: rules, browser E2E and build were last run before it (section 18) and have not been repeated. Offline reset waiting 8 s with Firebase configured was assessed and left unchanged (`SIGNIN_RECONCILIATION.md` 5d). Nothing committed, pushed or deployed.
+
+## 20. Status update: sign-in choice edit-while-waiting fixed (local only, uncommitted; supersedes the counts and hook hash in section 19)
+
+`finalize` now records the verified snapshot through `connected()` and raises a push if the data changed while the choice waited on the network. Hook hash 4e5b09a1…; unit baseline 38 files / 904 (clean unlinked copy, green); typecheck clean; lint 0 errors / 75 warnings. Rules, browser E2E and build were last run before sections 19 and 20 and have not been repeated. Offline-reset shortcut assessed and not implemented (`SIGNIN_RECONCILIATION.md` 5e). Nothing committed, pushed or deployed.
+
+## 21. Status update: edits during a sign-in safety copy (local only, uncommitted) — and which validation record is current
+
+**Current validation record: `SIGNIN_RECONCILIATION.md` section 7.** Sections 17 to 20 above contain superseded figures (unit 36 / 848, 37 / 892, 38 / 898, 38 / 904 and earlier hook hashes). Current: unit baseline **38 files / 910 tests**; clean unlinked copy 910 / 910; linked checkout 909 passed + 1 known environmental failure (`migration-invariants` "no remote link", `supabase/.temp/project-ref` present, file untouched). `npm run migration:health` was re-run on this tree after the last code change: HEALTHY (rules 64, typecheck, lint 0 errors / 75 warnings, E2E 247 in local mode, build ok). The hook hash is the one in `tests/migration-protected.json` (4e5b09a1…; the hook was not changed this round).
+
+This round: `doMerge` and `doCloud` in `lib/signin-reconcile.ts` now retake the safety copy if the device's data changed while it was being saved (up to three tries, then `device-changed`), and `doMerge` verifies the applied merge on the device before uploading. 6 tests added. Nothing committed, pushed or deployed.
+
+## 22. Status update: Phase 8 Realtime, local only (uncommitted)
+
+```
+CURRENT MIGRATION STATUS:
+PHASE 8 REALTIME (sync document only) — BUILT AND TESTED LOCALLY; behind NEXT_PUBLIC_SUPABASE_REALTIME (off, unset everywhere); NOT used by the app; NOT applied to production
+LOCAL STACK EVIDENCE (this tree) — test:local-supabase 21/21 (16 earlier + 5 new Realtime), test:shadow-integration 14/14; both ran against the real local stack and the Firestore emulator
+FULL HEALTH (npm run migration:health, this tree) — HEALTHY: unit 39 files / 940 (clean unlinked copy), rules 64, typecheck ok, lint 0 errors / 75 warnings, e2e 8 suites / 247 (local mode), build ok
+APPLICATION BACKEND — STILL FIREBASE; ALL FLAGS OFF; PRODUCTION UNTOUCHED
+NEW MIGRATION FILE — supabase/migrations/20261011000100_realtime_syncs.sql: applied to the LOCAL database only; production needs explicit approval
+```
+
+Details: `PHASE8_REALTIME.md`. Protected files: none changed (hash pins verified). `lib/db.ts`, `lib/merge.ts`, `supabase/.temp/project-ref` untouched. Not started: Ping promotion, push-sender deployment, production shadow testing, any production flag.
+
+## 23. Status update: overnight run 1 (local only, uncommitted; supersedes the counts in section 22)
+
+```
+CURRENT MIGRATION STATUS:
+PHASE 8 REALTIME (sync document) — retry defect FIXED; owner isolation ENFORCED in sync.get; real local-stack proof for the sync core (not for the React hook itself)
+PHASE 9 SLICE — Ping/connection live lists by polling in the Supabase adapter (flagged, local); Ping state machine verified against the real local stack incl. authorization, expiry, lease takeover and concurrency; the app still uses Firebase Pings
+PHASE 10 SLICE — push dispatch decision logic + messages (pure, fake-tested, NOT deployed, not imported by the app)
+APPLICATION BACKEND — STILL FIREBASE; ALL FLAGS OFF; NO HOSTED / PRODUCTION CHANGE
+UNIT (clean unlinked copy) — 41 files / 980; LOCAL STACK — local-supabase 41/41, shadow-integration 14/14; rules 64 (on retry); typecheck ok; lint 0 errors / 74 warnings; build ok
+E2E — 6 of 8 suites pass; nav and value fail because the run was on a Monday (the week-wrapped bubble covers the percentage toast): date-dependent, not caused by this run, not control-verified. migration:health therefore reports UNHEALTHY.
+```
+
+Details: `PHASE8_REALTIME.md` section 6. Protected files: none changed (pins verified). No schema or migration added this run (the Realtime publication migration is from the previous run, local only).
+
+## 24. Status update: the real hook against local Supabase (test-only; local, uncommitted; supersedes the counts in section 23)
+
+```
+CURRENT MIGRATION STATUS:
+REAL useCloudSync HOOK vs LOCAL SUPABASE — PROVEN END TO END in a real browser (node scripts/run-hook-supabase.mjs: 48/48, three consecutive runs): Firebase Auth emulator sign-in, the real bootstrap handler, adapter, Realtime and RLS; cross-device convergence, conflict merge, Realtime recovery, failed-read recovery, sign-out and account-switch isolation
+TEST-ONLY WIRING — lib/firebase.ts (emulators only when both hosts are set to loopback in a non-production build); scripts/local-supabase-gateway.mjs (verifies emulator tokens and swaps in local-stack tokens; refuses to start unless everything is loopback); NOT enabled anywhere; lib/cloud-sync.ts unchanged
+APPLICATION BACKEND — STILL FIREBASE; ALL PRODUCTION FLAGS OFF; NO HOSTED / PRODUCTION CHANGE
+FULL HEALTH (npm run migration:health, this tree) — HEALTHY: unit 42 files / 998 (clean unlinked copy), rules 64, typecheck ok, lint 0 errors / 74 warnings, e2e 8 suites / 247, build ok
+LOCAL STACK — test:local-supabase 41/41, test:shadow-integration 14/14; hook suite 48/48
+DATE-DEPENDENT E2E (nav, value) — reproduced on a Monday with an unchanged control, cause = designed "week wrapped" bubble covering the toast, fixed in the two suites' seeding; both now pass
+```
+
+Details: `PHASE8_REALTIME.md` section 7. Protected files: none changed beyond the previously documented ones (pins verified); `lib/account.ts`, `lib/identity.ts`, `lib/db.ts`, `lib/merge.ts`, `firestore.rules`, `functions/`, `package.json` untouched. Two guard tests were updated on purpose: `phase6d-bootstrap-function` (the local gateway is the one script allowed to import the real handler).
+
+## 25. Status update: hosted-readiness assessment (local only, uncommitted; nothing hosted was touched)
+
+```
+HOSTED-READINESS — assessed in HOSTED_READINESS_PLAN.md: milestones M0-M10 with prerequisites, exact changes, local validation, approvals, rollback and measurable acceptance; separate decisions D1-D9 (the N>=R+2 counter semantics and the offline-reset behaviour are D1 and D2, UNCHANGED)
+LOCAL CHECKS DONE THIS ROUND — 13 migrations replay cleanly; the 13th = exactly one statement and idempotent; ~850 kB sync document still notifies through Realtime; the PROPOSED push outbox (proposals/push_outbox.sql, outside supabase/migrations) behaves as designed (tests/local-supabase/hosted-readiness.test.ts, 18 tests); a default production build has the emulator wiring compiled out and the Realtime code dormant
+LOCAL STACK — test:local-supabase 59/59 (5 files); unit baseline unchanged (42 files / 998)
+GAPS FOUND — G1 backend choice is global (no one-domain-at-a-time cutover yet); G2 flags are build-time (rollback = redeploy); G3 no reverse mirroring; G4 no persisted shadow report; G5 everything is uncommitted; G6 push needs a hosted secret + schema change (held behind a gate)
+APPLICATION BACKEND — STILL FIREBASE; NO HOSTED / PRODUCTION CONTACT; NO FLAG, SECRET, MIGRATION OR DEPLOYMENT
+NEXT — per-domain backend routing (local), then ask for the commit approval (M0)
+```
+
+## 26. Status update: M3a per-domain backend routing (local only, uncommitted)
+
+Firebase is still the default for every domain. `getDomainBackend(domain)` (sync, social, ping, push) with `NEXT_PUBLIC_BACKEND_SYNC/_SOCIAL/_PING/_PUSH` overriding the global value; unknown values throw; Supabase without configuration fails closed. Files: `lib/backend/index.ts`, `lib/cloud-sync.ts`, `lib/use-social.ts`, `tests/domain-routing.test.ts` (new, 17), `tests/hook-integration-guards.test.ts`, `scripts/e2e-hook-supabase.mjs` (only sync routed; asserts only sync tables reached Supabase), `scripts/local-supabase-gateway.mjs` (per-target counters), `scripts/migration-baseline.json` (43 files / 1015). Results: tsc clean; eslint 0 errors / 74 warnings; unit 43 files / 1015 (clean unlinked copy); test:local-supabase 59/59; test:shadow-integration 14/14; hook suite 49/49 with only sync on local Supabase; next build ok; migration:health HEALTHY (rules 64, e2e 247). Not verified: a social action in the browser while sync is routed (Mates tab froze the page in the emulator setup, not investigated). Nothing staged, committed, pushed or deployed; no hosted contact.
+
+## 27. Status update: M3a domain isolation proven in the browser (local only, uncommitted)
+
+**Mates-tab "freeze" diagnosis: not an app problem and not caused by M3a.** A CPU profile after opening Mates shows the page idle (about 3.7 s of 5 s) with a short QR-code render (about 300 ms in dev mode); the input appeared and the page answered every probe. The earlier hang was in the test: device A was a background tab (device B opened after it), and Puppeteer's `page.click` on an element in a tab that never paints waits forever (`Runtime.callFunctionOn timed out`). The fix is `bringToFront()` before the step and focusing the input directly. The first diagnostic attempt also hit one dev-server 404 that cleared on retry (not investigated further).
+
+**Change:** `scripts/e2e-hook-supabase.mjs` step 3b: on device A, open Mates, type a display name and press Enter (a real social-domain write). Checks: the name is stored in Firebase (Firestore emulator `users/<uid>`), and the gateway saw no request other than `syncs` / `rpc:sync_put`. `tests/hook-integration-guards.test.ts` gained 2 guards (the runner routes only `NEXT_PUBLIC_BACKEND_SYNC`, never the global value or another domain, and keeps the social checks).
+
+**Evidence.** Sync-only: `node scripts/run-hook-supabase.mjs` exit 0, 52/52; gateway targets `{"syncs":45,"rpc:sync_put":13}` and the profile name read back from the Firestore emulator. Negative control (runner temporarily set to global `NEXT_PUBLIC_BACKEND=supabase`, then restored): exit 1, 49/52; the three social checks failed, the name was absent from Firestore and the gateway saw `{"syncs":14,"rpc:sync_put":3,"rpc:upsert_profile":1}`. The static guard also fails on that mutated runner (1 failed / 19 passed) and passes on the restored one (20/20).
+
+**Validation:** tsc exit 0; eslint 0 errors / 74 warnings; unit (clean unlinked copy) 43 files / 1017; test:local-supabase 59/59; test:shadow-integration 14/14. `next build` and `migration:health` were not re-run after this change (only test code and the baseline changed; the previous run is in section 26). Nothing staged, committed, pushed or deployed; no hosted contact.

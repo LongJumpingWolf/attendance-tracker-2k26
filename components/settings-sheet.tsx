@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { ArrowsClockwise, BellRinging, Bell, CalendarPlus, CaretRight, CircleHalf, FloppyDisk, Sparkle, Tag, Trash } from "@phosphor-icons/react"
+import { ArrowsClockwise, BellRinging, Bell, CalendarPlus, CaretRight, CircleHalf, FloppyDisk, Sparkle, Tag, Trash, Info } from "@phosphor-icons/react"
 import Sheet, { Segmented, tintButton } from "./sheet"
 import { RemindersList, ReminderEditor } from "./settings-reminders"
 import ScanPanel from "./settings-scan"
@@ -11,13 +11,14 @@ import type { CloudSync } from "@/hooks/use-cloud-sync"
 import { isTestSubject } from "@/lib/scan-test"
 import { BackupPanel, NotificationsPanel, ResetPanel, TagsPanel } from "./settings-panels"
 import { entriesFromTimetable, loadSchedule, saveSchedule, type ScheduleEntry } from "@/lib/reminders"
-import type { BackupData } from "@/lib/backup-import"
+import type { RestoreRequest } from "@/lib/safe-replace"
 import { buildBackup, downloadText } from "@/lib/backup"
 import { localDate } from "@/lib/attendance"
 import { readTheme, setTheme, type ThemePref } from "@/lib/theme"
-import type { Mate, Subject, Task } from "@/lib/types"
+import type { Holiday, Mate, ScheduleOverride, Subject, Task } from "@/lib/types"
+import { TermsContent } from "./terms-gate"
 
-type Panel = "home" | "reminders" | "reminder-edit" | "notifications" | "tags" | "backup" | "reset" | "scan" | "sync"
+type Panel = "home" | "reminders" | "reminder-edit" | "notifications" | "tags" | "backup" | "reset" | "scan" | "sync" | "tips-terms"
 
 const TITLES: Record<Panel, string> = {
   home: "Settings",
@@ -29,6 +30,7 @@ const TITLES: Record<Panel, string> = {
   reset: "Reset all data",
   scan: "Scan check-in",
   sync: "Sync between browsers",
+  "tips-terms": "Tips, privacy & terms",
 }
 
 interface SettingsSheetProps {
@@ -36,12 +38,16 @@ interface SettingsSheetProps {
   onClose: () => void
   subjects: Subject[]
   tasks: Task[]
+  holidays?: Holiday[]
+  scheduleOverrides?: ScheduleOverride[]
   tags: string[]
   mates: Mate[]
   onAddTag: (tag: string) => void
   onDeleteTag: (tag: string) => void
-  onResetAllData: () => void
-  onImportData: (data: BackupData) => void
+  /** Resolves true only if the reset really happened (it says why, itself, when it did not) */
+  onResetAllData: () => Promise<boolean>
+  /** Resolves true only if the data was really replaced */
+  onImportData: (data: RestoreRequest) => Promise<boolean>
   notificationSupported: boolean
   notificationPermission: NotificationPermission | null
   onEnableNotifications: () => Promise<void>
@@ -53,7 +59,7 @@ interface SettingsSheetProps {
   onSimulateReply: () => void
   /** Pretend a mate is asking whether you marked them present */
   onSimulateIncoming: () => void
-  /** Pretend it's Monday: show the "week wrapped is ready" bubble */
+  /** Queue Weekly Wrapped for its normal Saturday release in the development build. */
   onSimulateWrapped: () => void
   /** Replay the first-run welcome tour */
   onShowWelcome: () => void
@@ -70,6 +76,11 @@ interface SettingsSheetProps {
   onTryDemo: () => void
   /** Puts your own data back */
   onExitDemo: () => void
+  startPanel?: "home" | "sync" | "tips-terms"
+  onResetConsent: () => void
+  onShowSyncNudge: () => void
+  onOpenFeedback: () => void
+  onPreviewFeedbackAnimation: () => void
 }
 
 function Row({
@@ -118,7 +129,7 @@ const label = "text-[12px] font-medium uppercase tracking-wider text-mute mb-2 p
 const icon = "w-5 h-5"
 
 export default function SettingsSheet(p: SettingsSheetProps) {
-  const [panel, setPanel] = useState<Panel>("home")
+  const [panel, setPanel] = useState<Panel>(p.startPanel ?? "home")
   const [showDev, setShowDev] = useState(false)
   const [schedule, setSchedule] = useState<ScheduleEntry[]>(loadSchedule)
   const [day, setDay] = useState(() => new Date().getDay())
@@ -134,10 +145,10 @@ export default function SettingsSheet(p: SettingsSheetProps) {
     if (p.isOpen) {
       setSchedule(loadSchedule())
       setThemeState(readTheme())
-      setPanel("home")
+      setPanel(p.startPanel ?? "home")
       setDay(new Date().getDay())
     }
-  }, [p.isOpen])
+  }, [p.isOpen, p.startPanel])
 
   const back = panel === "home" ? undefined : () => setPanel(panel === "reminder-edit" ? "reminders" : "home")
 
@@ -183,7 +194,7 @@ export default function SettingsSheet(p: SettingsSheetProps) {
   }
 
   const saveFullBackup = () => {
-    downloadText(`college-tracker-backup-${localDate()}.json`, buildBackup({ subjects: p.subjects, tasks: p.tasks, tags: p.tags, mates: p.mates, reminders: schedule }))
+    downloadText(`college-tracker-backup-${localDate()}.json`, buildBackup({ subjects: p.subjects, tasks: p.tasks, tags: p.tags, mates: p.mates, holidays: p.holidays ?? [], scheduleOverrides: p.scheduleOverrides ?? [], reminders: schedule }))
     p.onToast("Backup saved to your downloads")
   }
 
@@ -203,7 +214,9 @@ export default function SettingsSheet(p: SettingsSheetProps) {
   }
 
   return (
-    <Sheet open={p.isOpen} onClose={close} title={TITLES[panel]} onBack={back}>
+    <Sheet open={p.isOpen} onClose={close} title={TITLES[panel]} onBack={back}
+      headerActions={<button type="button" onClick={() => setPanel("tips-terms")} aria-label="Tips, privacy and terms" title="Tips, privacy and terms" className="w-8 h-8 grid place-items-center rounded-full bg-secondary text-mute hover:text-ink"><Info weight="bold" className="w-4 h-4"/></button>}>
+
       {panel === "home" && (
         <div className="space-y-6">
           <section>
@@ -314,9 +327,9 @@ export default function SettingsSheet(p: SettingsSheetProps) {
           </section>
 
           <section className="space-y-2">
-            <button onClick={then(p.onShowWelcome)} className="block text-[14px] text-mute px-1">
-              Show the welcome tour
-            </button>
+            <button onClick={p.onOpenFeedback} className="block text-[14px] text-mute px-1">Rate app / report a bug</button>
+            <button onClick={() => setPanel("tips-terms")} className="block text-[14px] text-mute px-1">Tips, privacy and terms</button>
+            <button onClick={then(p.onShowWelcome)} className="block text-[14px] text-mute px-1">Show the welcome tour</button>
             {DEV_TOOLS && (
               <button onClick={() => setShowDev(!showDev)} aria-expanded={showDev} className="block text-[14px] text-mute px-1">
                 {showDev ? "Hide" : "Show"} developer tools
@@ -339,9 +352,11 @@ export default function SettingsSheet(p: SettingsSheetProps) {
                 <button onClick={then(p.onSimulateIncoming)} className={`${tintButton} col-span-2`}>
                   Simulate a mate pinging you
                 </button>
-                <button onClick={then(p.onSimulateWrapped)} className={`${tintButton} col-span-2`}>
-                  Simulate &ldquo;week wrapped is ready&rdquo;
-                </button>
+                <button onClick={then(p.onSimulateWrapped)} className={`${tintButton} col-span-2`}>Queue Wrapped for Saturday</button>
+                <button onClick={p.onShowSyncNudge} className={`${tintButton} col-span-2`}>Test Google sync reminder</button>
+                <button onClick={p.onResetConsent} className={`${tintButton} col-span-2`}>Replay privacy and terms gate</button>
+                <button onClick={p.onPreviewFeedbackAnimation} className={`${tintButton} col-span-2`}>Preview developer thanks / bug-swat animation</button>
+                <a href="/developer-feedback" target="_blank" rel="noreferrer" className={`${tintButton} col-span-2`}>Open feedback dashboard</a>
               </div>
             )}
           </section>
@@ -392,16 +407,21 @@ export default function SettingsSheet(p: SettingsSheetProps) {
         <div className="space-y-6">
           <BackupPanel
             onSaveFull={saveFullBackup}
-            onImportData={(d) => {
-              if (d.full && d.reminders) setSchedule(d.reminders)
-              p.onImportData(d)
+            onImportData={async (d) => {
+              // The reminders are replaced only once the data was (after its safety copy); a refusal leaves them alone
+              const ok = await p.onImportData(d)
+              if (ok && d.full && d.reminders) setSchedule(d.reminders)
+              return ok
             }}
             onToast={(m) => p.onToast(m)}
           />
           <RestorePoints
-            onRestore={(d) => {
-              setSchedule(d.reminders)
-              p.onImportData({ ...d, full: true })
+            onRestore={async (d, known) => {
+              // A point saved before reminders / tags / mates were kept in it says nothing about them: those are left as they are
+              const unrecorded: ("tags" | "mates" | "holidays" | "scheduleOverrides")[] = [...(known.tags ? [] : (["tags"] as const)), ...(known.mates ? [] : (["mates"] as const)), ...(known.holidays ? [] : (["holidays"] as const)), ...(known.scheduleOverrides ? [] : (["scheduleOverrides"] as const))]
+              const ok = await p.onImportData({ ...d, full: known.reminders, unrecorded })
+              if (ok && known.reminders) setSchedule(d.reminders)
+              return ok
             }}
             onToast={(m) => p.onToast(m)}
           />
@@ -409,6 +429,8 @@ export default function SettingsSheet(p: SettingsSheetProps) {
       )}
 
       {panel === "sync" && <SyncPanel sync={p.sync} onToast={(m) => p.onToast(m)} />}
+
+      {panel === "tips-terms" && <div className="space-y-5"><p className="text-[14px] leading-relaxed text-mute">Keep a recent backup, confirm that sync completed on another device, and test notification permissions on the device where you need alerts.</p><TermsContent/><div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-2"><button onClick={p.onResetConsent} className={tintButton}>Show required notice again</button><button onClick={() => setPanel("sync")} className={`${tintButton} bg-ink text-paper`}>Set up Google sync</button></div></div>}
 
       {panel === "scan" && (
         <ScanPanel
@@ -427,9 +449,12 @@ export default function SettingsSheet(p: SettingsSheetProps) {
           tasks={p.tasks.length}
           tags={p.tags.length}
           mates={p.mates.length}
-          onReset={() => {
-            p.onResetAllData()
-            close()
+          onToast={(m) => p.onToast(m)}
+          onReset={async () => {
+            const ok = await p.onResetAllData()
+            if (ok) setSchedule([]) // the reminders on screen follow what is now stored: none
+            if (ok) close() // a refused reset stays open, with the reason shown
+            return ok
           }}
         />
       )}

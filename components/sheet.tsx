@@ -28,12 +28,14 @@ interface SheetProps {
   wide?: boolean
   /** When set, a back arrow shows before the title (for sheets that navigate between pages) */
   onBack?: () => void
+  /** Optional action placed immediately beside the close button. */
+  headerActions?: React.ReactNode
 }
 
 const openSheets: symbol[] = []
 
 /** Bottom sheet on phones, centred dialog on larger screens. */
-export default function Sheet({ open, onClose, title, children, wide, onBack }: SheetProps) {
+export default function Sheet({ open, onClose, title, children, wide, onBack, headerActions }: SheetProps) {
   // Escape closes only the sheet on top, not every sheet stacked beneath it
   useEffect(() => {
     if (!open) return
@@ -75,13 +77,16 @@ export default function Sheet({ open, onClose, title, children, wide, onBack }: 
             )}
             <h2 className="text-[22px] font-bold tracking-tight truncate">{title}</h2>
           </div>
-          <button
-            onClick={onClose}
-            aria-label="Close"
-            className="w-8 h-8 grid place-items-center rounded-full bg-secondary text-mute hover:text-ink"
-          >
-            <X weight="bold" className="w-4 h-4" />
-          </button>
+          <div className="flex items-center gap-2 flex-shrink-0">
+            {headerActions}
+            <button
+              onClick={onClose}
+              aria-label="Close"
+              className="w-8 h-8 grid place-items-center rounded-full bg-secondary text-mute hover:text-ink"
+            >
+              <X weight="bold" className="w-4 h-4" />
+            </button>
+          </div>
         </div>
         <div className="px-5 pb-[calc(1.5rem+env(safe-area-inset-bottom))]">{children}</div>
       </div>

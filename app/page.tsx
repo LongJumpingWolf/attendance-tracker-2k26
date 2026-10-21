@@ -9,8 +9,9 @@ import {
   sendLocalNotification,
   onMessageListener,
 } from "@/lib/notifications"
-import { getClientMessaging } from "@/lib/firebase"
-import type { Subject, Task, Mate, Ping, LogEntry } from "@/lib/types"
+import { getClientMessaging, getFirebaseVapidKey } from "@/lib/firebase"
+import { pushSetupMessage } from "@/lib/push-config"
+import type { Subject, Task, Mate, Ping, LogEntry, Holiday, ScheduleOverride } from "@/lib/types"
 import {
   getAttendance,
   localDate,
@@ -36,7 +37,10 @@ import { usePingEvents } from "@/lib/use-ping-events"
 import { usePingProcessing } from "@/lib/use-ping-processing"
 import { applyPingResult, resultIsSaved } from "@/lib/ping-apply"
 import PingEventView from "@/components/ping-event"
-import { loadSchedule } from "@/lib/reminders"
+import { loadSchedule, saveSchedule } from "@/lib/reminders"
+import { restoreFrom, resetEverything } from "@/lib/safe-replace"
+import { dataPersisted, resetIsComplete, RESET_DB_KEYS, RESET_LOCAL_KEYS } from "@/lib/replace-verify"
+import { BUSY_MESSAGE, setDemoLive, tryAcquire } from "@/lib/operation-lock"
 import { useSocial } from "@/lib/use-social"
 import { useCloudSync } from "@/hooks/use-cloud-sync"
 import BottomNav from "@/components/bottom-nav"
@@ -46,9 +50,13 @@ import Sheet, { tintButton } from "@/components/sheet"
 import TodayView, { type Banner } from "@/components/today-view"
 import SubjectsView from "@/components/subjects-view"
 import SubjectDetail from "@/components/subject-detail"
+import ClassChangeSheet from "@/components/class-change-sheet"
+import SleepSubjectSheet from "@/components/sleep-subject-sheet"
 import CalendarView from "@/components/calendar-view"
 import MatesView from "@/components/mates-view"
+import MatesAccessGate from "@/components/mates-access-gate"
 import SettingsSheet from "@/components/settings-sheet"
+import ReconcileSheet from "@/components/reconcile-sheet"
 import TimetableImportSheet from "@/components/timetable-import-sheet"
 import Onboarding from "@/components/onboarding"
 import ScanCheckIn, { type ScanState } from "@/components/scan-check-in"
@@ -60,6 +68,11 @@ import { pickScanTarget } from "@/lib/scan"
 import { buildTestSubjects, isTestSubject } from "@/lib/scan-test"
 import WrappedStory from "@/components/wrapped-story"
 import UndoToast, { type ToastState } from "@/components/undo-toast"
+import TermsGate, { CONSENT_VERSION } from "@/components/terms-gate"
+import FeedbackSheet from "@/components/feedback-sheet"
+import FeedbackNudge from "@/components/feedback-nudge"
+import FeedbackCelebration from "@/components/feedback-celebration"
+import FeedbackReplyWatcher from "@/components/feedback-reply-watcher"
 
 type Page = "today" | "subjects" | "calendar" | "mates"
 
@@ -78,6 +91,8 @@ export default function Home() {
   const [subjects, setSubjects] = useState<Subject[]>([])
   const [tasks, setTasks] = useState<Task[]>([])
   const [mates, setMates] = useState<Mate[]>([])
+  const [holidays, setHolidays] = useState<Holiday[]>([])
+  const [scheduleOverrides, setScheduleOverrides] = useState<ScheduleOverride[]>([])
   const [allTags, setAllTags] = useState<string[]>([])
   const [detailId, setDetailId] = useState<string | null>(null)
   const [loaded, setLoaded] = useState(false)
@@ -92,6 +107,10 @@ export default function Home() {
   const [confirmDeadline, setConfirmDeadline] = useState<{ kind: "done" | "delete"; task: Task } | null>(null)
   const [isMateOpen, setIsMateOpen] = useState(false)
   const [isSettingsOpen, setIsSettingsOpen] = useState(false)
+  const [settingsStartPanel, setSettingsStartPanel] = useState<"home" | "sync" | "tips-terms">("home")
+  const [consentReady, setConsentReady] = useState(false)
+  const [consentAccepted, setConsentAccepted] = useState(false)
+  const [showSyncNudge, setShowSyncNudge] = useState(false)
   const [isImportOpen, setIsImportOpen] = useState(false)
   const [scan, setScan] = useState<ScanState | null>(null)
   const scanBefore = useRef<{ id: string; date: string; t: string; prev: LogEntry | null } | null>(null) // the class a scan marked and what it was before, for Undo
@@ -103,10 +122,16 @@ export default function Home() {
   const scanMarks = useRef<{ id: string; date: string; t: string; k?: string }[]>([]) // marks made by scanning this visit
   const [isWrappedOpen, setIsWrappedOpen] = useState(false)
   const [isOnboardingOpen, setIsOnboardingOpen] = useState(false)
+  const [onboardingResolved, setOnboardingResolved] = useState(false)
+  const [classActionsTarget, setClassActionsTarget] = useState<import("@/components/class-action-menu").ClassActionTarget | null>(null)
+  const [sleepTarget, setSleepTarget] = useState<Subject | null>(null)
 
   const [toast, setToast] = useState<ToastState | null>(null)
+  const [showFeedback, setShowFeedback] = useState(false)
+  const [showFeedbackNudge, setShowFeedbackNudge] = useState(false)
+  const [feedbackCelebration, setFeedbackCelebration] = useState<"thanks" | "bug" | null>(null)
 
-  const { notificationSupported, notificationPermission, enableNotifications } = useNotifications()
+  const { notificationSupported, notificationPermission, enableNotifications } = useNotifications(subjects, scheduleOverrides)
   const social = useSocial()
   const [pendingLink, setPendingLink] = useState<{ kind: "add" | "invite"; value: string } | null>(null)
 
@@ -116,11 +141,13 @@ export default function Home() {
   useEffect(() => {
     let alive = true
     void (async () => {
-      const [savedSubjects, savedTasks, savedTags, savedMates] = await Promise.all([
+      const [savedSubjects, savedTasks, savedTags, savedMates, savedHolidays, savedOverrides] = await Promise.all([
         dbGet<Subject[]>("subjects"),
         dbGet<Task[]>("tasks"),
         dbGet<string[]>("tags"),
         dbGet<Mate[]>("mates"),
+        dbGet<Holiday[]>("holidays"),
+        dbGet<ScheduleOverride[]>("scheduleOverrides"),
       ])
       if (!alive) return
       if (Array.isArray(savedSubjects)) {
@@ -130,6 +157,8 @@ export default function Home() {
       if (Array.isArray(savedTasks)) setTasks(savedTasks)
       if (Array.isArray(savedTags)) setAllTags(savedTags)
       if (Array.isArray(savedMates)) setMates(savedMates)
+      if (Array.isArray(savedHolidays)) setHolidays(savedHolidays)
+      if (Array.isArray(savedOverrides)) setScheduleOverrides(savedOverrides)
 
       // Habit tracker, to-do list and tutorial were removed; drop their leftovers
       for (const key of ["todos", "binTodos", "binClearDate", "habits", "tutorialSeen"]) localStorage.removeItem(key)
@@ -141,6 +170,12 @@ export default function Home() {
     return () => {
       alive = false
     }
+  }, [])
+
+  useEffect(() => {
+    try { setConsentAccepted(localStorage.getItem(CONSENT_VERSION) === "1") }
+    catch { setConsentAccepted(false) }
+    setConsentReady(true)
   }, [])
 
   useEffect(() => {
@@ -156,17 +191,23 @@ export default function Home() {
   // Only write after the initial load so we never overwrite saved data with empty state. Never while the demo is on
   // screen: demo data lives in memory only, so closing the tab mid-demo leaves your own data exactly as it was.
   useEffect(() => {
-    if (loaded && !demoActive) void dbSet("subjects", subjects)
+    if (loaded && consentReady && consentAccepted && !demoActive) void dbSet("subjects", subjects)
   }, [subjects, loaded, demoActive])
   useEffect(() => {
-    if (loaded && !demoActive) void dbSet("tasks", tasks)
+    if (loaded && consentReady && consentAccepted && !demoActive) void dbSet("tasks", tasks)
   }, [tasks, loaded, demoActive])
   useEffect(() => {
-    if (loaded && !demoActive) void dbSet("tags", allTags)
+    if (loaded && consentReady && consentAccepted && !demoActive) void dbSet("tags", allTags)
   }, [allTags, loaded, demoActive])
   useEffect(() => {
-    if (loaded && !demoActive) void dbSet("mates", mates)
+    if (loaded && consentReady && consentAccepted && !demoActive) void dbSet("mates", mates)
   }, [mates, loaded, demoActive])
+  useEffect(() => {
+    if (loaded && consentReady && consentAccepted && !demoActive) void dbSet("holidays", holidays)
+  }, [holidays, loaded, demoActive])
+  useEffect(() => {
+    if (loaded && consentReady && consentAccepted && !demoActive) void dbSet("scheduleOverrides", scheduleOverrides)
+  }, [scheduleOverrides, loaded, demoActive])
 
   // ---------- friend connections ----------
   // Opening someone's QR code or link lands here as ?add=<id> or ?invite=<token>
@@ -182,33 +223,9 @@ export default function Home() {
   }, [])
 
   useEffect(() => {
-    if (currentPage === "mates") social.enable()
+    if (consentReady && consentAccepted && currentPage === "mates") social.enable()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentPage])
-
-  useEffect(() => {
-    if (!pendingLink) return
-    if (!social.configured) {
-      setToast({ id: Date.now(), message: "Friend connections aren't set up in this app yet." })
-      setPendingLink(null)
-      return
-    }
-    social.enable()
-    if (social.status !== "ready" || !social.name) return // waits for sign-in and for a name
-    const link = pendingLink
-    setPendingLink(null)
-    const run = link.kind === "add" ? social.connectViaUid(link.value) : social.connectViaInvite(link.value)
-    run
-      .then((r) =>
-        setToast({
-          id: Date.now(),
-          // A browser with no Google account keeps this connection on this browser only
-          message: r.ok && social.anonymous && social.uid && !social.uid.startsWith("mock-") ? `${r.message} Sign in with Google in Settings to keep your mates on all your devices.` : r.message,
-        }),
-      )
-      .catch(() => setToast({ id: Date.now(), message: "Couldn't send the request. Try again." }))
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pendingLink, social.status, social.name])
+  }, [currentPage, consentReady, consentAccepted])
 
   // Accepted connections appear in the favour ledger
   useEffect(() => {
@@ -234,6 +251,11 @@ export default function Home() {
   // down. Here the answers you receive are applied to your own data, safely: see lib/ping-processing.ts.
   const demoActiveRef = useRef(false)
   demoActiveRef.current = demoActive
+  // The data as it is right now. Handlers that wait (a safety copy is being saved) must not act on the render they were made in.
+  const latest = useRef({ subjects, tasks, tags: allTags, mates, holidays, scheduleOverrides })
+  useEffect(() => {
+    latest.current = { subjects, tasks, tags: allTags, mates, holidays, scheduleOverrides }
+  })
 
   /**
    * Applies an answer to this device's data and confirms it is really saved before saying so. It may run more than once
@@ -253,25 +275,23 @@ export default function Home() {
     return resultIsSaved(saved, r, p)
   }
   usePingProcessing({
-    pings: social.sent,
-    enabled: loaded && !demoActive,
+    // Anonymous accounts may still use one-time WhatsApp/share links, but direct in-app Pings require Google sign-in.
+    pings: social.sent.filter((ping) => !social.anonymous || !!ping.shareLink),
+    enabled: loaded && consentReady && consentAccepted && !demoActive,
     deps: { lease: social.leasePing, apply: applyDurably, finalize: social.finalizePing },
   })
 
   // ---------- weekly wrapped ----------
-  // From each Monday the previous week's wrapped is "due" (if you marked anything in it), until you open it.
+  // Weekly Wrapped is exposed in the Quick WhatsApp Ping section on Saturdays only.
   const [wrappedSeen, setWrappedSeen] = useState<string | null | undefined>(undefined)
   const [wrappedForce, setWrappedForce] = useState(false) // set by the Settings simulator
   useEffect(() => {
     if (loaded) setWrappedSeen(localStorage.getItem("wrappedSeenWeek"))
   }, [loaded])
 
+  const saturdayRelease = new Date().getDay() === 6
   const lastWeek = loaded ? lastWeekInfo(subjects) : null
-  const wrappedDue = !!lastWeek && wrappedSeen !== undefined && (wrappedForce || (lastWeek.hasData && wrappedSeen !== lastWeek.key))
-  const wrappedNotice =
-    wrappedDue && lastWeek && currentPage !== "mates"
-      ? { key: `wrapped-${lastWeek.key}${wrappedForce ? "-demo" : ""}`, initial: "\u2605", text: "Your week wrapped is ready" }
-      : null
+  const wrappedDue = saturdayRelease && !!lastWeek && wrappedSeen !== undefined && (wrappedForce || (lastWeek.hasData && wrappedSeen !== lastWeek.key))
 
   const openWrapped = () => {
     setIsWrappedOpen(true)
@@ -287,11 +307,16 @@ export default function Home() {
   useEffect(() => {
     if (!loaded) return
     try {
-      if (localStorage.getItem("onboardingDone")) return
+      if (localStorage.getItem("onboardingDone")) {
+        setOnboardingResolved(true)
+        return
+      }
       if (subjects.length === 0 && mates.length === 0) setIsOnboardingOpen(true)
       else localStorage.setItem("onboardingDone", "1")
     } catch {
       /* private mode: skip the tour rather than show it every time */
+    } finally {
+      setOnboardingResolved(true)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loaded])
@@ -316,7 +341,7 @@ export default function Home() {
   // Shown wherever you are in the app, on opening it, and when a notification is tapped (/?ping=<id>).
   const pingEvents = usePingEvents({
     social,
-    enabled: loaded && !demoActive,
+    enabled: loaded && consentReady && consentAccepted && !demoActive,
     onNotice: (m) => showToast(m),
   })
 
@@ -346,7 +371,8 @@ export default function Home() {
   // A scanned QR code or tapped NFC tag opens the app at /scan (see next.config.mjs). Marking present here, and only
   // here, plays the check-in celebration.
   const scanMark = (target: ClassSlot, result: ScanState["result"], from: Subject[] = subjects) => {
-    const before = from.find((x) => x.id === target.subject.id)
+    const attendanceTarget = target.attendanceSubject ?? target.subject
+    const before = from.find((x) => x.id === attendanceTarget.id)
     if (!before) return
     scanBefore.current = { id: before.id, date: localDate(), t: target.slot.start, prev: entryFor(before, localDate(), target.slot.start) }
     scanMarks.current.push({ id: before.id, date: localDate(), t: target.slot.start, k: target.slot.kind })
@@ -365,8 +391,8 @@ export default function Home() {
 
   // Data kept in step across browsers through a sync code
   const sync = useCloudSync({
-    loaded,
-    data: { subjects, tasks, tags: allTags, mates },
+    loaded: loaded && consentReady && consentAccepted,
+    data: { subjects, tasks, tags: allTags, mates, holidays, scheduleOverrides },
     paused: demoActive, // demo data must never overwrite, or be overwritten by, the real synced copy
     apply: (d) => {
       // A scan does not wait for sync. If the synced copy arrives afterwards without that mark, put it back.
@@ -380,9 +406,74 @@ export default function Home() {
       setTasks(d.tasks)
       setAllTags(d.tags)
       setMates(d.mates)
+      if (d.holidays !== undefined) setHolidays(d.holidays)
+      if (d.scheduleOverrides !== undefined) setScheduleOverrides(d.scheduleOverrides)
     },
     notify: (m) => showToast(m),
   })
+
+  // Do not consume connection links until the same Google-backed account used for sync is active.
+  // Keep the pending link intact behind the Mates sign-in gate so the invitation can be completed after sign-in.
+  useEffect(() => {
+    if (!consentReady || !consentAccepted || !pendingLink || !sync.account) return
+    if (!social.configured) {
+      setToast({ id: Date.now(), message: "Friend connections aren't set up in this app yet." })
+      setPendingLink(null)
+      return
+    }
+    if (social.status !== "ready" || !social.name || social.anonymous) return
+    const link = pendingLink
+    setPendingLink(null)
+    const run = link.kind === "add" ? social.connectViaUid(link.value) : social.connectViaInvite(link.value)
+    run
+      .then((r) => setToast({ id: Date.now(), message: r.message }))
+      .catch(() => setToast({ id: Date.now(), message: "Couldn't send the request. Try again." }))
+  }, [pendingLink, sync.account, social.configured, social.status, social.name, social.anonymous, social.uid])
+
+  // Remind established users once they've had the app for two days. Existing installations without a timestamp
+  // are treated as established; cloud sync is promoted only when a sync backend is configured.
+  useEffect(() => {
+    if (!loaded || !consentReady || !consentAccepted) return
+    const evaluate = () => {
+      try {
+        const now = Date.now()
+        let firstUsed = Number(localStorage.getItem("attendance-first-used-at") || 0)
+        if (!firstUsed) {
+          const existingData = subjects.length + tasks.length + mates.length > 0
+          firstUsed = existingData ? now - 3 * 86400000 : now
+          localStorage.setItem("attendance-first-used-at", String(firstUsed))
+        }
+        const dismissedAt = Number(localStorage.getItem("attendance-sync-nudge-dismissed-at") || 0)
+        const backendAvailable = sync.kind === "firebase" || sync.kind === "dev"
+        const eligible = backendAvailable && !sync.account && now - firstUsed >= 2 * 86400000 && now - dismissedAt >= 7 * 86400000
+        setShowSyncNudge(eligible)
+        if (sync.account) setShowSyncNudge(false)
+      } catch {
+        // Private mode may disable localStorage; never block the app because a reminder could not be saved.
+      }
+    }
+    evaluate()
+    const timer = window.setInterval(evaluate, 60_000)
+    return () => window.clearInterval(timer)
+  }, [loaded, consentReady, consentAccepted, subjects.length, tasks.length, mates.length, sync.kind, sync.account])
+
+  // Ask for a rating or bug report after roughly a day and a half of real use. The prompt is dismissible and Settings
+  // always provides a permanent entry point. Existing installations are treated as established, like the sync reminder.
+  useEffect(() => {
+    if (!loaded || !consentReady || !consentAccepted) return
+    try {
+      const now = Date.now()
+      let firstUsed = Number(localStorage.getItem("attendance-first-used-at") || 0)
+      if (!firstUsed) {
+        const existingData = subjects.length + tasks.length + mates.length > 0
+        firstUsed = existingData ? now - 3 * 86400000 : now
+        localStorage.setItem("attendance-first-used-at", String(firstUsed))
+      }
+      const dismissed = localStorage.getItem("attendance-feedback-prompt-dismissed") === "1"
+      const submitted = localStorage.getItem("attendance-feedback-submitted") === "1"
+      setShowFeedbackNudge(!dismissed && !submitted && now - firstUsed >= 36 * 60 * 60 * 1000)
+    } catch { /* Feedback is optional; private storage restrictions must not affect the tracker. */ }
+  }, [loaded, consentReady, consentAccepted, subjects.length, tasks.length, mates.length])
 
   // Scanner apps often open the link in a temporary browser that forgets everything. Before marking anything there, try to
   // hand the scan to the real browser, once; the gate screen offers the same by button if that didn't happen.
@@ -406,7 +497,7 @@ export default function Home() {
   // A scan marks straight away when this browser already has a timetable, and syncs in the background. Only a browser
   // with nothing in it waits, because the synced copy is the only place a timetable can come from.
   useEffect(() => {
-    if (!loaded || scanHandled.current || scanGate) return
+    if (!loaded || !consentReady || !consentAccepted || scanHandled.current || scanGate) return
     if (subjects.length === 0 && !sync.ready) return
     const params = new URLSearchParams(window.location.search)
     if (!params.has("scan")) return
@@ -414,12 +505,12 @@ export default function Home() {
     window.history.replaceState(null, "", window.location.pathname) // a refresh must not mark a second time
     runScan()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [loaded, sync.ready, subjects.length, scanGate])
+  }, [loaded, consentReady, consentAccepted, sync.ready, subjects.length, scanGate])
 
 
   /** What a scan does: pick the class that fits this moment and mark it, or ask */
   const runScan = () => {
-    const result = pickScanTarget(subjects, new Date())
+    const result = pickScanTarget(subjects, new Date(), scheduleOverrides)
     if (result.kind === "mark") return scanMark(result.target, result)
     // A newcomer with nothing set up is shown the welcome tour, which is already open, rather than an empty scan screen
     let newcomer = false
@@ -483,24 +574,39 @@ export default function Home() {
     setSubjects(subjects.map((s) => ({ ...s, tags: s.tags.filter((tag) => tag !== tagToDelete) })))
   }
 
-  const handleResetAllData = async () => {
-    // A reset is deliberate, but a copy is kept under Settings > Backup & restore in case it was a slip
-    await saveRestorePoint("Before reset", { subjects, tasks, tags: allTags, mates, reminders: loadSchedule() })
+  const currentBackup = () => ({ ...latest.current, reminders: loadSchedule() })
+  // Read at the moment of asking, and set the instant the demo starts or ends (not when React next renders)
+  const demoIsActive = () => demoActiveRef.current
+
+  /** Resolves true only if the reset really happened. A copy is kept under Settings > Backup & restore in case it was a slip. */
+  const handleResetAllData = async (): Promise<boolean> => {
+    const r = await resetEverything({
+      current: currentBackup,
+      saveRestorePoint,
+      demoActive: demoIsActive,
+      signOut: () => sync.signOut(), // a reset must not wipe the copy your other browsers rely on: sign out BEFORE wiping, or refuse
+      clear: clearEverything,
+      isCleared: resetIsComplete,
+    })
+    if (!r.ok) showToast(r.message) // never reset what could not be kept
+    return r.ok
+  }
+
+  const clearEverything = () => {
     setSubjects([])
     setTasks([])
     setAllTags([])
     setMates([])
+    setHolidays([])
+    setScheduleOverrides([])
     demoSnapshot.current = null
+    demoActiveRef.current = false
+    setDemoLive(false)
     setDemoActive(false)
     setDemoTourOpen(false)
-    void sync.signOut() // a reset must not wipe the copy your other browsers rely on
     // Everything this device keeps: data, reminders, ping records, seen-bubbles and the first-run flag (the theme stays)
-    for (const key of [
-      "subjects", "tasks", "tags", "mates", "notificationSchedule", "pingSeenIds", "appliedPings", "pingPresented", "pingSendKeys",
-      "wrappedSeenWeek", "demo-pings", "mock-pings", "subjectsView", "onboardingDone",
-    ])
-      localStorage.removeItem(key)
-    for (const key of ["subjects", "tasks", "tags", "mates", "syncBase"]) void dbDel(key)
+    for (const key of RESET_LOCAL_KEYS) localStorage.removeItem(key)
+    return Promise.all(RESET_DB_KEYS.map((key) => dbDel(key))).then(() => undefined)
   }
 
   // ---------- deadlines ----------
@@ -539,23 +645,25 @@ export default function Home() {
   // ---------- developer tools (in Settings) ----------
   const testNotificationSetup = async () => {
     try {
+      if (!("Notification" in window)) return alert("This browser does not support notifications.")
       await enableNotifications()
-      await registerServiceWorker()
+      if (Notification.permission !== "granted") return alert("Notifications are not enabled. Allow them in this site's browser settings and try again.")
+      const registration = await registerServiceWorker()
+      if (!registration) return alert("The service worker could not be registered. Background push isn't ready on this browser.")
       const subscription = await subscribeToPushNotifications()
-      if (subscription) {
-        alert("FCM token obtained. Notifications will be sent automatically at scheduled times.")
-      } else {
-        await sendLocalNotification("Test Notification", { body: "Local notification test - FCM not available" })
-        alert("Local notification shown (FCM not available)")
-      }
+      await sendLocalNotification("Attendance Tracker test", { body: "This device accepted a local notification request." })
+      alert(subscription
+        ? "Local notification requested and an FCM token is available. Remote Ping alerts still depend on the configured server sender. Scheduled class reminders may pause when the app is backgrounded or closed."
+        : "Local notification requested, but no FCM token was obtained. Remote Ping alerts are not confirmed. Scheduled class reminders may pause when the app is backgrounded or closed.")
     } catch (err) {
       console.error("Test notification error", err)
-      alert("Failed to set up notifications: " + (err instanceof Error ? err.message : String(err)))
+      alert("Failed to test notifications: " + (err instanceof Error ? err.message : String(err)))
     }
   }
 
   const testFcmToken = async () => {
     try {
+      if (!("Notification" in window)) return alert("Notifications are not supported in this browser")
       if (!("serviceWorker" in navigator)) return alert("Service Workers not supported in this browser")
       if (!("PushManager" in window)) return alert("Push notifications not supported in this browser")
 
@@ -563,32 +671,30 @@ export default function Home() {
       if (permission === "default") permission = await Notification.requestPermission()
       if (permission !== "granted") return alert("Notification permission denied")
 
-      const registration = await navigator.serviceWorker.register("/sw.js", { scope: "/", updateViaCache: "none" })
-      await navigator.serviceWorker.ready
+      const vapidKey = getFirebaseVapidKey()
+      if (!vapidKey) {
+        alert("Web Push VAPID public key is missing. In Firebase Console open Project settings → Cloud Messaging → Web Push certificates, then set the PUBLIC key as NEXT_PUBLIC_FIREBASE_VAPID_KEY in .env.local and restart the dev server.")
+        return
+      }
+      await navigator.serviceWorker.register("/sw.js", { scope: "/", updateViaCache: "none" })
+      const registration = await navigator.serviceWorker.ready
+      if (!registration.active) return alert("The service worker is not active yet. Refresh the page and retry.")
 
       const messaging = await getClientMessaging()
-      if (!messaging) return alert("Messaging not supported")
+      if (!messaging) return alert("Firebase messaging is not supported in this browser, or this project is configured to use local emulators.")
 
       const { getToken } = await import("firebase/messaging")
-      const token = await getToken(messaging, {
-        vapidKey: process.env.NEXT_PUBLIC_FIREBASE_VAPID_KEY,
-        serviceWorkerRegistration: registration,
-      })
+      const token = await getToken(messaging, { vapidKey, serviceWorkerRegistration: registration })
 
       if (token) {
-        console.log("FCM Token:", token)
-        alert(`FCM Token obtained!\nCheck console for full token.\n\nToken preview: ${token.substring(0, 50)}...`)
+        // FCM registration tokens are private device endpoints; never print or display the token itself.
+        alert("FCM token obtained. This confirms browser token registration only; server-side/background delivery must be configured and tested separately.")
       } else {
-        alert("No FCM token received")
+        alert("No FCM token received. Local reminders may still work while the app is open.")
       }
-    } catch (error: any) {
-      console.error("Error getting FCM token:", error)
-      let errorMsg = error?.message || "Unknown error"
-      if (errorMsg.includes("push service error")) {
-        errorMsg =
-          "Push service error - This may happen on localhost.\n\nTry:\n1. Use Chrome/Edge\n2. Check Firebase Console for valid VAPID key\n3. Test on HTTPS domain"
-      }
-      alert("Error: " + errorMsg)
+    } catch (error: unknown) {
+      console.warn("FCM test could not register remote push.")
+      alert(pushSetupMessage(error))
     }
   }
 
@@ -632,7 +738,8 @@ export default function Home() {
     const pick = classesOn(subjects, new Date())[0]
     const subject = pick?.subject ?? subjects[0]
     if (!subject) return [{ key: "demo@", subjectId: "demo", name: "Database Systems" }]
-    return [{ key: `${subject.id}@${pick?.slot.start ?? ""}`, subjectId: subject.id, name: subject.name, ...(pick ? { t: pick.slot.start } : {}) }]
+    const displayName = pick?.override?.kind === "substitute" ? `${pick.attendanceSubject?.name ?? pick.originalSubjectName} (held as ${pick.subject.name})` : subject.name
+    return [{ key: `${pick?.attendanceSubject?.id ?? subject.id}@${pick?.slot.start ?? ""}`, subjectId: pick?.attendanceSubject?.id ?? subject.id, name: displayName, ...(pick ? { t: pick.slot.start, ...(pick.override?.kind === "substitute" ? { substituted: true } : {}) } : {}) }]
   }
   const demoMateName = () => mates.find((m) => m.uid)?.name ?? mates[0]?.name ?? "Arjun"
 
@@ -648,7 +755,7 @@ export default function Home() {
     setCurrentPage((p) => (p === "mates" ? "today" : p))
   }
 
-  /** Dummy trigger (Settings > Developer tools): make the weekly wrapped bubble appear as if it were Monday */
+  /** Developer-only trigger; the Wrapped card remains gated to Saturday by wrappedDue. */
   const simulateWrapped = () => {
     setWrappedForce(true)
     setCurrentPage((p) => (p === "mates" ? "today" : p))
@@ -678,20 +785,27 @@ export default function Home() {
    *  data is snapshotted first and put back exactly as it was on Exit demo. Demo data is never written to storage
    *  (see the persistence effects) and sync is paused, so it reaches neither this device's saved data nor the cloud. */
   const startDemo = () => {
-    demoSnapshot.current = { subjects, tasks, tags: allTags, mates }
+    const release = tryAcquire("demo")
+    if (!release) return showToast(BUSY_MESSAGE) // a restore or reset is replacing the data right now
+    demoSnapshot.current = { subjects: latest.current.subjects, tasks: latest.current.tasks, tags: latest.current.tags, mates: latest.current.mates }
     const demo = buildDemoData(new Date())
     setSubjects(demo.subjects)
     setTasks(demo.tasks)
     setAllTags(demo.tags)
     setMates(demo.mates)
     setDetailId(null)
+    demoActiveRef.current = true // at once: a restore or reset that asks next must already see it
+    setDemoLive(true) // and background sync, whose paused option only changes on the next render
     setDemoActive(true)
     setCurrentPage("today")
     setIsSettingsOpen(false)
     setDemoTourOpen(true)
+    release()
   }
 
   const exitDemo = () => {
+    const release = tryAcquire("demo")
+    if (!release) return showToast(BUSY_MESSAGE)
     const snap = demoSnapshot.current
     if (snap) {
       setSubjects(snap.subjects)
@@ -700,9 +814,12 @@ export default function Home() {
       setMates(snap.mates)
     }
     demoSnapshot.current = null
+    demoActiveRef.current = false
+    setDemoLive(false)
     setDemoActive(false)
     setDemoTourOpen(false)
     showToast("Demo ended. Your own data is back.")
+    release()
   }
   const openSubject = (id: string) => {
     setCurrentPage("subjects")
@@ -715,7 +832,7 @@ export default function Home() {
       ? { label: "Add subject", run: () => setIsAddOpen(true) }
       : currentPage === "calendar"
         ? { label: "Add deadline", run: () => openDeadline(null, localDate()) }
-        : currentPage === "mates"
+        : currentPage === "mates" && !!sync.account
           ? { label: "Add mate", run: () => setIsMateOpen(true) }
           : null
 
@@ -726,7 +843,7 @@ export default function Home() {
         ? `${subjects.length} ${subjects.length === 1 ? "subject" : "subjects"}`
         : currentPage === "calendar"
           ? `${tasks.filter((t) => !t.done).length} open`
-          : `${mates.length} ${mates.length === 1 ? "mate" : "mates"}`
+          : sync.account ? `${mates.length} ${mates.length === 1 ? "mate" : "mates"}` : "Sign in required"
 
   // Home-screen shortcuts: /?go=mates opens a tab, /?mark=next marks the class that has started and isn't marked yet
   const pendingMark = useRef(false)
@@ -747,8 +864,8 @@ export default function Home() {
     const now = new Date()
     const nowMin = now.getHours() * 60 + now.getMinutes()
     const today = localDate(now)
-    const next = classesOn(subjects, now).find((c) => markFor(c.subject, today, c.slot.start) === null && toMin(c.slot.start) <= nowMin)
-    if (next) setToday(next.subject.id, today, "P", { t: next.slot.start, k: next.slot.kind })
+    const next = classesOn(subjects, now, scheduleOverrides).find((c) => markFor(c.attendanceSubject ?? c.subject, today, c.slot.start) === null && toMin(c.slot.start) <= nowMin && !c.cancelled)
+    if (next) setToday((next.attendanceSubject ?? next.subject).id, today, "P", { t: next.slot.start, k: next.slot.kind })
     else showToast("No unmarked class right now")
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loaded])
@@ -780,7 +897,7 @@ export default function Home() {
                   <Plus weight="regular" className="w-[22px] h-[22px]" />
                 </button>
               )}
-              <button onClick={() => setIsSettingsOpen(true)} aria-label="Settings" className={iconButton}>
+              <button onClick={() => { setSettingsStartPanel("home"); setIsSettingsOpen(true) }} aria-label="Settings" className={iconButton}>
                 <GearSix weight="regular" className="w-[22px] h-[22px]" />
               </button>
             </div>
@@ -791,6 +908,9 @@ export default function Home() {
           {currentPage === "today" && (
             <TodayView
               subjects={subjects}
+              scheduleOverrides={scheduleOverrides}
+              onClassActions={(target) => setClassActionsTarget(target)}
+              onSleep={(subject) => setSleepTarget(subject)}
               mates={mates}
               tasks={tasks}
               banner={banner}
@@ -805,13 +925,17 @@ export default function Home() {
             (detailSubject ? (
               <SubjectDetail
                 subject={detailSubject}
+                allSubjects={subjects}
+                scheduleOverrides={scheduleOverrides}
+                onClassActions={(target) => setClassActionsTarget(target)}
+                onSleep={(subject) => setSleepTarget(subject)}
                 onBack={() => setDetailId(null)}
                 onSet={(date, status, meta) => setToday(detailSubject.id, date, status, meta)}
                 onEdit={() => setEditingSubjectId(detailSubject.id)}
                 onPlan={(date, value) => setPlan(detailSubject.id, date, value)}
               />
             ) : (
-              <SubjectsView subjects={subjects} onOpen={openSubject} onAdd={() => setIsAddOpen(true)} onImport={() => setIsImportOpen(true)} />
+              <SubjectsView subjects={subjects} onOpen={openSubject} onAdd={() => setIsAddOpen(true)} onImport={() => setIsImportOpen(true)} onSleep={(subject) => setSleepTarget(subject)} />
             ))}
 
           {currentPage === "calendar" && (
@@ -819,6 +943,20 @@ export default function Home() {
               onSet={setToday}
               tasks={tasks}
               subjects={subjects}
+              holidays={holidays}
+              scheduleOverrides={scheduleOverrides}
+              onAddHoliday={(holiday) => {
+                const name = holiday.name.trim()
+                if (!name) return showToast("Enter a holiday name")
+                const end = holiday.endDate ?? holiday.date
+                if (end < holiday.date) return showToast("The end date must be on or after the start date")
+                if (holidays.some(h => h.date === holiday.date && (h.endDate ?? h.date) === end && h.name.trim().toLowerCase() === name.toLowerCase())) return showToast("That holiday already exists")
+                setHolidays(prev => [...prev, { id: newId(), date: holiday.date, ...(holiday.endDate ? { endDate: holiday.endDate } : {}), name }])
+                showToast(end === holiday.date ? `${name} added to Calendar` : `${name} holiday range added`)
+              }}
+              onDeleteHoliday={(id) => setHolidays(prev => prev.filter(h => h.id !== id))}
+              onClassActions={(target) => setClassActionsTarget(target)}
+              onSleep={(subject) => setSleepTarget(subject)}
               onAdd={(date) => openDeadline(null, date)}
               onEdit={(t) => openDeadline(t, t.dueDate)}
               // Bringing a finished deadline back is harmless, so only marking one done asks first
@@ -827,55 +965,124 @@ export default function Home() {
           )}
 
           {currentPage === "mates" && (
-            <MatesView
+            sync.account ? <MatesView
               mates={mates}
               social={social}
               onToast={(message) => showToast(message)}
               addOpen={isMateOpen}
               onCloseAdd={() => setIsMateOpen(false)}
-              onAdd={(name) => setMates((prev) => [...prev, { id: newId(), name, covered: 0, repaid: 0 }])}
+              onOpenAdd={() => setIsMateOpen(true)}
               subjects={subjects}
+              scheduleOverrides={scheduleOverrides}
               onOpenWrapped={openWrapped}
+              showWrappedInPingSection={wrappedDue}
               onRemove={(id) => {
                 const m = mates.find((x) => x.id === id)
                 // removing a connected mate also ends the connection
                 const link = m?.uid ? social.requests.find((r) => r.status === "accepted" && r.participants.includes(m.uid as string)) : undefined
                 if (link) social.cancel(link.id).catch(() => {})
                 // pings still waiting on this mate would never be answered
-                social.sent.filter((p) => p.status === "asking" && (p.to === m?.uid || p.toName === m?.name)).forEach((p) => void social.cancelPing(p.id))
+                social.sent.filter((p) => p.status === "asking" && (m?.uid ? p.to === m.uid : !p.to.startsWith("share-recipient:") && p.toName.trim().toLowerCase() === (m?.name ?? "").trim().toLowerCase())).forEach((p) => void social.cancelPing(p.id))
                 setMates((prev) => prev.filter((x) => x.id !== id))
                 if (m) showToast(`Removed ${m.name}`, () => setMates((prev) => [...prev, m]))
               }}
-            />
+            /> : <MatesAccessGate sync={sync} social={social} onToast={showToast} />
           )}
         </main>
       </div>
 
+      <ClassChangeSheet
+        target={classActionsTarget}
+        subjects={subjects}
+        overrides={scheduleOverrides}
+        onClose={() => setClassActionsTarget(null)}
+        onCancelClass={(subjectId, date, start) => {
+          setScheduleOverrides(prev => [...prev.filter(o => !(o.originalSubjectId === subjectId && o.date === date && o.start === start)), { id: newId(), originalSubjectId: subjectId, date, start, kind: "cancelled" }])
+          showToast("Lecture cancelled for this date")
+        }}
+        onReplaceClass={(subjectId, date, start, substituteSubjectId) => {
+          if (subjectId === substituteSubjectId) return showToast("Choose a different subject")
+          setScheduleOverrides(prev => [...prev.filter(o => !(o.originalSubjectId === subjectId && o.date === date && o.start === start)), { id: newId(), originalSubjectId: subjectId, date, start, kind: "substitute", substituteSubjectId }])
+          showToast("Substitute saved for this date")
+        }}
+        onRestore={(subjectId, date, start) => { setScheduleOverrides(prev => prev.filter(o => !(o.originalSubjectId === subjectId && o.date === date && o.start === start))); showToast("Original lecture restored") }}
+      />
+      <SleepSubjectSheet
+        subject={sleepTarget}
+        onClose={() => setSleepTarget(null)}
+        onSleep={(id, range) => {
+          const s = subjects.find(x => x.id === id)
+          if (!s) return
+          patchSubject(id, x => ({ ...x, sleeping: true, sleepFrom: range.from, sleepUntil: range.until }))
+          showToast(range.until === "forever"
+            ? `${s.name} will sleep from ${range.from} until you wake it. Its timetable and attendance are preserved.`
+            : `${s.name} will sleep from ${range.from} through ${range.until}. Its timetable and attendance are preserved.`)
+        }}
+        onWake={(id) => { const s = subjects.find(x => x.id === id); patchSubject(id, x => ({ ...x, sleeping: false, sleepFrom: undefined, sleepUntil: undefined })); if(s) showToast(`${s.name} is awake; its recurring classes are visible again.`) }}
+      />
+
+      {showSyncNudge && consentAccepted && !sync.account && (
+        <div className="fixed z-[70] bottom-[calc(5.6rem+env(safe-area-inset-bottom))] left-3 right-3 sm:left-auto sm:right-5 sm:max-w-md rounded-2xl bg-ink text-paper shadow-xl p-3.5 flex items-start gap-3" role="status">
+          <span className="w-9 h-9 rounded-xl bg-white/15 grid place-items-center flex-shrink-0">↗</span>
+          <div className="min-w-0 flex-1"><p className="text-[14px] font-semibold">Keep your data safe across devices</p><p className="text-[12px] text-paper/75 leading-snug mt-0.5">Turn on Google sync to use your subjects and attendance marks on your other devices. Wait for “Up to date” before relying on the backup.</p><button onClick={() => { setSettingsStartPanel("sync"); setIsSettingsOpen(true); setShowSyncNudge(false) }} className="mt-2 text-[13px] font-bold underline underline-offset-2">Set up Google sync</button></div>
+          <button aria-label="Dismiss sync reminder" onClick={() => { setShowSyncNudge(false); try { localStorage.setItem("attendance-sync-nudge-dismissed-at", String(Date.now())) } catch {} }} className="text-paper/75 text-xl leading-none px-1">×</button>
+        </div>
+      )}
+      {showFeedbackNudge && consentAccepted && !showFeedback && (
+        <FeedbackNudge onOpen={() => { setShowFeedbackNudge(false); setShowFeedback(true) }} onDismiss={() => { setShowFeedbackNudge(false); try { localStorage.setItem("attendance-feedback-prompt-dismissed", "1") } catch {} }} />
+      )}
+      <FeedbackSheet open={showFeedback} onClose={() => setShowFeedback(false)} onSubmitted={() => { try { localStorage.setItem("attendance-feedback-submitted", "1") } catch {}; setShowFeedbackNudge(false); setFeedbackCelebration("thanks"); showToast("Feedback sent — thank you") }} />
+      <FeedbackReplyWatcher onReply={(reply) => { setFeedbackCelebration("thanks"); showToast(`Developer reply: ${reply.slice(0, 120)}`) }} />
+      <FeedbackCelebration open={feedbackCelebration !== null} kind={feedbackCelebration ?? "thanks"} onClose={() => setFeedbackCelebration(null)} />
+      <TermsGate open={loaded && onboardingResolved && consentReady && !consentAccepted && !isOnboardingOpen} onAgree={() => { try { localStorage.setItem(CONSENT_VERSION, "1") } catch {}; setConsentAccepted(true) }} />
+
       <BottomNav
         currentPage={currentPage}
         onPageChange={goto}
-        badges={{ mates: incomingRequests.length + pingEvents.pending + (wrappedDue ? 1 : 0) }}
-        cover={wrappedNotice}
+        badges={{ mates: sync.account ? incomingRequests.length + pingEvents.pending : 0 }}
       />
       <UndoToast toast={toast} onClose={closeToast} />
 
+      {/* After a first sign-in on a device that already has data: compare and choose (see lib/signin-reconcile.ts) */}
+      <ReconcileSheet sync={sync} />
       <SettingsSheet
-        isOpen={isSettingsOpen}
-        onClose={() => setIsSettingsOpen(false)}
+        isOpen={isSettingsOpen && !(sync.reconcile?.offer && !sync.reconcile.declined)}
+        onClose={() => { setIsSettingsOpen(false); setSettingsStartPanel("home") }}
+        startPanel={settingsStartPanel}
+        onResetConsent={() => { try { localStorage.removeItem(CONSENT_VERSION) } catch {}; setConsentAccepted(false); setConsentReady(true); setIsSettingsOpen(false) }}
+        onShowSyncNudge={() => { setShowSyncNudge(true); setIsSettingsOpen(false) }}
+        onOpenFeedback={() => { setIsSettingsOpen(false); setShowFeedback(true) }}
+        onPreviewFeedbackAnimation={() => setFeedbackCelebration("bug")}
         subjects={subjects}
         tasks={tasks}
+        holidays={holidays}
+        scheduleOverrides={scheduleOverrides}
         tags={allTags}
         mates={mates}
         onAddTag={(tag) => mergeTags([tag])}
         onDeleteTag={handleDeleteTag}
         onResetAllData={handleResetAllData}
         onImportData={async (data) => {
-          await saveRestorePoint("Before restoring a backup", { subjects, tasks, tags: allTags, mates, reminders: loadSchedule() })
-          setTasks(data.tasks)
-          setAllTags(data.tags)
-          // A JSON backup: everything comes back exactly as saved
-          setSubjects(data.subjects)
-          setMates(data.mates ?? [])
+          // Resolves true only if the data was really replaced; the reminders follow the safety copy, never precede it
+          const r = await restoreFrom(data, {
+            current: currentBackup,
+            saveRestorePoint,
+            demoActive: demoIsActive,
+            applyData: (d) => {
+              setTasks(d.tasks)
+              setAllTags(d.tags)
+              // A JSON backup: everything comes back exactly as saved
+              setSubjects(d.subjects)
+              setMates(d.mates ?? [])
+              if (d.holidays !== undefined) setHolidays(d.holidays)
+              if (d.scheduleOverrides !== undefined) setScheduleOverrides(d.scheduleOverrides)
+            },
+            applyReminders: saveSchedule,
+            readReminders: loadSchedule, // read back from storage, not the list that was just written
+            dataPersisted,
+          })
+          if (!r.ok) showToast(r.message) // never replace what could not be kept
+          return r.ok
         }}
         notificationSupported={notificationSupported}
         notificationPermission={notificationPermission}
@@ -910,6 +1117,7 @@ export default function Home() {
         notificationPermission={notificationPermission}
         onEnableNotifications={enableNotifications}
         onOpenMates={() => setCurrentPage("mates")}
+        onAgreeTerms={() => { try { localStorage.setItem(CONSENT_VERSION, "1") } catch {}; setConsentAccepted(true) }}
         onToast={showToast}
       />
       <TimetableImportSheet
@@ -938,7 +1146,7 @@ export default function Home() {
         />
       )}
       <ScanGate open={scanGate} link={typeof window === "undefined" ? "" : `${window.location.origin}/scan`} onContinue={() => setScanGate(false)} />
-      <DemoTour open={demoTourOpen} onGoto={goto} onOpenWrapped={openWrapped} onEnd={() => setDemoTourOpen(false)} />
+      <DemoTour open={demoTourOpen} onGoto={goto} onEnd={() => setDemoTourOpen(false)} />
       <WrappedStory open={isWrappedOpen} onClose={() => setIsWrappedOpen(false)} subjects={subjects} mates={mates} onRepay={repayQuiet} />
 
       <SubjectSheet

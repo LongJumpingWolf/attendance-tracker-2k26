@@ -14,6 +14,8 @@ const STATUS: Record<CloudSync["status"], { text: string; cls: string }> = {
   synced: { text: "Up to date", cls: "bg-good/15 text-good" },
   offline: { text: "Offline", cls: "bg-ink/[0.07] text-mute" },
   "too-large": { text: "Not backed up", cls: "bg-bad/10 text-bad" },
+  "needs-choice": { text: "Waiting for you", cls: "bg-warn/15 text-warn" },
+  paused: { text: "Paused while the demo shows", cls: "bg-ink/[0.07] text-mute" },
 }
 
 /** Settings > Sync between browsers: sign in with Google and your data follows you */
@@ -99,14 +101,31 @@ export default function SyncPanel({ sync, onToast }: { sync: CloudSync; onToast:
                 {sync.status === "offline" && sync.pending ? "Saved here, will sync" : sync.status === "synced" && sync.realtime ? "Up to date · live" : STATUS[sync.status].text}
               </span>
             </div>
+            {sync.status === "needs-choice" && sync.reconcile && (
+              <div className={`${card} mt-2`} data-testid="reconcile-waiting">
+                <p className="text-[15px] font-semibold leading-snug">Choose how to combine your data</p>
+                <p className="text-[13px] text-mute mt-1 leading-snug">
+                  This device and your account both have data. Nothing is synced until you choose, and nothing has been changed.
+                </p>
+                <button onClick={sync.reopenReconcile} className={`${primaryButton} mt-3`}>
+                  Choose
+                </button>
+              </div>
+            )}
             {sync.status === "too-large" && (
               <p className="text-[13px] text-bad font-medium mt-2 px-1 leading-snug">Cloud backup is too large. Your data is safe on this device.</p>
             )}
             <button
-              onClick={async () => onToast((await sync.syncNow()) ? "Updated from your other browser" : "Everything is up to date")}
+              onClick={async () => {
+                if (sync.status === "needs-choice" && sync.reconcile) {
+                  sync.reopenReconcile()
+                  return
+                }
+                onToast((await sync.syncNow()) ? "Updated from your other browser" : "Everything is up to date")
+              }}
               className={`${tintButton} w-full mt-2`}
             >
-              Sync now
+              {sync.status === "needs-choice" ? "Choose how to sync" : "Sync now"}
             </button>
             <p className="text-[13px] text-mute mt-3 px-1 leading-snug">
               Sign in with this same account in any other browser and your subjects, marks and deadlines appear there. If both browsers changed things, the changes are combined, never one thrown away. A scanned QR code then marks
@@ -145,9 +164,13 @@ export default function SyncPanel({ sync, onToast }: { sync: CloudSync; onToast:
         <section>
           <h3 className={label}>Use your data in any browser</h3>
           <div className={card}>
+            <div className="rounded-xl bg-warn/10 p-3 mb-3">
+              <p className="text-[13px] font-semibold">Not backed up until you sign in and sync</p>
+              <p className="text-[12px] text-mute leading-snug mt-1">Your data is stored in this browser’s local database for now. Clearing site data, deleting/resetting the browser profile, private browsing, or losing the device can make that local copy unavailable. After signing in, wait for “Up to date” and keep a separate export for important records.</p>
+            </div>
             <p className="text-[13px] text-mute leading-snug">
               Sign in once in each browser you use (Safari, the home-screen app, Chrome). Your subjects, marks and deadlines are saved to your account
-              and appear everywhere you sign in.
+              and appear everywhere you sign in. The same Google account also unlocks Mates and direct in-app Pings.
             </p>
 
             {sync.kind === "dev" && (

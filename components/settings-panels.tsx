@@ -15,6 +15,7 @@ import { inputClass, primaryButton, tintButton } from "./sheet"
 import { sendLocalNotification } from "@/lib/notifications"
 import { parseBackupFile, type BackupData } from "@/lib/backup-import"
 import type { Subject } from "@/lib/types"
+import { MESSAGES, runGuarded } from "@/lib/safe-replace"
 
 const group = "rounded-2xl bg-secondary overflow-hidden divide-y divide-ink/[0.08]"
 const note = "text-[13px] text-mute leading-snug px-1"
@@ -173,7 +174,8 @@ export function TagsPanel({ tags, subjects, onAdd, onDelete }: TagsProps) {
 interface BackupProps {
   /** The lossless JSON backup */
   onSaveFull: () => void
-  onImportData: (data: BackupData) => void
+  /** Resolves true only if the data was really replaced; the reason is shown by whoever refuses */
+  onImportData: (data: BackupData) => Promise<boolean>
   onToast: (message: string) => void
 }
 
@@ -182,6 +184,7 @@ const count = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : 
 export function BackupPanel({ onSaveFull, onImportData, onToast }: BackupProps) {
   const [reading, setReading] = useState(false)
   const [pending, setPending] = useState<BackupData | null>(null)
+  const [working, setWorking] = useState(false)
   const input = useRef<HTMLInputElement>(null)
 
   const pick = async (file: File | undefined) => {
@@ -218,18 +221,27 @@ export function BackupPanel({ onSaveFull, onImportData, onToast }: BackupProps) 
           <p className="text-[13px] text-mute mt-2 leading-snug">Class days, every mark, plans, mates and reminders come back exactly as saved.</p>
         </div>
         <div className="grid grid-cols-2 gap-2 mt-4">
-          <button onClick={() => setPending(null)} className={`${tintButton} h-[52px] text-[17px]`}>
+          <button onClick={() => setPending(null)} disabled={working} className={`${tintButton} h-[52px] text-[17px] disabled:opacity-60`}>
             Cancel
           </button>
           <button
-            onClick={() => {
-              onImportData(pending)
-              onToast("Backup restored")
-              setPending(null)
+            disabled={working}
+            onClick={async () => {
+              setWorking(true)
+              // "Backup restored" is said only after the data really was replaced; otherwise this stays open and unchanged
+              await runGuarded(
+                () => onImportData(pending),
+                () => {
+                  onToast("Backup restored")
+                  setPending(null)
+                },
+                () => onToast(MESSAGES.restoreFailed),
+              )
+              setWorking(false)
             }}
-            className="h-[52px] rounded-2xl bg-ink text-paper text-[17px] font-semibold"
+            className="h-[52px] rounded-2xl bg-ink text-paper text-[17px] font-semibold disabled:opacity-60"
           >
-            Restore
+            {working ? "Restoring…" : "Restore"}
           </button>
         </div>
       </div>
@@ -271,11 +283,14 @@ interface ResetProps {
   tasks: number
   tags: number
   mates: number
-  onReset: () => void
+  /** Resolves true only if the reset really happened */
+  onReset: () => Promise<boolean>
+  onToast: (message: string) => void
 }
 
-export function ResetPanel({ subjects, tasks, tags, mates, onReset }: ResetProps) {
+export function ResetPanel({ subjects, tasks, tags, mates, onReset, onToast }: ResetProps) {
   const [sure, setSure] = useState(false)
+  const [working, setWorking] = useState(false)
   return (
     <div>
       <div className="rounded-2xl bg-bad/[0.07] p-5">
@@ -293,11 +308,19 @@ export function ResetPanel({ subjects, tasks, tags, mates, onReset }: ResetProps
       </div>
       {sure ? (
         <div className="grid grid-cols-2 gap-2 mt-4">
-          <button onClick={() => setSure(false)} className={`${tintButton} h-[52px] text-[17px]`}>
+          <button onClick={() => setSure(false)} disabled={working} className={`${tintButton} h-[52px] text-[17px] disabled:opacity-60`}>
             Cancel
           </button>
-          <button onClick={onReset} className="h-[52px] rounded-2xl bg-bad text-paper text-[17px] font-semibold">
-            Yes, delete all
+          <button
+            disabled={working}
+            onClick={async () => {
+              setWorking(true)
+              await runGuarded(onReset, () => {}, () => onToast(MESSAGES.resetFailed))
+              setWorking(false)
+            }}
+            className="h-[52px] rounded-2xl bg-bad text-paper text-[17px] font-semibold disabled:opacity-60"
+          >
+            {working ? "Deleting…" : "Yes, delete all"}
           </button>
         </div>
       ) : (

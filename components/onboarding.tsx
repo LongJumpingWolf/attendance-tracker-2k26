@@ -19,6 +19,7 @@ interface Props {
   notificationPermission: NotificationPermission | null
   onEnableNotifications: () => Promise<void>
   onOpenMates: () => void
+  onAgreeTerms: () => void
   onToast: (message: string) => void
 }
 
@@ -55,7 +56,11 @@ export default function Onboarding(p: Props) {
   const notifOn = p.notificationPermission === "granted"
 
   const next = () => {
-    if (step === 0 && name.trim()) p.onSetName(name.trim())
+    if (step === 0) {
+      if (name.trim()) p.onSetName(name.trim())
+      // The welcome/setup step explains that continuing accepts the app's notice.
+      p.onAgreeTerms()
+    }
     setStep((s) => Math.min(STEPS.length - 1, s + 1))
   }
 
@@ -104,6 +109,9 @@ export default function Onboarding(p: Props) {
           <button type="button" onClick={next} className={`${primaryButton} mt-6`}>
             Let&rsquo;s go
           </button>
+          <p className="text-[12px] text-mute leading-snug mt-2 text-center">
+            By continuing, you agree to the Terms &amp; Conditions and Privacy Notice. You can review them anytime in Settings.
+          </p>
         </div>
       )}
 

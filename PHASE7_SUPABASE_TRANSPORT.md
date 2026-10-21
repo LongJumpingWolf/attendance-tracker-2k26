@@ -188,3 +188,9 @@ Shadow read, read-only. Reference: Firebase (authoritative). Account: Alic***. R
 ## Update: finding A is fixed locally (not committed, not deployed)
 
 The bootstrap function's shared per-instance limiter no longer throttles established users in the local source; see `PHASE6E_LIMITER_FIX.md`. The "Open from the earlier audit" item about that limiter in section 9.6 is therefore addressed in code but **not in production** (the deployed function is still version 1). The other items in 9.6 remain open.
+
+---
+
+## Update: finding A is fixed AND deployed (function version 2)
+
+The limiter fix (`f08c412`) is deployed and was smoke-tested in production for the established-account path; see `PHASE6E_LIMITER_FIX.md` section 8. Still open from section 9.6: production tests of the first-time per-account rate limit, expiry, revocation and function logs; the anonymous sign-up question; and everything listed as "not built" above (Realtime, mirroring of connections and pings, persisted reconciliation).

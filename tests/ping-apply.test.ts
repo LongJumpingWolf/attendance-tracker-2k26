@@ -77,6 +77,29 @@ describe("when a Ping becomes a favour", () => {
     expect(r.skipped[0].reason).toBe("class-missing")
   })
 
+  it("a confirmed date-specific substituted slot records attendance under the original timetable subject", () => {
+    const original = subject({ id: "anatomy", name: "Anatomy", slots: [{ day: 2, start: "09:00", end: "10:00" }] })
+    const replacement = subject({ id: "physiology", name: "Physiology", slots: [{ day: 3, start: "11:00", end: "12:00" }] })
+    const substitutedItem = { ...item("anatomy@09:00", "09:00", "yes", "anatomy"), name: "Physiology (replacing Anatomy)", substituted: true }
+    const r = applyPingResult([original, replacement], [rahul], ping([substitutedItem]))
+    expect(markFor(r.subjects.find((s) => s.id === "anatomy")!, DATE, "09:00")).toBe("P")
+    expect(markFor(r.subjects.find((s) => s.id === "physiology")!, DATE, "09:00")).toBeNull()
+    expect(r.mates[0].covered).toBe(1)
+  })
+
+  it("a WhatsApp share-link answer records attendance under the original subject without inventing a Mate or favour", () => {
+    const original = subject({ id: "anatomy", name: "Anatomy", slots: [{ day: 2, start: "09:00", end: "10:00" }] })
+    const replacement = subject({ id: "physiology", name: "Physiology", slots: [{ day: 3, start: "11:00", end: "12:00" }] })
+    const share = ping([{ ...item("anatomy@09:00", "09:00", "yes", "anatomy"), name: "Physiology (replacing Anatomy)", substituted: true }], {
+      id: `share-${"a".repeat(64)}`, shareLink: true, to: `share-recipient:${"a".repeat(64)}`, participants: [], toName: "",
+    })
+    const r = applyPingResult([original, replacement], [rahul], share)
+    expect(markFor(r.subjects.find((s) => s.id === "anatomy")!, DATE, "09:00")).toBe("P")
+    expect(markFor(r.subjects.find((s) => s.id === "physiology")!, DATE, "09:00")).toBeNull()
+    expect(r.mates).toEqual([rahul])
+    expect(r.mates[0].covered).toBe(0)
+  })
+
   it("a subject with no timetable can still be covered (one record for the day)", () => {
     const untimed = subject({ slots: undefined })
     const r = applyPingResult([untimed], [rahul], ping([item("dbms@", undefined, "yes")]))

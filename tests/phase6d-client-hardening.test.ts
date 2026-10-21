@@ -382,11 +382,12 @@ describe("Realtime session: setAuth before subscribe, refetch after (re)subscrib
 })
 
 describe("no new dependency for the normal app while the bridge is disabled", () => {
-  it("no application file imports the Realtime session, and only lib/backend names Supabase", () => {
+  it("no application file imports the Realtime session, and only lib/backend names Supabase (Phase 8: only the sync watcher and the wire transport, both inside lib/backend/supabase)", () => {
     const walk = (d: string): string[] =>
       fs.readdirSync(path.join(ROOT, d), { withFileTypes: true }).flatMap((e) => (e.isDirectory() ? walk(path.posix.join(d, e.name)) : /\.(ts|tsx)$/.test(e.name) ? [path.posix.join(d, e.name)] : []))
     const importers = ["app", "components", "hooks", "lib"].flatMap(walk).filter((f) => /realtime-session/.test(fs.readFileSync(path.join(ROOT, f), "utf8")))
-    expect(importers).toEqual([])
+    // Phase 8 wires the session on purpose, in exactly one place, behind NEXT_PUBLIC_SUPABASE_REALTIME (see tests/phase8-realtime.test.ts)
+    expect(importers).toEqual(["lib/backend/supabase/realtime-transport.ts", "lib/backend/supabase/sync-watch.ts"]) // the transport only imports its types
   })
   it("production wiring sets the documented limits", () => {
     const src = fs.readFileSync(path.join(ROOT, "lib", "backend", "index.ts"), "utf8")
