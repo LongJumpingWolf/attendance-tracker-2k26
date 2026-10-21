@@ -80,7 +80,7 @@ interface SettingsSheetProps {
   onResetConsent: () => void
   onShowSyncNudge: () => void
   onOpenFeedback: () => void
-  onPreviewFeedbackAnimation: () => void
+  onPreviewFeedbackAnimation: (kind: "thanks" | "bug") => void
 }
 
 function Row({
@@ -355,7 +355,8 @@ export default function SettingsSheet(p: SettingsSheetProps) {
                 <button onClick={then(p.onSimulateWrapped)} className={`${tintButton} col-span-2`}>Queue Wrapped for Saturday</button>
                 <button onClick={p.onShowSyncNudge} className={`${tintButton} col-span-2`}>Test Google sync reminder</button>
                 <button onClick={p.onResetConsent} className={`${tintButton} col-span-2`}>Replay privacy and terms gate</button>
-                <button onClick={p.onPreviewFeedbackAnimation} className={`${tintButton} col-span-2`}>Preview developer thanks / bug-swat animation</button>
+                <button onClick={() => p.onPreviewFeedbackAnimation("thanks")} className={`${tintButton} col-span-2`}>Preview developer thank-you animation</button>
+                <button onClick={() => p.onPreviewFeedbackAnimation("bug")} className={`${tintButton} col-span-2`}>Preview bug-swat animation</button>
                 <a href="/developer-feedback" target="_blank" rel="noreferrer" className={`${tintButton} col-span-2`}>Open feedback dashboard</a>
               </div>
             )}

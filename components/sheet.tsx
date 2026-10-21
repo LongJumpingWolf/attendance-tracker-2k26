@@ -30,12 +30,14 @@ interface SheetProps {
   onBack?: () => void
   /** Optional action placed immediately beside the close button. */
   headerActions?: React.ReactNode
+  /** Elevate a follow-up sheet above another sheet during a state transition. */
+  priority?: "normal" | "high"
 }
 
 const openSheets: symbol[] = []
 
 /** Bottom sheet on phones, centred dialog on larger screens. */
-export default function Sheet({ open, onClose, title, children, wide, onBack, headerActions }: SheetProps) {
+export default function Sheet({ open, onClose, title, children, wide, onBack, headerActions, priority = "normal" }: SheetProps) {
   // Escape closes only the sheet on top, not every sheet stacked beneath it
   useEffect(() => {
     if (!open) return
@@ -55,7 +57,7 @@ export default function Sheet({ open, onClose, title, children, wide, onBack, he
   if (!open) return null
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/40 sm:p-4" onClick={onClose}>
+    <div className={`fixed inset-0 ${priority === "high" ? "z-[80]" : "z-50"} flex items-end sm:items-center justify-center bg-black/40 sm:p-4`} onClick={onClose}>
       <div
         role="dialog"
         aria-modal="true"

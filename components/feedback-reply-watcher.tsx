@@ -5,7 +5,7 @@ import { getAuth, onAuthStateChanged } from "firebase/auth"
 import { collection, limit, onSnapshot, query, updateDoc, where } from "firebase/firestore"
 import { app, db, firebaseConfigured } from "@/lib/firebase"
 
-export default function FeedbackReplyWatcher({ onReply }: { onReply: (reply: string) => void }) {
+export default function FeedbackReplyWatcher({ onReply }: { onReply: (reply: string, kind: "bug" | "rating" | "suggestion") => void }) {
   const onReplyRef = useRef(onReply)
   useEffect(() => { onReplyRef.current = onReply }, [onReply])
   useEffect(() => {
@@ -26,7 +26,8 @@ export default function FeedbackReplyWatcher({ onReply }: { onReply: (reply: str
           const reply = typeof data.developerReply === "string" ? data.developerReply.trim() : ""
           if (!reply || data.seenByUser === true || handledIds.has(entry.id) || !["replied", "resolved"].includes(String(data.status))) continue
           handledIds.add(entry.id)
-          void updateDoc(entry.ref, { seenByUser: true }).then(() => onReplyRef.current(reply)).catch(() => { handledIds.delete(entry.id) })
+          const kind = data.kind === "bug" || data.kind === "rating" || data.kind === "suggestion" ? data.kind : "suggestion"
+          void updateDoc(entry.ref, { seenByUser: true }).then(() => onReplyRef.current(reply, kind)).catch(() => { handledIds.delete(entry.id) })
         }
       }, () => {})
     })

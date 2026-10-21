@@ -303,7 +303,7 @@ service cloud.firestore {
           && request.auth.token.email == 'adityavw2006@gmail.com';
       }
       function validFeedback() {
-        return request.resource.data.keys().hasOnly(['uid', 'userEmail', 'userName', 'kind', 'rating', 'message', 'imageData', 'status', 'seenByUser', 'createdAt'])
+        return request.resource.data.keys().hasOnly(['uid', 'userEmail', 'userName', 'kind', 'rating', 'message', 'imageData', 'platform', 'deviceType', 'browser', 'area', 'frequency', 'network', 'status', 'seenByUser', 'createdAt'])
           && (request.resource.data.uid == null || (request.auth != null && request.resource.data.uid == request.auth.uid))
           && (request.resource.data.userEmail == null || (request.resource.data.userEmail is string && request.resource.data.userEmail.size() <= 320))
           && (request.resource.data.userName == null || (request.resource.data.userName is string && request.resource.data.userName.size() <= 100))
@@ -311,6 +311,12 @@ service cloud.firestore {
           && (request.resource.data.rating == null || (request.resource.data.rating is int && request.resource.data.rating >= 1 && request.resource.data.rating <= 5))
           && request.resource.data.message is string && request.resource.data.message.size() <= 2000
           && (!('imageData' in request.resource.data) || (request.resource.data.imageData is string && request.resource.data.imageData.size() <= 380000))
+          && (!('platform' in request.resource.data) || (request.resource.data.platform is string && request.resource.data.platform.size() <= 40))
+          && (!('deviceType' in request.resource.data) || (request.resource.data.deviceType is string && request.resource.data.deviceType.size() <= 40))
+          && (!('browser' in request.resource.data) || (request.resource.data.browser is string && request.resource.data.browser.size() <= 60))
+          && (!('area' in request.resource.data) || (request.resource.data.area is string && request.resource.data.area.size() <= 80))
+          && (!('frequency' in request.resource.data) || (request.resource.data.frequency is string && request.resource.data.frequency.size() <= 40))
+          && (!('network' in request.resource.data) || (request.resource.data.network is string && request.resource.data.network.size() <= 40))
           && request.resource.data.status == 'open'
           && request.resource.data.seenByUser == false
           && request.resource.data.createdAt == request.time;

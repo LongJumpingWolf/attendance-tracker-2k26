@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react"
 import QRCode from "qrcode"
-import { Check, X, Copy, ShareNetwork, CaretDown, Link as LinkIcon, ChatCircleDots, LockKey } from "@phosphor-icons/react"
+import { Check, X, Copy, ShareNetwork, CaretDown, Link as LinkIcon, ChatCircleDots, LockKey, SpinnerGap } from "@phosphor-icons/react"
 import type { Mate, Ping, ScheduleOverride, Subject } from "@/lib/types"
 import { localDate } from "@/lib/attendance"
 import { shareableAppOrigin } from "@/lib/share-ping-link"
@@ -205,7 +205,7 @@ function ConnectCard({ social, onToast }: { social: SocialApi; onToast: (m: stri
           disabled={busy || !originChecked || !!originMessage}
           className="h-11 rounded-xl bg-secondary text-[15px] font-semibold flex items-center justify-center gap-2 disabled:opacity-50"
         >
-          <LinkIcon weight="bold" className="w-4 h-4" /> Magic link
+          {busy ? <SpinnerGap weight="bold" className="w-4 h-4 animate-spin" /> : <LinkIcon weight="bold" className="w-4 h-4" />} {busy ? "Creating link…" : "Magic link"}
         </button>
       </div>
 
@@ -236,7 +236,7 @@ function ConnectCard({ social, onToast }: { social: SocialApi; onToast: (m: stri
               <ShareNetwork weight="bold" className="w-4 h-4" /> Share
             </button>
             <button onClick={generate} disabled={busy} className="h-9 px-3 rounded-lg text-[13px] font-semibold text-info ml-auto disabled:opacity-40">
-              {busy ? "Creating…" : "New link"}
+              {busy ? <><SpinnerGap weight="bold" className="w-4 h-4 animate-spin" /> Creating…</> : "New link"}
             </button>
           </div>
         </div>

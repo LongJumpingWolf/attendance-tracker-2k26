@@ -1,13 +1,13 @@
 # Feedback collection and developer dashboard
 
-This build adds a user feedback prompt after approximately 36 hours of use, a permanent Settings entry, client-side image compression, a reply/resolve dashboard at `/developer-feedback`, and a small animated acknowledgement. Feedback is stored in Firestore collection `feedback`.
+This build adds a user feedback prompt after approximately 36 hours of use, a permanent Settings entry, client-side image compression, a reply/resolve dashboard at `/developer-feedback`, and distinct animated acknowledgements: bug-swat only for developer replies to bug reports, and a separate thank-you animation for ratings/suggestions. Feedback is stored in Firestore collection `feedback`.
 
 ## Before enabling this on the public deployment
 
 1. Confirm the developer Google account email in `firestore.rules` and `components/developer-feedback.tsx` is the intended account. The current default is `adityavw2006@gmail.com`; update both in the same release if that changes. `NEXT_PUBLIC_DEVELOPER_EMAIL` can change the UI gate but **does not replace the Firestore rule check**.
 2. Review `firestore.rules`, then deploy the rules to the same Firebase project as the app using your normal reviewed deployment workflow. No rules or hosted services have been deployed by this change.
 3. Sign into `/developer-feedback` with the verified developer Google account. Other accounts should see “No access”; Firestore rules enforce this, not only the page.
-4. Submit a test rating, a bug with a screenshot, and a reply. Verify the user sees the acknowledgement on the same account. The screenshot is downscaled to at most 1280 px on its longest edge and re-encoded to JPEG under roughly 280 KB before upload.
+4. Submit a test rating, a bug with a screenshot and diagnostic selections, and a suggestion. Reply to each kind. Verify bug reports trigger the bug-swat animation only after the developer replies, while ratings and suggestions trigger the distinct thank-you animation. The developer tools menu has separate previews for both animations. The screenshot is downscaled to at most 1280 px on its longest edge and re-encoded to JPEG under roughly 280 KB before upload. Bug reports also include an optional short questionnaire for OS/platform, device type, browser, affected app area, frequency, and network type; no raw browser history is collected.
 
 ## Data/security behaviour
 

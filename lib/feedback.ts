@@ -17,6 +17,12 @@ export interface FeedbackRecord {
   createdAt?: { toDate?: () => Date } | Date | null
   repliedAt?: unknown
   seenByUser?: boolean
+  platform?: string
+  deviceType?: string
+  browser?: string
+  area?: string
+  frequency?: string
+  network?: string
 }
 
 const MAX_IMAGE_DATA_URL = 380_000
@@ -46,7 +52,16 @@ export async function compressFeedbackImage(file: File): Promise<string> {
   }
 }
 
-export async function submitFeedback(input: { kind: FeedbackKind; rating: number | null; message: string; imageData?: string }) {
+export interface BugDiagnostics {
+  platform: string
+  deviceType: string
+  browser: string
+  area: string
+  frequency: string
+  network: string
+}
+
+export async function submitFeedback(input: { kind: FeedbackKind; rating: number | null; message: string; imageData?: string; diagnostics?: BugDiagnostics }) {
   if (!firebaseConfigured()) throw new Error("Feedback sending is not configured in this build yet.")
   const authUser = getAuth(app).currentUser
   const message = input.message.trim().slice(0, 2000)
@@ -61,6 +76,14 @@ export async function submitFeedback(input: { kind: FeedbackKind; rating: number
     rating: input.rating,
     message,
     ...(input.imageData ? { imageData: input.imageData } : {}),
+    ...(input.kind === "bug" && input.diagnostics ? {
+      platform: input.diagnostics.platform.slice(0, 40),
+      deviceType: input.diagnostics.deviceType.slice(0, 40),
+      browser: input.diagnostics.browser.slice(0, 60),
+      area: input.diagnostics.area.slice(0, 80),
+      frequency: input.diagnostics.frequency.slice(0, 40),
+      network: input.diagnostics.network.slice(0, 40),
+    } : {}),
     status: "open",
     seenByUser: false,
     createdAt: serverTimestamp(),
