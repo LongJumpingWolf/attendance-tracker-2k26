@@ -200,22 +200,9 @@ export function resetEverything(deps: ResetDeps): Promise<ReplaceResult> {
     { notSaved: MESSAGES.resetNotSaved, unexpected: MESSAGES.resetUnexpected, halfDone: MESSAGES.resetHalfDone, halfDoneNoCopy: MESSAGES.resetHalfDoneNoCopy },
     deps,
     async (before) => {
-      // Bounded: a sign-out that never answers must not hold the lock for ever. The device-side link (owner, revision, markers) is
-      // detached by signOut itself before it waits on the network, so on a timeout nothing can push an emptied copy either.
-      const limit = deps.signOutTimeoutMs ?? SIGN_OUT_TIMEOUT_MS
-      let timer: ReturnType<typeof setTimeout> | undefined
-      try {
-        await Promise.race([
-          deps.signOut(),
-          new Promise<never>((_, reject) => {
-            timer = setTimeout(() => reject(new Error("sign-out timed out")), limit)
-          }),
-        ])
-      } catch (e) {
-        return { ok: false, message: e instanceof Error && e.message === "sign-out timed out" ? MESSAGES.signOutTimedOut : MESSAGES.signOutFailed } // refused before anything was wiped
-      } finally {
-        clearTimeout(timer)
-      }
+      // Keep the authenticated account signed in. Clearing the account's local state allows the normal
+      // authenticated sync pipeline to publish an empty state for this UID; signing out here previously
+      // prevented that and made Reset merely look like a logout.
       if (deps.demoActive()) return { ok: false, message: MESSAGES.demo }
       // The sign-out took time: if the data moved meanwhile, the copy taken earlier is stale, so another is taken first
       const now = deps.current()

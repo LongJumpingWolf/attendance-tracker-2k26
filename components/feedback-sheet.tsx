@@ -88,10 +88,15 @@ export default function FeedbackSheet({ open, onClose, onSubmitted }: { open: bo
         <p className="text-[12px] text-mute leading-snug">Any image size can be selected; it is resized and compressed on your device before sending.</p>
       </section>}
       {error && <p role="alert" className="text-[13px] text-bad">{error}</p>}
-      <button disabled={busy || compressing || (!message.trim() && rating === null)} className={`${primaryButton} disabled:opacity-50`} onClick={async () => {
+      <button disabled={busy || compressing || (!message.trim() && rating === null)} className={`${primaryButton} inline-flex items-center justify-center gap-2 disabled:opacity-50`} onClick={async () => {
         setBusy(true); setError("")
         try { await submitFeedback({ kind, rating, message, imageData, ...(kind === "bug" ? { diagnostics } : {}) }); reset(); onSubmitted(); onClose() }
-        catch (e) { setError(e instanceof Error ? e.message : "Could not send feedback. Try again.") }
+        catch (e) {
+          const message = e instanceof Error ? e.message : "Could not send feedback. Try again."
+          setError(/permission-denied|missing or insufficient permissions/i.test(message)
+            ? "Feedback was blocked by the deployed Firestore rules. Deploy the current firestore.rules file, then try again. Your feedback has not been sent."
+            : message)
+        }
         finally { setBusy(false) }
       }}>{busy ? <><SpinnerGap size={18} className="animate-spin"/> Sending feedback…</> : "Send feedback"}</button>
       <button type="button" disabled={busy || compressing} onClick={close} className={`${tintButton} w-full`}>Cancel</button>

@@ -298,7 +298,7 @@ export function ResetPanel({ subjects, tasks, tags, mates, onReset, onToast }: R
           <Trash weight="fill" className="w-6 h-6" />
         </span>
         <h3 className="text-[20px] font-bold tracking-tight mt-3">Start fresh</h3>
-        <p className="text-[15px] text-mute mt-1.5 leading-snug">This deletes everything on this device. It can&rsquo;t be undone, so export a backup first if you might want it.</p>
+        <p className="text-[15px] text-mute mt-1.5 leading-snug">This clears this account’s attendance data, deadlines, tags, mates, reminders and app preferences on this device and replaces its synced data with a fresh empty state. You stay signed in. This cannot be undone, so export a backup first if needed.</p>
         <ul className="mt-3 space-y-1 text-[15px]">
           <li>{count(subjects, "subject", "subjects")} with all their attendance</li>
           <li>{count(tasks, "deadline", "deadlines")}</li>

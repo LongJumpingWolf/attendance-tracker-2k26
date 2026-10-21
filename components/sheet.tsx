@@ -57,7 +57,7 @@ export default function Sheet({ open, onClose, title, children, wide, onBack, he
   if (!open) return null
 
   return (
-    <div className={`fixed inset-0 ${priority === "high" ? "z-[80]" : "z-50"} flex items-end sm:items-center justify-center bg-black/40 sm:p-4`} onClick={onClose}>
+    <div className={`fixed inset-0 ${priority === "high" ? "z-[80]" : "z-50"} flex items-end sm:items-center justify-center bg-black/40 sm:p-4`}>
       <div
         role="dialog"
         aria-modal="true"

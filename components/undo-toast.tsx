@@ -28,7 +28,7 @@ export default function UndoToast({ toast, onClose }: UndoToastProps) {
       aria-live="polite"
       className="animate-sheet fixed left-1/2 -translate-x-1/2 z-50 bottom-[calc(5.25rem+env(safe-area-inset-bottom))] w-[calc(100%-2.5rem)] max-w-sm lg:bottom-8 lg:left-[calc(50%+44px)]"
     >
-      <div className="flex items-center justify-between gap-3 rounded-2xl bg-ink/90 text-paper backdrop-blur-xl pl-4 pr-2 py-2 shadow-lg shadow-black/40">
+      <div className="flex items-center justify-between gap-3 rounded-2xl bg-ink/90 text-paper backdrop-blur-xl pl-4 pr-2 py-2 shadow-lg shadow-black/40 select-text">
         <span className="text-[15px] font-medium truncate">{toast.message}</span>
         {toast.undo && (
           <button

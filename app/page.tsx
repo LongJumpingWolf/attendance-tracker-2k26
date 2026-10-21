@@ -585,7 +585,6 @@ export default function Home() {
       current: currentBackup,
       saveRestorePoint,
       demoActive: demoIsActive,
-      signOut: () => sync.signOut(), // a reset must not wipe the copy your other browsers rely on: sign out BEFORE wiping, or refuse
       clear: clearEverything,
       isCleared: resetIsComplete,
     })
