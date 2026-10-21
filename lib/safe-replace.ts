@@ -182,10 +182,8 @@ export function restoreFrom(request: RestoreRequest, deps: RestoreDeps): Promise
 }
 
 export interface ResetDeps extends ReplaceDeps {
-  /** Ends the account link first, so a reset can never push an empty copy to the account. Throws if it cannot. */
-  signOut: () => Promise<void>
-  /** Overrides SIGN_OUT_TIMEOUT_MS (tests) */
-  signOutTimeoutMs?: number
+  /** Clears and verifies the currently authenticated account cloud copy without signing the user out. */
+  clearCloud?: () => Promise<void>
   /** wipe the data, the reminders and everything else this device keeps */
   clear: () => void | Promise<void>
   /** true once nothing the reset removes is still stored */
@@ -215,6 +213,9 @@ export function resetEverything(deps: ResetDeps): Promise<ReplaceResult> {
         if (!same(now, deps.current())) return { ok: false, message: MESSAGES.changedWhileSaving }
         if (deps.demoActive()) return { ok: false, message: MESSAGES.demo }
       }
+      // Clear the authenticated account copy first. If cloud deletion fails, leave local data intact.
+      // The caller must scope this operation to the currently signed-in UID and verify the result.
+      if (deps.clearCloud) await deps.clearCloud()
       await deps.clear()
       if (!(await deps.isCleared())) return { ok: false, message: holdsSomething(before) ? MESSAGES.resetNotKept : MESSAGES.resetNotKeptNoCopy }
       return { ok: true }

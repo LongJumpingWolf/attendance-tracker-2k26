@@ -39,6 +39,8 @@ import { applyPingResult, resultIsSaved } from "@/lib/ping-apply"
 import PingEventView from "@/components/ping-event"
 import { loadSchedule, saveSchedule } from "@/lib/reminders"
 import { restoreFrom, resetEverything } from "@/lib/safe-replace"
+import { cloudGet, cloudPut } from "@/lib/cloud-sync"
+import { buildBackup, parseFullBackup } from "@/lib/backup"
 import { dataPersisted, resetIsComplete, RESET_DB_KEYS, RESET_LOCAL_KEYS } from "@/lib/replace-verify"
 import { BUSY_MESSAGE, setDemoLive, tryAcquire } from "@/lib/operation-lock"
 import { useSocial } from "@/lib/use-social"
@@ -585,6 +587,22 @@ export default function Home() {
       current: currentBackup,
       saveRestorePoint,
       demoActive: demoIsActive,
+      clearCloud: async () => {
+        // Never sign out: target only the UID attached to the active sync account.
+        const owner = sync.account?.id
+        if (!owner) return // no authenticated cloud account exists on this device
+        const existing = await cloudGet(owner)
+        if (!existing) return // nothing stored for this account
+        const empty = buildBackup({ subjects: [], tasks: [], tags: [], mates: [], reminders: [], holidays: [], scheduleOverrides: [] }, false)
+        const result = await cloudPut(owner, empty, existing.rev)
+        if (!result.ok) throw new Error(`Cloud reset failed: ${result.reason}`)
+        const verify = await cloudGet(owner)
+        if (!verify) throw new Error("Could not verify the account's cloud reset")
+        const parsed = parseFullBackup(verify.data)
+        if (!parsed.ok || parsed.data.subjects.length || parsed.data.tasks.length || parsed.data.tags.length || parsed.data.mates.length || (parsed.data.holidays?.length ?? 0) || (parsed.data.scheduleOverrides?.length ?? 0) || parsed.data.reminders.length) {
+          throw new Error("Could not verify that this account's cloud data was cleared")
+        }
+      },
       clear: clearEverything,
       isCleared: resetIsComplete,
     })
