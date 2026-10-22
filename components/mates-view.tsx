@@ -381,7 +381,7 @@ function PingHistory({ sent, received, onClear }: { sent: Ping[]; received: Ping
         return { id: p.id, date: p.date, tone: o.tone === "yes" ? "yes" : o.tone === "no" ? "no" : "mute", text: `${p.toName}: ${o.text.toLowerCase()}`, sentByMe: true }
       }),
     ...received
-      .filter((p) => isAnswered(p) && daysSince(p.date) <= PING_HISTORY_DAYS)
+      .filter((p) => (isAnswered(p) || p.status === "dismissed") && daysSince(p.date) <= PING_HISTORY_DAYS)
       .map((p): Row => {
         const yes = p.items.filter((i) => i.answer === "yes").map((i) => i.name)
         const no = p.items.filter((i) => i.answer === "no").map((i) => i.name)
