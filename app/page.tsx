@@ -98,6 +98,8 @@ export default function Home() {
   const [scheduleOverrides, setScheduleOverrides] = useState<ScheduleOverride[]>([])
   const [allTags, setAllTags] = useState<string[]>([])
   const [detailId, setDetailId] = useState<string | null>(null)
+  const [calendarFocusDate, setCalendarFocusDate] = useState<string | null>(null)
+  const [deleteSubjectTarget, setDeleteSubjectTarget] = useState<Subject | null>(null)
   const [loaded, setLoaded] = useState(false)
   const [dateLabel, setDateLabel] = useState("")
 
@@ -906,7 +908,15 @@ export default function Home() {
   const goto = (page: string) => {
     setCurrentPage(page as Page)
     setDetailId(null)
-    window.scrollTo({ top: 0 })
+    setCalendarFocusDate(null)
+    window.scrollTo({ top: 0, behavior: "auto" })
+  }
+
+  const openTomorrowCalendar = (date: string) => {
+    setCalendarFocusDate(date)
+    setCurrentPage("calendar")
+    setDetailId(null)
+    window.scrollTo({ top: 0, behavior: "auto" })
   }
 
   /** Settings > "Try a demo": swaps in a full sample term so every screen has something worth looking at. Your own
@@ -1046,6 +1056,7 @@ export default function Home() {
               onOpenSubject={openSubject}
               onGoto={goto}
               onAddSubject={() => setIsAddOpen(true)}
+              onOpenTomorrow={openTomorrowCalendar}
             />
           )}
 
@@ -1060,6 +1071,7 @@ export default function Home() {
                 onBack={() => setDetailId(null)}
                 onSet={(date, status, meta) => setToday(detailSubject.id, date, status, meta)}
                 onEdit={() => setEditingSubjectId(detailSubject.id)}
+                onDelete={() => setDeleteSubjectTarget(detailSubject)}
                 onPlan={(date, value) => setPlan(detailSubject.id, date, value)}
               />
             ) : (
@@ -1069,6 +1081,8 @@ export default function Home() {
           {currentPage === "calendar" && (
             <CalendarView
               onSet={setToday}
+              initialDate={calendarFocusDate}
+              onInitialDateConsumed={() => setCalendarFocusDate(null)}
               tasks={tasks}
               subjects={subjects}
               holidays={holidays}
@@ -1304,8 +1318,25 @@ export default function Home() {
         subject={editingSubject}
         existingTags={allTags}
         onSubmit={editingSubject ? handleEditSubject : handleAddSubject}
-        onDelete={editingSubject ? () => handleDeleteSubject(editingSubject) : undefined}
+        onDelete={editingSubject ? () => setDeleteSubjectTarget(editingSubject) : undefined}
       />
+
+      <Sheet
+        open={deleteSubjectTarget !== null}
+        onClose={() => setDeleteSubjectTarget(null)}
+        title="Delete this subject?"
+      >
+        <p className="text-[14px] text-mute leading-relaxed">
+          <span className="font-semibold text-ink">{deleteSubjectTarget?.name}</span> and its saved attendance history will be removed from this device’s subject list. This can be undone briefly after deletion.
+        </p>
+        <div className="grid grid-cols-2 gap-2 mt-5">
+          <button type="button" onClick={() => setDeleteSubjectTarget(null)} className={tintButton}>Cancel</button>
+          <button type="button" onClick={() => {
+            if (deleteSubjectTarget) handleDeleteSubject(deleteSubjectTarget)
+            setDeleteSubjectTarget(null)
+          }} className="h-12 rounded-xl bg-bad text-white text-[15px] font-semibold">Delete subject</button>
+        </div>
+      </Sheet>
       <DeadlineSheet
         open={deadlineEditor !== null}
         onClose={() => setDeadlineEditor(null)}
