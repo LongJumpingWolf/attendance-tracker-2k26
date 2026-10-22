@@ -884,7 +884,7 @@ export function useSocial(onNotice?: (message: string) => void): SocialApi {
     for (const p of remotePings) if (p.from === uid && daysSince(p.date) > PING_HISTORY_DAYS) getDomainBackend("ping").pings.remove(p.id).catch(() => {})
     for (const p of sharePings) {
       const old = daysSince(p.date) > PING_HISTORY_DAYS
-      if (!old || p.from !== uid || !(p.status === "processed" || p.status === "cancelled" || (p.status === "asking" && isExpired(p)))) continue
+      if (!old || p.from !== uid || !(p.status === "processed" || p.status === "dismissed" || p.status === "cancelled" || (p.status === "asking" && isExpired(p)))) continue
       deleteDoc(doc(db, "sharePings", p.id.slice("share-".length))).catch(() => {})
     }
   }, [remotePings, sharePings, uid, mockMode])
