@@ -420,7 +420,7 @@ export default function Home() {
     }
     if (alwaysIntegrate) {
       const saved = await saveIntegrationPreference(ping, true)
-      if (!saved.ok) return { ok: true, message: "Attendance was integrated, but the preference could not be saved. You will be asked again next time." }
+      if (!saved.ok) showToast("Attendance was integrated, but the automatic-integration preference could not be saved. You'll be asked again next time.")
     }
     return { ok: true, message: "Attendance response integrated." }
   }
@@ -431,7 +431,10 @@ export default function Home() {
       const leased = await social.leasePing(ping.id)
       if (!leased) return { ok: false, message: "This answer is active on another device. Wait briefly and try again; attendance was not changed here." }
       // Finalize without calling applyDurably: dismissing never writes attendance.
-      await social.finalizePing(ping.id)
+      const outcome = await social.dismissPing(ping.id)
+      if (outcome === "already-processed") {
+        return { ok: true, message: "This reply was already integrated on another device. No additional attendance change was made here." }
+      }
       return { ok: true, message: "Response dismissed. Attendance was not changed." }
     } catch {
       return { ok: false, message: "Couldn't save your decision. Attendance was not changed; try again." }
