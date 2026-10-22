@@ -12,7 +12,7 @@ export const PING_HISTORY_DAYS = 30
 export const daysSince = (date: string) => -daysUntil(date)
 
 /** The mate has replied (whether or not the asker's device has applied it yet) */
-export const isAnswered = (p: Ping) => p.status === "answered" || p.status === "processed" || p.status === "dismissed"
+export const isAnswered = (p: Ping) => p.status === "answered" || p.status === "processed"
 
 /** Firestore timestamps arrive as objects ({seconds} / toMillis()); a write still pending is null; tests and demos use numbers */
 export function msOf(ts: unknown): number | null {
