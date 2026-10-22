@@ -125,15 +125,15 @@ function DeadlineWidget({ tasks, subjects }: Data) {
         <p className="my-auto text-[22px] font-semibold leading-snug">Nothing due soon. Add deadlines in Calendar and the next one shows up here.</p>
       ) : (
         <>
-          <p className="font-display leading-none mt-1 text-[96px] tracking-[-0.05em]">
-            {first.days === 0 ? <span className="text-[64px]">Today</span> : first.days === 1 ? <span className="text-[64px]">Tomorrow</span> : (
+          <p className="font-display leading-none mt-1 text-[76px] tracking-[-0.05em]">
+            {first.days === 0 ? <span className="text-[48px]">Today</span> : first.days === 1 ? <span className="text-[64px]">Tomorrow</span> : (
               <>
                 {first.days}
-                <small className="text-[26px] font-bold opacity-85 ml-1.5 tracking-tight">days</small>
+                <small className="text-[22px] font-bold opacity-85 ml-1.5 tracking-tight">days</small>
               </>
             )}
           </p>
-          <h3 className="font-display text-[22px] leading-tight mt-1.5 line-clamp-2">{first.t.title}</h3>
+          <h3 className="font-display text-[20px] leading-tight mt-1.5 line-clamp-2">{first.t.title}</h3>
           <p className="text-[13px] font-semibold opacity-80 mt-1.5">
             {[subjects.find((s) => s.id === first.t.subjectId)?.name, formatShortDate(first.t.dueDate)].filter(Boolean).join(" · ")}
           </p>
