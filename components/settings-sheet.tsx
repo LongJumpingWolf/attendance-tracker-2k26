@@ -1,6 +1,8 @@
 "use client"
 
 import { useEffect, useState } from "react"
+import { getAuth, onAuthStateChanged } from "firebase/auth"
+import { app } from "@/lib/firebase"
 import { BellRinging, Bell, CalendarPlus, CaretRight, CircleHalf, FloppyDisk, Sparkle, Tag, Trash, Info, Star, Bug, Lightbulb, UserCircle } from "@phosphor-icons/react"
 import Sheet, { Segmented, tintButton } from "./sheet"
 import { RemindersList, ReminderEditor } from "./settings-reminders"
@@ -88,6 +90,7 @@ interface SettingsSheetProps {
 
 function Row({
   icon,
+  avatar = false,
   title,
   hint,
   onClick,
@@ -95,6 +98,7 @@ function Row({
   status,
 }: {
   icon: React.ReactNode
+  avatar?: boolean
   title: string
   hint: string
   onClick: () => void
@@ -104,7 +108,7 @@ function Row({
   return (
     <li>
       <button onClick={onClick} className="w-full flex items-center gap-3.5 px-4 py-3 text-left min-h-[64px] active:bg-ink/[0.04] transition">
-        <span className={`w-10 h-10 rounded-xl grid place-items-center flex-shrink-0 ${danger ? "bg-bad/10 text-bad" : "bg-card text-ink"}`}>{icon}</span>
+        <span className={`w-10 h-10 rounded-xl grid place-items-center flex-shrink-0 overflow-hidden ${danger ? "bg-bad/10 text-bad" : avatar ? "bg-secondary text-ink rounded-full" : "bg-card text-ink"}`}>{avatar ? <SettingsAccountAvatar /> : icon}</span>
         <span className="min-w-0 flex-1">
           <span className={`block text-[16px] font-semibold leading-snug ${danger ? "text-bad" : ""}`}>{title}</span>
           <span className="block text-[13px] text-mute leading-snug truncate">{hint}</span>
@@ -122,6 +126,39 @@ function Row({
       </button>
     </li>
   )
+}
+
+function SettingsAccountAvatar() {
+  const [photoUrl, setPhotoUrl] = useState<string | null>(null)
+  const [imageFailed, setImageFailed] = useState(false)
+
+  useEffect(() => {
+    const auth = getAuth(app)
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      if (!user || user.isAnonymous) {
+        setPhotoUrl(null)
+        setImageFailed(false)
+        return
+      }
+
+      setPhotoUrl(user.photoURL || null)
+      setImageFailed(false)
+      // Ask Firebase for the latest Google profile every time the account becomes available.
+      void user.reload().then(() => {
+        if (auth.currentUser?.uid !== user.uid) return
+        setPhotoUrl(auth.currentUser.photoURL || user.photoURL || null)
+        setImageFailed(false)
+      }).catch(() => {
+        // Keep the cached photo URL; a temporary profile refresh failure should not hide the avatar.
+      })
+    })
+    return unsubscribe
+  }, [])
+
+  if (photoUrl && !imageFailed) {
+    return <img src={photoUrl} alt="" referrerPolicy="no-referrer" className="w-full h-full object-cover" onError={() => setImageFailed(true)} />
+  }
+  return <UserCircle weight="regular" className="w-7 h-7" aria-hidden="true" />
 }
 
 /** The simulators and test buttons are for development only; production builds hide them */
@@ -226,6 +263,21 @@ export default function SettingsSheet(p: SettingsSheetProps) {
       {panel === "home" && (
         <div className="space-y-5">
           <section>
+            <h3 className={label}>Account & data</h3>
+            <ul className={groupClass}>
+              <Row
+                icon={<UserCircle weight="duotone" className={icon} />}
+                avatar
+                title="Account"
+                hint={p.sync.account ? p.sync.account.email : "Profile, sign-in, backups and reset"}
+                status={p.sync.account ? { text: p.sync.status === "offline" ? "Offline" : p.sync.status === "synced" ? "Up to date" : "Signed in", tone: p.sync.status === "offline" ? "bad" : p.sync.status === "synced" ? "good" : "mute" } : undefined}
+                onClick={() => setPanel("sync")}
+              />
+            </ul>
+          </section>
+
+
+          <section>
             <h3 className={label}>Your day</h3>
             <ul className={groupClass}>
               <Row
@@ -280,18 +332,6 @@ export default function SettingsSheet(p: SettingsSheetProps) {
             </ul>
           </section>
 
-          <section>
-            <h3 className={label}>Account & data</h3>
-            <ul className={groupClass}>
-              <Row
-                icon={<UserCircle weight="duotone" className={icon} />}
-                title="Account"
-                hint={p.sync.account ? p.sync.account.email : "Profile, sign-in, backups and reset"}
-                status={p.sync.account ? { text: p.sync.status === "offline" ? "Offline" : p.sync.status === "synced" ? "Up to date" : "Signed in", tone: p.sync.status === "offline" ? "bad" : p.sync.status === "synced" ? "good" : "mute" } : undefined}
-                onClick={() => setPanel("sync")}
-              />
-            </ul>
-          </section>
 
           <section>
             <h3 className={label}>Appearance</h3>
