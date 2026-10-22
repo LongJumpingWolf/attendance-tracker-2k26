@@ -73,7 +73,7 @@ self.addEventListener('fetch', (event) => {
   if (req.method !== 'GET') return;
   const url = new URL(req.url);
   if (url.origin !== self.location.origin) return;
-  if (url.pathname.startsWith('/api/') || url.pathname === '/sw.js') return;
+  if (url.pathname.startsWith('/api/') || url.pathname === '/sw.js' || url.pathname === '/demo.html') return;
   if (req.mode === 'navigate') return event.respondWith(page(req));
   if (url.pathname.startsWith('/_next/static/')) return event.respondWith(builtFile(req));
   if (/\.(png|svg|ico|json|webmanifest)$/.test(url.pathname)) return event.respondWith(staleWhileRevalidate(req));
