@@ -7,6 +7,7 @@ import { ArrowClockwise, DownloadSimple, SignIn } from "@phosphor-icons/react"
 import { app } from "@/lib/firebase"
 import { confirmSwitch, signInWithGoogle } from "@/lib/account"
 import { getDeveloperProductLinkEvents, type ProductLinkEvent, type ProductLinkSource } from "@/lib/link-analytics"
+import { getDeveloperProductUsageEvents, type ProductUsageEvent, type UsageEventName } from "@/lib/usage-analytics"
 
 const DEVELOPER_EMAIL = (process.env.NEXT_PUBLIC_DEVELOPER_EMAIL || "adityavw2006@gmail.com").toLowerCase()
 type RangeKey = "24h" | "7d" | "30d" | "90d"
@@ -27,6 +28,7 @@ type AnalyticsRow = {
   answered: boolean
 }
 type TrendBucket = { label: string; start: number; end: number; created: number; opened: number; completed: number; events: number }
+type UsageTrendBucket = { label: string; start: number; end: number; users: Set<string>; sessions: Set<string>; actions: number }
 const RANGE_MS: Record<RangeKey, number> = { "24h": 24 * 60 * 60 * 1000, "7d": 7 * 24 * 60 * 60 * 1000, "30d": 30 * 24 * 60 * 60 * 1000, "90d": 90 * 24 * 60 * 60 * 1000 }
 const RANGE_LABEL: Record<RangeKey, string> = { "24h": "Last 24 hours", "7d": "Last 7 days", "30d": "Last 30 days", "90d": "Last 90 days" }
 const csvQ = (v: unknown) => `"${String(v ?? "").replace(/"/g, '""')}"`
@@ -51,19 +53,22 @@ const compactDuration = (ms: number) => {
 }
 const sourceName = (source: ProductLinkSource) => source === "mate-invite" ? "Mate invite" : "WhatsApp Ping"
 const eventName = (kind: ProductLinkEvent["kind"]) => ({ created: "Created", opened: "Opened", used: "Invite used", answered: "Ping answered" })[kind]
+const usageEventName = (kind: UsageEventName) => ({ app_open: "App opens", screen_view: "Main screen views", settings_open: "Settings opens", attendance_mark: "Attendance marks", attendance_clear: "Attendance clears", scan_checkin: "Scan check-ins", subject_create: "Subjects added", subject_update: "Subjects edited", subject_delete: "Subjects deleted", task_create: "Tasks added", task_update: "Tasks edited", task_complete: "Tasks completed", task_reopen: "Tasks reopened", task_delete: "Tasks deleted" })[kind]
+const usageScreenName = (screen: ProductUsageEvent["screen"]) => ({ today: "Today", subjects: "Subjects", calendar: "Calendar", mates: "Mates", settings: "Settings", scanner: "Scan check-in" })[screen]
 const isCompletion = (e: ProductLinkEvent) => e.kind === "used" || e.kind === "answered"
 
 export default function DeveloperAnalytics() {
   const [user, setUser] = useState<ReturnType<typeof getAuth>["currentUser"]>(null)
   const [authReady, setAuthReady] = useState(false)
   const [events, setEvents] = useState<ProductLinkEvent[]>([])
+  const [usageEvents, setUsageEvents] = useState<ProductUsageEvent[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState("")
   const [filter, setFilter] = useState("")
   const [range, setRange] = useState<RangeKey>("30d")
   const [source, setSource] = useState<SourceKey>("all")
   const [busy, setBusy] = useState(false)
-  const [tab, setTab] = useState<"overview" | "links" | "events">("overview")
+  const [tab, setTab] = useState<"overview" | "links" | "events" | "usage">("overview")
   const auth = getAuth(app)
   const isAdmin = Boolean(user && !user.isAnonymous && user.emailVerified && user.email?.toLowerCase() === DEVELOPER_EMAIL)
   const needsSignIn = authReady && (!user || user.isAnonymous)
@@ -71,13 +76,16 @@ export default function DeveloperAnalytics() {
   const refresh = useCallback(async () => {
     if (!isAdmin) {
       setEvents([])
+      setUsageEvents([])
       setLoading(false)
       return
     }
     setLoading(true)
     setError("")
     try {
-      setEvents(await getDeveloperProductLinkEvents())
+      const [linkEvents, productUsageEvents] = await Promise.all([getDeveloperProductLinkEvents(), getDeveloperProductUsageEvents()])
+      setEvents(linkEvents)
+      setUsageEvents(productUsageEvents)
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not load analytics. Check that Firestore rules were published to the correct Firebase project.")
     } finally {
@@ -239,6 +247,98 @@ export default function DeveloperAnalytics() {
     return [...map.entries()]
   }, [scope])
 
+  const usageScope = useMemo(() => {
+    const cutoff = Date.now() - RANGE_MS[range]
+    return usageEvents.filter((e) => {
+      const at = timestampMs(e.createdAt)
+      return at > 0 && at >= cutoff
+    })
+  }, [usageEvents, range])
+
+  const usageMetrics = useMemo(() => {
+    const now = Date.now()
+    const uniqueUsersIn = (duration: number) => new Set(
+      usageEvents.filter((e) => {
+        const at = timestampMs(e.createdAt)
+        return at > 0 && at >= now - duration && at <= now
+      }).map((e) => e.actorUid),
+    ).size
+    const actors = new Set(usageScope.map((e) => e.actorUid))
+    const sessions = new Set(usageScope.map((e) => e.sessionId))
+    const activeDays = new Map<string, Set<string>>()
+    for (const e of usageScope) {
+      const day = new Date(timestampMs(e.createdAt)).toISOString().slice(0, 10)
+      const days = activeDays.get(e.actorUid) || new Set<string>()
+      days.add(day)
+      activeDays.set(e.actorUid, days)
+    }
+    const eventCounts = new Map<UsageEventName, number>()
+    for (const e of usageScope) eventCounts.set(e.event, (eventCounts.get(e.event) || 0) + 1)
+    const screenCounts = new Map<ProductUsageEvent["screen"], number>()
+    for (const e of usageScope) {
+      if (e.event === "screen_view" || e.event === "settings_open") {
+        screenCounts.set(e.screen, (screenCounts.get(e.screen) || 0) + 1)
+      }
+    }
+    const actions = [...eventCounts.entries()]
+      .filter(([event]) => !["app_open", "screen_view", "settings_open"].includes(event))
+      .sort((a, b) => b[1] - a[1])
+    const screenPopularity = [...screenCounts.entries()].sort((a, b) => b[1] - a[1])
+    return {
+      dau: uniqueUsersIn(RANGE_MS["24h"]),
+      wau: uniqueUsersIn(RANGE_MS["7d"]),
+      mau: uniqueUsersIn(RANGE_MS["30d"]),
+      activeUsers: actors.size,
+      sessions: sessions.size,
+      repeatUsers: [...activeDays.values()].filter((days) => days.size >= 2).length,
+      appOpens: eventCounts.get("app_open") || 0,
+      screenViews: (eventCounts.get("screen_view") || 0) + (eventCounts.get("settings_open") || 0),
+      attendanceActions: (eventCounts.get("attendance_mark") || 0) + (eventCounts.get("attendance_clear") || 0),
+      subjectActions: ["subject_create", "subject_update", "subject_delete"].reduce((n, k) => n + (eventCounts.get(k as UsageEventName) || 0), 0),
+      taskActions: ["task_create", "task_update", "task_complete", "task_reopen", "task_delete"].reduce((n, k) => n + (eventCounts.get(k as UsageEventName) || 0), 0),
+      scanActions: eventCounts.get("scan_checkin") || 0,
+      actionCount: actions.reduce((n, [, count]) => n + count, 0),
+      eventCounts,
+      screenPopularity,
+      actions,
+    }
+  }, [usageEvents, usageScope])
+
+  const usageTrend = useMemo<UsageTrendBucket[]>(() => {
+    const duration = RANGE_MS[range]
+    const count = range === "24h" ? 12 : range === "7d" ? 7 : range === "30d" ? 10 : 13
+    const now = Date.now()
+    const start = now - duration
+    const step = duration / count
+    const buckets: UsageTrendBucket[] = Array.from({ length: count }, (_, i) => {
+      const begin = start + i * step
+      return { label: range === "24h" ? timeShort(begin) : dateShort(begin), start: begin, end: i === count - 1 ? now : begin + step, users: new Set<string>(), sessions: new Set<string>(), actions: 0 }
+    })
+    const baseEvents = usageEvents.filter((e) => {
+      const at = timestampMs(e.createdAt)
+      return at > 0 && at >= start && at <= now
+    })
+    for (const e of baseEvents) {
+      const at = timestampMs(e.createdAt)
+      const idx = Math.min(count - 1, Math.max(0, Math.floor((at - start) / step)))
+      const bucket = buckets[idx]
+      if (!bucket) continue
+      bucket.users.add(e.actorUid)
+      bucket.sessions.add(e.sessionId)
+      if (!["app_open", "screen_view", "settings_open"].includes(e.event)) bucket.actions += 1
+    }
+    return buckets
+  }, [usageEvents, range])
+
+  const maxUsageUsers = Math.max(1, ...usageTrend.map((b) => b.users.size))
+  const maxScreenCount = Math.max(1, ...usageMetrics.screenPopularity.map(([, count]) => count))
+  const maxUsageActionCount = Math.max(1, ...usageMetrics.actions.map(([, count]) => count))
+
+  const exportUsageEvents = () => exportFile("attendance-tracker-app-usage.csv", [
+    ["Occurred at", "Event", "Screen", "Pseudonymous account ID", "Tab session ID"],
+    ...usageScope.slice().sort((a, b) => timestampMs(b.createdAt) - timestampMs(a.createdAt)).map((e) => [dateText(timestampMs(e.createdAt)), usageEventName(e.event), usageScreenName(e.screen), e.actorUid, e.sessionId]),
+  ])
+
   const exportFile = (filename: string, lines: unknown[][]) => {
     const csv = lines.map((line) => line.map(csvQ).join(",")).join("\r\n")
     const url = URL.createObjectURL(new Blob(["\uFEFF", csv], { type: "text/csv;charset=utf-8" }))
@@ -341,7 +441,7 @@ export default function DeveloperAnalytics() {
 
           {loading ? <section className="rounded-2xl bg-card p-8 text-center text-sm text-mute">Loading analytics from Firestore…</section> : <>
             <nav className="flex flex-wrap gap-2" aria-label="Analytics views">
-              {([["overview", "Overview"], ["links", "Link performance"], ["events", "Event explorer"]] as const).map(([key, label]) => <button key={key} onClick={() => setTab(key)} className={`rounded-xl px-4 py-2 text-sm font-semibold ${tab === key ? "bg-ink text-paper" : "bg-secondary"}`} aria-pressed={tab === key}>{label}</button>)}
+              {([["overview", "Overview"], ["usage", "App usage"], ["links", "Link performance"], ["events", "Event explorer"]] as const).map(([key, label]) => <button key={key} onClick={() => setTab(key)} className={`rounded-xl px-4 py-2 text-sm font-semibold ${tab === key ? "bg-ink text-paper" : "bg-secondary"}`} aria-pressed={tab === key}>{label}</button>)}
             </nav>
 
             {tab === "overview" && <>
@@ -403,6 +503,72 @@ export default function DeveloperAnalytics() {
               <section className="rounded-2xl bg-card p-4">
                 <div className="flex flex-wrap justify-between gap-2 items-end"><div><h2 className="font-bold">Most active sharers</h2><p className="text-xs text-mute mt-1">Ranked by links created in this date window.</p></div><span className="text-xs text-mute">{metrics.senders.length} unique accounts</span></div>
                 {topSenders.length === 0 ? <p className="text-sm text-mute py-6 text-center">No sharing activity recorded in this period.</p> : <div className="overflow-x-auto mt-3"><table className="w-full min-w-[620px] text-left text-sm"><thead><tr className="border-b border-ink/10 text-xs text-mute"><th className="py-2 pr-3">Sender</th><th className="py-2 pr-3">Links</th><th className="py-2 pr-3">Open events</th><th className="py-2 pr-3">Completions</th><th>Completion rate</th></tr></thead><tbody>{topSenders.map((s) => <tr key={s.uid} className="border-b border-ink/[0.06]"><td className="py-3 pr-3"><p className="font-semibold">{s.name}</p><p className="text-[10px] text-mute break-all">{s.uid}</p></td><td className="py-3 pr-3 tabular-nums">{s.links}</td><td className="py-3 pr-3 tabular-nums">{s.opens}</td><td className="py-3 pr-3 tabular-nums">{s.completed}</td><td>{percent(s.completed, s.links)}</td></tr>)}</tbody></table></div>}
+              </section>
+            </>}
+
+            {tab === "usage" && <>
+              {usageScope.length === 0 ? <section className="rounded-2xl bg-card p-6 space-y-2">
+                <h2 className="text-lg font-bold">No app-usage events yet</h2>
+                <p className="text-sm text-mute leading-relaxed">These metrics begin only after individual users opt in through the privacy notice. There is no backfill of earlier app activity. Turn on the optional setting in the app under Settings → Tips, privacy &amp; terms, then use the app normally.</p>
+              </section> : <>
+                <section className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3">
+                  {[
+                    ["Active users", usageMetrics.activeUsers, RANGE_LABEL[range]],
+                    ["Active in 24h", usageMetrics.dau, "Distinct account IDs"],
+                    ["Active in 7d", usageMetrics.wau, "Distinct account IDs"],
+                    ["Active in 30d", usageMetrics.mau, "Distinct account IDs"],
+                    ["Tab sessions", usageMetrics.sessions, "Random session IDs"],
+                    ["Repeat users", usageMetrics.repeatUsers, "Active on 2+ dates in range"],
+                  ].map(([label, value, hint]) => <article key={String(label)} className="rounded-2xl bg-card p-4 min-w-0">
+                    <p className="text-xs text-mute">{label}</p><p className="text-2xl sm:text-3xl font-bold mt-1 tabular-nums">{value}</p><p className="text-[11px] text-mute mt-1">{hint}</p>
+                  </article>)}
+                </section>
+                <section className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                  {[
+                    ["App opens", usageMetrics.appOpens],
+                    ["Screen visits", usageMetrics.screenViews],
+                    ["Attendance actions", usageMetrics.attendanceActions],
+                    ["Feature actions", usageMetrics.actionCount],
+                  ].map(([label, value]) => <article key={String(label)} className="rounded-2xl bg-card p-4"><p className="text-xs text-mute">{label}</p><p className="text-xl font-bold mt-1 tabular-nums">{value}</p></article>)}
+                </section>
+                <section className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+                  <article className="rounded-2xl bg-card p-4">
+                    <h2 className="font-bold">Active-user trend</h2>
+                    <p className="text-xs text-mute mt-1">Unique pseudonymous account IDs per bucket. This is app usage, not attendance performance.</p>
+                    <div className="grid gap-2 mt-4" style={{ gridTemplateColumns: `repeat(${usageTrend.length}, minmax(0, 1fr))` }}>
+                      {usageTrend.map((b) => <div key={b.start} className="min-w-0">
+                        <div className="h-32 rounded-lg bg-secondary/60 flex items-end justify-center px-0.5 pt-2" title={`${b.label}: ${b.users.size} active accounts, ${b.sessions.size} sessions, ${b.actions} feature actions`}>
+                          <div className="w-full max-w-5 rounded-t bg-ink" style={{ height: `${Math.max(2, b.users.size / maxUsageUsers * 100)}%` }} />
+                        </div>
+                        <p className="text-[9px] sm:text-[10px] text-mute truncate text-center mt-1">{b.label}</p>
+                        <p className="text-[10px] text-center tabular-nums">{b.users.size}</p>
+                      </div>)}
+                    </div>
+                  </article>
+                  <article className="rounded-2xl bg-card p-4 space-y-3">
+                    <h2 className="font-bold">Most visited screens</h2>
+                    <p className="text-xs text-mute">Recorded main-screen visits and explicit Settings opens.</p>
+                    {usageMetrics.screenPopularity.length === 0 ? <p className="text-sm text-mute py-4">No screen visits in this period.</p> : usageMetrics.screenPopularity.map(([screen, count]) => <div key={screen} className="space-y-1.5">
+                      <div className="flex justify-between gap-2 text-sm"><span>{usageScreenName(screen)}</span><b className="tabular-nums">{count}</b></div>
+                      <div className="h-2 rounded-full bg-secondary overflow-hidden"><div className="h-full rounded-full bg-ink" style={{ width: `${count / maxScreenCount * 100}%` }} /></div>
+                    </div>)}
+                    <p className="text-[11px] text-mute">Screen visits are recorded only after opt-in, and only when the screen changes (plus Settings opens).</p>
+                  </article>
+                </section>
+                <section className="rounded-2xl bg-card p-4 space-y-3">
+                  <div className="flex flex-wrap justify-between gap-2"><div><h2 className="font-bold">Feature adoption and actions</h2><p className="text-xs text-mute mt-1">Which broad actions happen most often, without logging the subjects, class dates, task titles or attendance values.</p></div><button onClick={exportUsageEvents} className="rounded-xl bg-secondary px-3 py-2 text-sm font-semibold inline-flex items-center gap-2"><DownloadSimple size={16}/>Export usage CSV</button></div>
+                  {usageMetrics.actions.length === 0 ? <p className="text-sm text-mute py-4">No feature-action events in this period yet.</p> : <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-3">
+                    {usageMetrics.actions.map(([event, count]) => <div key={event} className="space-y-1.5">
+                      <div className="flex justify-between gap-2 text-sm"><span>{usageEventName(event)}</span><b className="tabular-nums">{count}</b></div>
+                      <div className="h-2 rounded-full bg-secondary overflow-hidden"><div className="h-full rounded-full bg-ink" style={{ width: `${count / maxUsageActionCount * 100}%` }} /></div>
+                    </div>)}
+                  </div>}
+                </section>
+              </>}
+              <section className="rounded-2xl bg-secondary p-4 text-xs text-mute leading-relaxed space-y-1">
+                <p><b className="text-ink">Opt-in and scope:</b> only users who separately enable app-usage analytics contribute. It records pseudonymous Firebase account IDs, random tab-session IDs, broad event labels, screen category and server timestamp. It does not log subject or task titles, attendance values, attendance dates, or notes.</p>
+                <p><b className="text-ink">Interpretation:</b> active users are distinct account IDs with at least one recorded opted-in event in the named period. A single person may have more than one account ID across browsers or sign-in changes. Metrics can undercount because the dashboard loads at most 3,000 recent usage events and has no pre-opt-in history.</p>
+                <p><b className="text-ink">Retention:</b> usage events older than 90 days are removed when analytics loads. Exported CSVs include pseudonymous account and session IDs; store and delete exports responsibly.</p>
               </section>
             </>}
 
