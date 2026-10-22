@@ -1,7 +1,9 @@
 "use client"
 
-import { useState } from "react"
-import { GoogleLogo, SpinnerGap } from "@phosphor-icons/react"
+import { useEffect, useState } from "react"
+import { getAuth, updateProfile } from "firebase/auth"
+import { GoogleLogo, SpinnerGap, UserCircle, PencilSimple, Check, X } from "@phosphor-icons/react"
+import { app } from "@/lib/firebase"
 import type { CloudSync } from "@/hooks/use-cloud-sync"
 import { inputClass, primaryButton, tintButton } from "./sheet"
 
@@ -25,6 +27,72 @@ export default function SyncPanel({ sync, onToast }: { sync: CloudSync; onToast:
   const [busy, setBusy] = useState(false)
   const [redirectBusy, setRedirectBusy] = useState(false)
   const [confirmOut, setConfirmOut] = useState(false)
+  const [profileName, setProfileName] = useState(sync.account?.name || "Your account")
+  const [nameDraft, setNameDraft] = useState(sync.account?.name || "")
+  const [avatarUrl, setAvatarUrl] = useState<string | null>(null)
+  const [editingName, setEditingName] = useState(false)
+  const [nameError, setNameError] = useState("")
+  const [nameChangesUsed, setNameChangesUsed] = useState(0)
+  const NAME_CHANGE_LIMIT = 3
+  const NAME_LIMIT_KEY = "attendance-profile-name-change-limit"
+  const nameMonth = () => {
+    const now = new Date()
+    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`
+  }
+  const readNameChangeCount = () => {
+    try {
+      const raw = localStorage.getItem(NAME_LIMIT_KEY)
+      if (!raw) return 0
+      const saved = JSON.parse(raw) as { month?: string; count?: number }
+      return saved.month === nameMonth() && Number.isFinite(saved.count) ? Math.max(0, Math.min(NAME_CHANGE_LIMIT, Number(saved.count))) : 0
+    } catch { return 0 }
+  }
+
+  useEffect(() => {
+    let savedName = sync.account?.name || "Your account"
+    try {
+      const local = localStorage.getItem("displayName")?.trim()
+      if (local) savedName = local
+    } catch { /* local name is optional */ }
+    setProfileName(savedName)
+    setNameDraft(savedName)
+    setNameChangesUsed(readNameChangeCount())
+    const user = getAuth(app).currentUser
+    setAvatarUrl(user?.photoURL || null)
+  }, [sync.account?.id, sync.account?.name])
+  
+  const saveProfileName = async () => {
+    const next = nameDraft.trim().replace(/\s+/g, " ")
+    if (!next) return setNameError("Enter a name to continue.")
+    if (next.length > 40) return setNameError("Use 40 characters or fewer.")
+    if (next === profileName) {
+      setEditingName(false)
+      setNameError("")
+      return
+    }
+    const used = readNameChangeCount()
+    if (used >= NAME_CHANGE_LIMIT) {
+      setNameChangesUsed(used)
+      return setNameError("You’ve used all 3 name changes for this month. You can change it again next month.")
+    }
+    setNameError("")
+    setBusy(true)
+    try {
+      const user = getAuth(app).currentUser
+      if (user && !user.isAnonymous) await updateProfile(user, { displayName: next })
+      localStorage.setItem("displayName", next)
+      localStorage.setItem(NAME_LIMIT_KEY, JSON.stringify({ month: nameMonth(), count: used + 1 }))
+      setProfileName(next)
+      setNameDraft(next)
+      setNameChangesUsed(used + 1)
+      setEditingName(false)
+      onToast("Display name updated")
+    } catch (e) {
+      setNameError(e instanceof Error ? e.message : "Could not update your name. Please try again.")
+    } finally {
+      setBusy(false)
+    }
+  }
 
   const signIn = async () => {
     setBusy(true)
@@ -108,18 +176,38 @@ export default function SyncPanel({ sync, onToast }: { sync: CloudSync; onToast:
         <>
           <section>
             <h3 className={label}>Account</h3>
-            <div className={`${card} flex items-center gap-3`}>
+            <div className={`${card} flex items-start gap-3`}>
+              <span className="w-14 h-14 rounded-full bg-card border border-ink/10 text-mute grid place-items-center overflow-hidden shrink-0">
+                {avatarUrl ? <img src={avatarUrl} alt="" referrerPolicy="no-referrer" className="w-full h-full object-cover" onError={() => setAvatarUrl(null)} /> : <UserCircle weight="regular" className="w-10 h-10" />}
+              </span>
               <span className="min-w-0 flex-1">
-                <span className="block text-[16px] font-semibold leading-snug truncate">{sync.account.name}</span>
+                <span className="block text-[16px] font-semibold leading-snug truncate">{profileName || sync.account.name || "Your account"}</span>
                 <span className="block text-[13px] text-mute leading-snug truncate">{sync.account.email}</span>
-                <span className="block text-[13px] text-mute leading-snug">
+                <span className="block text-[12px] text-mute leading-snug mt-1">
                   {sync.lastAt ? `Last synced ${new Date(sync.lastAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}` : "Not synced yet"}
                 </span>
+                <button type="button" onClick={() => { setNameDraft(profileName); setNameError(""); setEditingName((v) => !v) }} className="mt-2 inline-flex items-center gap-1.5 text-[13px] font-semibold text-ink">
+                  <PencilSimple size={14} /> {editingName ? "Cancel name change" : "Change display name"}
+                </button>
               </span>
-              <span className={`text-[12px] font-semibold rounded-full px-2.5 py-1 ${STATUS[sync.status].cls}`}>
-                {sync.status === "offline" && sync.pending ? "Saved here, will sync" : sync.status === "synced" && sync.realtime ? "Up to date · live" : STATUS[sync.status].text}
+              <span className={`text-[11px] font-semibold rounded-full px-2 py-1 ${STATUS[sync.status].cls}`}>
+                {sync.status === "offline" && sync.pending ? "Saved here" : sync.status === "synced" && sync.realtime ? "Live" : STATUS[sync.status].text}
               </span>
             </div>
+            {editingName && (
+              <div className={`${card} mt-2 space-y-2`}>
+                <label htmlFor="account-display-name" className="block text-[12px] font-semibold text-mute">Display name</label>
+                <input id="account-display-name" value={nameDraft} maxLength={40} onChange={(e) => { setNameDraft(e.target.value); setNameError("") }} autoComplete="nickname" className={inputClass} placeholder="Your name" />
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-[11px] text-mute">{Math.max(0, NAME_CHANGE_LIMIT - nameChangesUsed)} name changes left this month</span>
+                  <span className="text-[11px] text-mute">{nameDraft.length}/40</span>
+                </div>
+                {nameError && <p role="alert" className="text-[12px] text-bad">{nameError}</p>}
+                <button type="button" disabled={busy || !nameDraft.trim()} onClick={() => void saveProfileName()} className={`${primaryButton} disabled:opacity-50`}>
+                  {busy ? "Saving…" : "Save name"}
+                </button>
+              </div>
+            )}
             {sync.status === "needs-choice" && sync.reconcile && (
               <div className={`${card} mt-2`} data-testid="reconcile-waiting">
                 <p className="text-[15px] font-semibold leading-snug">Choose how to combine your data</p>
