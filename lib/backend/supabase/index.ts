@@ -227,8 +227,8 @@ export function createSupabaseBackend({ transport, guard, realtime, watchPollMs 
     async finalize(id) {
       return (await rpc("finalize_ping", { p_id: id })) === "already" ? "already" : "processed"
     },
-    async dismiss(id) {
-      const result = await rpc("dismiss_ping", { p_id: id })
+    async dismiss(id, deviceId) {
+      const result = await rpc("dismiss_ping", { p_id: id, p_device_id: deviceId })
       return result === "already-dismissed" || result === "already-processed" ? result : "dismissed"
     },
     async remove(id) {
