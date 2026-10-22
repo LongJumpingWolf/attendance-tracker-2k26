@@ -703,7 +703,7 @@ export default function MatesView({ mates, social, subjects, scheduleOverrides =
                   )
                 })()}
                 <div className="flex flex-wrap items-center gap-1.5 mt-3.5">
-                  <button onClick={() => setPinging({ ...m, name: visibleMateName(m) })} title={canSendInAppPing({ configured: social.configured, ready: social.status === "ready", anonymous: social.anonymous, connected: isConnected(m) }) ? "Send an in-app Ping or a WhatsApp link" : "Create a 24-hour WhatsApp Ping link; Google sign-in and an accepted connection enable in-app Pings"} className={chip}>
+                  <button onClick={() => setPinging(m)} title={canSendInAppPing({ configured: social.configured, ready: social.status === "ready", anonymous: social.anonymous, connected: isConnected(m) }) ? "Send an in-app Ping or a WhatsApp link" : "Create a 24-hour WhatsApp Ping link; Google sign-in and an accepted connection enable in-app Pings"} className={chip}>
                     {canSendInAppPing({ configured: social.configured, ready: social.status === "ready", anonymous: social.anonymous, connected: isConnected(m) }) ? "In-app Ping" : "WhatsApp Ping"}
                   </button>
                   {m.uid && !isConnected(m) && social.configured && (
@@ -850,7 +850,7 @@ export default function MatesView({ mates, social, subjects, scheduleOverrides =
         <ul className="space-y-2">
           {connectedMates.map((mate) => (
             <li key={mate.id}>
-              <button type="button" onClick={() => { setDirectChooserOpen(false); setPinging({ ...mate, name: visibleMateName(mate) }) }} className="w-full flex items-center gap-3 rounded-2xl bg-secondary px-3.5 py-3 text-left">
+              <button type="button" onClick={() => { setDirectChooserOpen(false); setPinging(mate) }} className="w-full flex items-center gap-3 rounded-2xl bg-secondary px-3.5 py-3 text-left">
                 <Avatar name={visibleMateName(mate)} size={40} />
                 <span className="min-w-0 flex-1"><span className="block font-semibold truncate">{visibleMateName(mate)}</span><span className="block text-[12px] text-mute">Connected account</span></span>
                 <ChatCircleDots className="w-5 h-5" />
@@ -865,6 +865,7 @@ export default function MatesView({ mates, social, subjects, scheduleOverrides =
         open={pinging !== null}
         onClose={() => setPinging(null)}
         mate={pinging && !isConnected(pinging) ? { ...pinging, uid: undefined } : pinging}
+        displayName={pinging ? visibleMateName(pinging) : undefined}
         subjects={subjects}
         scheduleOverrides={scheduleOverrides}
         waiting={pinging && pinging.id !== "__general__" ? social.sent.filter((p) => p.status === "asking" && !isExpired(p) && (pinging.uid ? p.to === pinging.uid : !p.to && p.toName.trim().toLowerCase() === pinging.name.trim().toLowerCase())) : []}
