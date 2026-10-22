@@ -40,7 +40,7 @@ jobs:
       - name: Production build
         # Public placeholder values only: the build should not need access to the real Firebase project.
         env:
-          NEXT_PUBLIC_FIREBASE_API_KEY: "AIzaSyDUMMY_CI_BUILD_ONLY_KEY"
+          NEXT_PUBLIC_FIREBASE_API_KEY: "AIzaSyDUMMY_CI_BUILD_ONLY_KEY0000000000"
           NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN: "ci-placeholder.firebaseapp.com"
           NEXT_PUBLIC_FIREBASE_PROJECT_ID: "attendance-tracker-ci"
           NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET: "attendance-tracker-ci.appspot.com"
