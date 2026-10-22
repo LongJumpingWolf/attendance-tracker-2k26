@@ -2,7 +2,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest"
 import { assertFails, assertSucceeds, initializeTestEnvironment, type RulesTestEnvironment } from "@firebase/rules-unit-testing"
 import { Timestamp, collection, deleteDoc, doc, getDoc, getDocs, query, where, serverTimestamp, setDoc, updateDoc, type Firestore } from "firebase/firestore"
 import fs from "node:fs"
-import { answerPing, createPing, finalizePing, leasePing, removePing, type NewPing } from "@/lib/ping-server"
+import { answerPing, createPing, dismissPing, finalizePing, leasePing, removePing, type NewPing } from "@/lib/ping-server"
 import type { PingItem } from "@/lib/types"
 
 /**
@@ -342,6 +342,24 @@ describe("exactly-once processing: lease, then finalize", () => {
     await assertFails(answerPing(rahul(), "ping-0001-aaaa", answers(ping(), ["no", "no"])))
     expect(await leasePing(asha(), "ping-0001-aaaa", "device-laptop-01")).toBe(false)
   })
+
+  it("a leased answer can be explicitly dismissed without being marked processed", async () => {
+    await answered()
+    expect(await leasePing(asha(), "ping-0001-aaaa", "device-phone-001")).toBe(true)
+    expect(await dismissPing(asha(), "ping-0001-aaaa", "device-phone-001")).toBe("dismissed")
+    expect((await read("ping-0001-aaaa"))?.status).toBe("dismissed")
+    expect(await leasePing(asha(), "ping-0001-aaaa", "device-laptop-01")).toBe(false)
+    const ref = doc(asha(), "pings", "ping-0001-aaaa")
+    await assertFails(updateDoc(ref, { status: "processed", processedAt: serverTimestamp() }))
+    await assertFails(updateDoc(ref, { status: "answered", claimedBy: "device-laptop-01", claimedAt: serverTimestamp() }))
+  })
+
+  it("only the asker holding the live lease can dismiss an answer", async () => {
+    await answered()
+    await assertFails(dismissPing(rahul(), "ping-0001-aaaa", "device-phone-001"))
+    await assertFails(dismissPing(asha(), "ping-0001-aaaa", "device-phone-001"))
+    expect((await read("ping-0001-aaaa"))?.status).toBe("answered")
+  })
 })
 
 describe("the previous version of the app keeps working while people update", () => {
@@ -449,6 +467,18 @@ describe("share-link Pings", () => {
     await assertSucceeds(updateDoc(doc(asha(), "sharePings", shareId), { claimedBy: "device-phone-001", claimedAt: serverTimestamp() }))
     await assertFails(updateDoc(doc(rahul(), "sharePings", shareId), { claimedBy: "device-phone-002", claimedAt: serverTimestamp() }))
     await assertSucceeds(updateDoc(doc(asha(), "sharePings", shareId), { status: "processed", processedAt: serverTimestamp() }))
+  })
+
+  it("lets the owner dismiss an answered share link with a live lease and hides it from the public link", async () => {
+    await assertSucceeds(setDoc(doc(asha(), "sharePings", shareId), shareDoc()))
+    const publicDb = asDb(env.unauthenticatedContext().firestore())
+    await assertSucceeds(updateDoc(doc(publicDb, "sharePings", shareId), {
+      items: [{ ...shareItem, answer: "yes" }], status: "answered", respondedAt: serverTimestamp(),
+    }))
+    await assertSucceeds(updateDoc(doc(asha(), "sharePings", shareId), { claimedBy: "device-phone-001", claimedAt: serverTimestamp() }))
+    await assertSucceeds(updateDoc(doc(asha(), "sharePings", shareId), { status: "dismissed", dismissedAt: serverTimestamp() }))
+    expect((await getDoc(doc(asha(), "sharePings", shareId))).data()?.status).toBe("dismissed")
+    await assertFails(getDoc(doc(publicDb, "sharePings", shareId)))
   })
 
   it("lets the owner withdraw a pending link and stops public reads afterward", async () => {
