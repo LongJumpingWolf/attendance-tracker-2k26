@@ -12,6 +12,8 @@ interface Props {
   open: boolean
   onClose: () => void
   mate: Mate | null
+  /** Private display alias for this local user; it must never be included in the Ping payload. */
+  displayName?: string
   subjects: Subject[]
   scheduleOverrides?: ScheduleOverride[]
   /** Direct in-app delivery is allowed only for a Google-authenticated, accepted Mate connection. */
@@ -30,7 +32,7 @@ type Row = { key: string; subject: Subject; attendanceSubjectId: string; display
 
 const dayDate = (offset: number) => new Date(new Date().getFullYear(), new Date().getMonth(), new Date().getDate() - offset)
 
-export default function PingSheet({ open, onClose, mate, subjects, scheduleOverrides = [], canDirect = false, canChooseDirectMate = false, onChooseDirectMate, waiting, onAsk, onCreateSharePing, onToast }: Props) {
+export default function PingSheet({ open, onClose, mate, displayName, subjects, scheduleOverrides = [], canDirect = false, canChooseDirectMate = false, onChooseDirectMate, waiting, onAsk, onCreateSharePing, onToast }: Props) {
   const [offset, setOffset] = useState(0)
   const [picked, setPicked] = useState<Set<string>>(new Set())
   const [showOther, setShowOther] = useState(false)
@@ -87,6 +89,7 @@ export default function PingSheet({ open, onClose, mate, subjects, scheduleOverr
 
   if (!mate) return null
   const general = mate.id === "__general__"
+  const shownMateName = displayName?.trim() || mate.name
   const directAvailable = canDirect && connected && !general
 
   const all = [...scheduled, ...other]
@@ -242,11 +245,11 @@ This link expires in 24 hours. The selected classes and times are listed on the 
               {connected && <span className="ping-ring absolute inset-0 rounded-full bg-ink/15" />}
               {connected && <span className="ping-ring ping-ring-2 absolute inset-0 rounded-full bg-ink/15" />}
               <span className="relative w-16 h-16 rounded-full bg-ink text-paper grid place-items-center text-[26px] font-bold">
-                {mate.name.slice(0, 1).toUpperCase()}
+                {shownMateName.slice(0, 1).toUpperCase()}
               </span>
             </div>
             <div className="min-w-0">
-              <h3 className="text-[22px] font-bold tracking-tight leading-tight truncate">{general ? "Create a 24-hour Ping link" : mate.name}</h3>
+              <h3 className="text-[22px] font-bold tracking-tight leading-tight truncate">{general ? "Create a 24-hour Ping link" : shownMateName}</h3>
               <p className="text-[15px] text-mute leading-snug">
                 {directAvailable ? "Send directly inside Attendance Tracker or create a 24-hour WhatsApp link." : connected ? "In-app Pings require Google sign-in. You can still create a 24-hour WhatsApp link." : "Create a 24-hour link the recipient can open to answer Yes or No. Connect through a unique account code to enable in-app Pings."}
               </p>
