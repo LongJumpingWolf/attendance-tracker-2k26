@@ -1058,6 +1058,7 @@ export default function Home() {
               onGoto={goto}
               onAddSubject={() => setIsAddOpen(true)}
               onOpenTomorrow={openTomorrowCalendar}
+              demoActive={demoActive}
             />
           )}
 
