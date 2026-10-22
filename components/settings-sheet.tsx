@@ -373,7 +373,7 @@ export default function SettingsSheet(p: SettingsSheetProps) {
               <div className="mt-3 grid grid-cols-2 gap-2">
                 <button onClick={() => setPanel("scan")} className={`${tintButton} col-span-2`}>Scan check-in: QR code and test tools</button>
                 <button onClick={p.onTestNotification} className={tintButton}>Test notification</button>
-                <button onClick={p.onTestFcm} className={tintButton}>Test FCM token</button>
+                <button onClick={p.onTestFcm} className={tintButton}>Check background alerts</button>
                 <button onClick={then(p.onSimulateReply)} className={`${tintButton} col-span-2`}>Simulate a mate replying “yes, I covered you”</button>
                 <button onClick={then(p.onSimulateIncoming)} className={`${tintButton} col-span-2`}>Simulate a mate pinging you</button>
                 <button onClick={then(p.onSimulateWrapped)} className={`${tintButton} col-span-2`}>Queue Wrapped for Saturday</button>
