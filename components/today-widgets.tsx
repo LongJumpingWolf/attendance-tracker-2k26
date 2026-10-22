@@ -13,6 +13,7 @@ interface Data {
   now: Date
   scheduleOverrides?: ScheduleOverride[]
   onOpenTomorrow?: (date: string) => void
+  demoActive?: boolean
 }
 
 /* ---------- the widgets: each is one fixed-height card ---------- */
@@ -32,6 +33,7 @@ function TomorrowLectures({ subjects, now, scheduleOverrides = [], onOpenTomorro
     <button
       type="button"
       onClick={() => onOpenTomorrow?.(date)}
+      data-tour="tomorrow-lectures-widget"
       aria-label={`Open Calendar for tomorrow, ${rows.length} scheduled ${rows.length === 1 ? "lecture" : "lectures"}`}
       className={`${CARD} text-white text-left focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink`}
       style={{ background: "linear-gradient(145deg,#1e3a5f,#276c8e 58%,#479ca4)" }}
@@ -75,7 +77,7 @@ function WhereYouStand({ subjects }: Data) {
     .sort((a, b) => (a.info.total ? a.info.pct - a.s.requirement : 999) - (b.info.total ? b.info.pct - b.s.requirement : 999))
   const shown = items.slice(0, 4)
   return (
-    <div className={`${CARD} bg-card text-ink !p-[18px]`}>
+    <div data-tour="where-you-stand-widget" className={`${CARD} bg-card text-ink !p-[18px]`}>
       <p className={`${KICKER} !opacity-100 text-mute`}>Where you stand</p>
       <h3 className="font-display text-[24px] leading-tight mt-0.5">
         {items.length === 1 ? "One subject" : `${items.length} subjects`}, one glance
@@ -117,7 +119,7 @@ function DeadlineWidget({ tasks, subjects }: Data) {
   const when = (n: number) => (n === 0 ? "today" : n === 1 ? "tomorrow" : `in ${n} days`)
 
   return (
-    <div className={`${CARD} text-white`} style={{ background: "linear-gradient(160deg,#3b1c6b,#6a2fa0 55%,#a44bb8)" }}>
+    <div data-tour="deadline-widget" className={`${CARD} text-white`} style={{ background: "linear-gradient(160deg,#3b1c6b,#6a2fa0 55%,#a44bb8)" }}>
       <p className={KICKER}>Next deadline</p>
       {!first ? (
         <p className="my-auto text-[22px] font-semibold leading-snug">Nothing due soon. Add deadlines in Calendar and the next one shows up here.</p>
@@ -161,6 +163,10 @@ const isLight = (id: WidgetId) => id === "stand"
 export default function TodayWidgets(data: Data) {
   const [list, setList] = useState<WidgetId[] | null>(() => loadWidgets())
   const [open, setOpen] = useState(false)
+  useEffect(() => {
+    // The demo shows all three widgets without overwriting the user's saved widget choices.
+    setList(data.demoActive ? ["skip", "stand", "deadline"] : loadWidgets())
+  }, [data.demoActive])
   const box = useRef<HTMLDivElement>(null)
   const [active, setActive] = useState(0)
   const activeRef = useRef(active)
@@ -292,7 +298,7 @@ export default function TodayWidgets(data: Data) {
   }
 
   return (
-    <section aria-label="Your widgets">
+    <section aria-label="Your widgets" data-tour="widget-stack">
       {list === null ? (
         <div className="relative h-[286px] rounded-[24px] border-2 border-dashed border-ink/20 bg-card/70 flex flex-col items-center justify-center text-center px-6">
           <span className="absolute top-4 right-4 rounded-full bg-ink px-2.5 py-1 text-[11px] font-extrabold tracking-widest text-paper">NEW</span>
