@@ -1,4 +1,4 @@
-/** Light / dark / follow the device. The choice is kept in localStorage under "theme". */
+/** Light / dark / follow the device. The default is light; explicit light, dark and system choices are kept in localStorage under "theme". */
 export type ThemePref = "system" | "light" | "dark"
 
 export const THEME_KEY = "theme"
@@ -32,8 +32,7 @@ export function applyTheme(pref: ThemePref) {
 
 export function setTheme(pref: ThemePref) {
   try {
-    if (pref === "system") localStorage.removeItem(THEME_KEY)
-    else localStorage.setItem(THEME_KEY, pref)
+    localStorage.setItem(THEME_KEY, pref)
   } catch {
     /* not remembered, but it still applies now */
   }
