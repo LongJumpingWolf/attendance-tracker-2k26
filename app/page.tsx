@@ -243,15 +243,6 @@ export default function Home() {
       // Storage may be unavailable in private browsing; the current-page flow still works.
     }
 
-    const recordInviteOpenOnce = (token: string) => {
-      let shouldRecord = true
-      try {
-        const key = `attendance-mate-invite-opened:${token}`
-        if (sessionStorage.getItem(key)) shouldRecord = false
-        else sessionStorage.setItem(key, "1")
-      } catch { /* best-effort */ }
-      if (shouldRecord) void social.trackInviteOpen(token)
-    }
     try {
       const raw = sessionStorage.getItem("attendance-pending-mate-link")
       if (raw) {
@@ -259,7 +250,6 @@ export default function Home() {
         if ((saved.kind === "add" || saved.kind === "invite") && typeof saved.value === "string" && saved.value.length > 0 && saved.value.length <= 2048) {
           setPendingLink({ kind: saved.kind, value: saved.value })
           setCurrentPage("mates")
-          if (saved.kind === "invite") recordInviteOpenOnce(saved.value)
         } else {
           sessionStorage.removeItem("attendance-pending-mate-link")
         }
@@ -273,12 +263,25 @@ export default function Home() {
       const link: { kind: "add" | "invite"; value: string } = { kind: add ? "add" : "invite", value: (add || inv) as string }
       setPendingLink(link)
       try { sessionStorage.setItem("attendance-pending-mate-link", JSON.stringify(link)) } catch {}
-      if (inv) recordInviteOpenOnce(inv)
       window.history.replaceState(null, "", window.location.pathname)
       setCurrentPage("mates")
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  // Count invite opens only after the visitor accepts the updated privacy notice.
+  // The tab-scoped marker prevents double counting the same token when the app rerenders.
+  useEffect(() => {
+    if (!consentReady || !consentAccepted || pendingLink?.kind !== "invite") return
+    const token = pendingLink.value
+    let shouldRecord = true
+    try {
+      const key = `attendance-mate-invite-opened:${token}`
+      if (sessionStorage.getItem(key)) shouldRecord = false
+      else sessionStorage.setItem(key, "1")
+    } catch { /* analytics remains best-effort if storage is unavailable */ }
+    if (shouldRecord) void social.trackInviteOpen(token)
+  }, [consentReady, consentAccepted, pendingLink, social.trackInviteOpen])
 
   // Open the normal app Settings → Sync screen from the clean app URL when the invite-page popup fails.
   // The pending friend link remains in sessionStorage and is processed after the account is ready.
