@@ -45,6 +45,7 @@ interface TodayViewProps {
   onGoto: (page: string) => void
   onAddSubject: () => void
   onOpenTomorrow?: (date: string) => void
+  demoActive?: boolean
 }
 
 const BANNER_TONE = {
@@ -320,7 +321,7 @@ function TodayContent({
         <button onClick={onAddSubject} className={primaryButton}>
           Add a subject
         </button>
-        <div className="mt-6"><TodayWidgets subjects={subjects} tasks={tasks} now={now} scheduleOverrides={scheduleOverrides} onOpenTomorrow={onOpenTomorrow} /></div>
+        <div className="mt-6"><TodayWidgets subjects={subjects} tasks={tasks} now={now} scheduleOverrides={scheduleOverrides} onOpenTomorrow={onOpenTomorrow} demoActive={demoActive} /></div>
       </div>
     )
   }
