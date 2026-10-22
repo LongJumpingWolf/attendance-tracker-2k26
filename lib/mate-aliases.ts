@@ -23,10 +23,17 @@ export function writeMateAlias(ownerUid: string, mateUid: string, alias: string)
   if (!ownerUid || !mateUid || !clean || typeof localStorage === "undefined") return false
   try {
     const raw = localStorage.getItem(storageKey(ownerUid))
-    const parsed: unknown = raw ? JSON.parse(raw) : {}
-    const data: Record<string, unknown> = parsed && typeof parsed === "object" && !Array.isArray(parsed)
-      ? { ...(parsed as Record<string, unknown>) }
-      : {}
+    let data: Record<string, unknown> = {}
+    if (raw) {
+      try {
+        const parsed: unknown = JSON.parse(raw)
+        if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+          data = { ...(parsed as Record<string, unknown>) }
+        }
+      } catch {
+        // Recover from corrupt local state without preventing the user from saving a new alias.
+      }
+    }
     data[mateUid] = clean
     localStorage.setItem(storageKey(ownerUid), JSON.stringify(data))
     return true
