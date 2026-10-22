@@ -502,7 +502,7 @@ export default function MatesView({ mates, social, subjects, scheduleOverrides =
           <div className="min-w-0 flex-1">
             <h2 className="text-[17px] font-bold">Quick WhatsApp Ping</h2>
             <p className="text-[13px] text-mute leading-snug mt-1">Create a one-time Yes/No link for selected classes. It works without adding the recipient as a Mate and expires after 24 hours.</p>
-            <div className={`mt-3 grid ${canUseDirectPings && connectedMates.length > 0 ? "grid-cols-2" : "grid-cols-1"} gap-2`}>
+            <div className="mt-3 flex flex-col gap-2">
               <button onClick={() => setPinging({ id: "__general__", name: "", covered: 0, repaid: 0 })} className={`${primaryButton} flex items-center justify-center gap-2`}><ShareNetwork className="w-4 h-4" />WhatsApp Ping · 24h</button>
               {canUseDirectPings && connectedMates.length > 0 && (
                 <button onClick={() => setDirectChooserOpen(true)} className="h-12 px-3 rounded-2xl bg-secondary text-[14px] font-semibold flex items-center justify-center gap-2"><ChatCircleDots className="w-4 h-4" />In-app Ping</button>
