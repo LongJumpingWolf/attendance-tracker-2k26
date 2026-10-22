@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react"
 import { PencilSimple, Plus } from "@phosphor-icons/react"
 import Sheet, { primaryButton } from "./sheet"
-import { classesOn, daysUntil, formatShortDate, formatTime, getAttendance, skipVerdict } from "@/lib/attendance"
+import { classesOn, daysUntil, formatShortDate, formatTime, getAttendance, localDate } from "@/lib/attendance"
 import { loadWidgets, saveWidgets, WIDGETS, type WidgetId } from "@/lib/today-widgets"
 import type { ScheduleOverride, Subject, Task } from "@/lib/types"
 
@@ -12,63 +12,58 @@ interface Data {
   tasks: Task[]
   now: Date
   scheduleOverrides?: ScheduleOverride[]
+  onOpenTomorrow?: (date: string) => void
 }
 
 /* ---------- the widgets: each is one fixed-height card ---------- */
 
-const CARD = "relative h-[330px] w-full rounded-[30px] overflow-hidden p-5 flex flex-col text-left"
+const CARD = "relative h-[286px] w-full rounded-[24px] overflow-hidden p-4 flex flex-col text-left"
 const KICKER = "text-[12px] font-extrabold uppercase tracking-[0.09em] opacity-80"
 
-function SkipTomorrow({ subjects, now, scheduleOverrides = [] }: Data) {
+function TomorrowLectures({ subjects, now, scheduleOverrides = [], onOpenTomorrow }: Data) {
   const tomorrow = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1)
-  const rows = classesOn(subjects, tomorrow, scheduleOverrides).filter((entry) => !entry.cancelled).map((entry) => {
-    const { subject, slot } = entry
-    const attendanceSubject = entry.attendanceSubject ?? subject
-    const info = getAttendance(attendanceSubject.attended, attendanceSubject.missed, attendanceSubject.requirement)
-    const after = Math.round((attendanceSubject.attended / (info.total + 1)) * 100)
-    const verdict = skipVerdict(info)
-    const displayName = entry.override?.kind === "substitute" ? `${attendanceSubject.name} (held as ${subject.name})` : subject.name
-    return { subject, attendanceSubject, displayName, slot, info, after, verdict }
-  })
-  const shown = rows.slice(0, 3)
-  const firstSafe = rows.find((r) => r.verdict === "skip")
+  const date = localDate(tomorrow)
+  const rows = classesOn(subjects, tomorrow, scheduleOverrides)
+    .filter((entry) => !entry.cancelled)
+    .sort((a, b) => a.slot.start.localeCompare(b.slot.start))
+  const shown = rows.slice(0, 4)
 
   return (
-    <div className={`${CARD} text-white`} style={{ background: "linear-gradient(160deg,#0f4c5c,#16787f 60%,#1fa37a)" }}>
-      <p className={KICKER}>Tomorrow · {rows.length} {rows.length === 1 ? "class" : "classes"}</p>
-      <h3 className="font-display text-[28px] leading-[1.05] mt-0.5">Can I skip?</h3>
+    <button
+      type="button"
+      onClick={() => onOpenTomorrow?.(date)}
+      aria-label={`Open Calendar for tomorrow, ${rows.length} scheduled ${rows.length === 1 ? "lecture" : "lectures"}`}
+      className={`${CARD} text-white text-left focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink`}
+      style={{ background: "linear-gradient(145deg,#1e3a5f,#276c8e 58%,#479ca4)" }}
+    >
+      <p className={KICKER}>Tomorrow · {rows.length} {rows.length === 1 ? "lecture" : "lectures"}</p>
+      <div className="flex items-center justify-between gap-2 mt-0.5 mb-2">
+        <h3 className="font-display text-[23px] leading-tight">Lectures scheduled</h3>
+        <span className="w-8 h-8 shrink-0 rounded-full bg-white/15 grid place-items-center text-[16px]" aria-hidden>↗</span>
+      </div>
       {rows.length === 0 ? (
-        <p className="mt-auto mb-auto text-[18px] font-semibold leading-snug">No classes tomorrow. Enjoy the day off.</p>
+        <p className="my-auto text-[15px] font-semibold leading-snug">No lectures scheduled for tomorrow. Enjoy the breathing room.</p>
       ) : (
         <>
-          <ul className="mt-1.5">
-            {shown.map((r) => (
-              <li key={`${r.subject.id}-${r.slot.start}`} className="flex items-center gap-2.5 rounded-2xl bg-white/15 px-3 py-2 mt-1.5">
-                <span className="min-w-0 flex-1">
-                  <b className="block text-[16px] tracking-tight truncate">{r.displayName}</b>
-                  <small className="block text-[12px] font-semibold opacity-80">
-                    {formatTime(r.slot.start)} · now {r.info.total ? `${r.info.pct}%` : "no marks"}
-                  </small>
-                </span>
-                <span
-                  className={`rounded-full px-2.5 py-1 text-[12px] font-extrabold whitespace-nowrap ${
-                    r.verdict === "skip" ? "bg-[#d9f7e4] text-[#0d5a2c]" : r.verdict === "attend" ? "bg-[#ffe0dd] text-[#a4160c]" : "bg-white/25 text-white"
-                  }`}
-                >
-                  {r.verdict === "skip" ? "Safe to skip" : r.verdict === "attend" ? "Must attend" : "No data yet"}
-                </span>
-              </li>
-            ))}
+          <ul className="space-y-1.5 flex-1 min-h-0">
+            {shown.map((entry, index) => {
+              const name = entry.override?.kind === "substitute" && entry.attendanceSubject
+                ? `${entry.attendanceSubject.name} · held as ${entry.subject.name}`
+                : entry.subject.name
+              return (
+                <li key={`${entry.originalSubjectId ?? entry.subject.id}-${entry.slot.start}-${index}`} className="flex items-center gap-2.5 rounded-xl bg-white/12 px-2.5 py-1.5 min-w-0">
+                  <span className="num text-[12px] font-bold text-white/80 w-[58px] shrink-0">{formatTime(entry.slot.start)}</span>
+                  <span className="text-[13.5px] font-semibold truncate">{name}</span>
+                </li>
+              )
+            })}
           </ul>
-          <p className="mt-auto pt-2 text-[13.5px] font-semibold leading-snug">
-            {firstSafe
-              ? `Skip ${firstSafe.subject.name} and you're still at ${firstSafe.after}%.${rows.filter((r) => r.verdict === "attend").length ? " The others need you." : ""}`
-              : "Every class tomorrow needs you. No skips to spare."}
-            {rows.length > shown.length && <span className="opacity-80"> +{rows.length - shown.length} more</span>}
+          <p className="mt-2 text-[12px] font-semibold opacity-90">
+            {rows.length > shown.length ? `+ ${rows.length - shown.length} more · Tap to open Calendar` : "Tap to view the full day in Calendar"}
           </p>
         </>
       )}
-    </div>
+    </button>
   )
 }
 
@@ -153,7 +148,7 @@ function DeadlineWidget({ tasks, subjects }: Data) {
 }
 
 function Widget({ id, ...data }: Data & { id: WidgetId }) {
-  if (id === "skip") return <SkipTomorrow {...data} />
+  if (id === "skip") return <TomorrowLectures {...data} />
   if (id === "stand") return <WhereYouStand {...data} />
   return <DeadlineWidget {...data} />
 }
@@ -299,14 +294,14 @@ export default function TodayWidgets(data: Data) {
   return (
     <section aria-label="Your widgets">
       {list === null ? (
-        <div className="relative h-[330px] rounded-[30px] border-2 border-dashed border-ink/20 bg-card/70 flex flex-col items-center justify-center text-center px-6">
+        <div className="relative h-[286px] rounded-[24px] border-2 border-dashed border-ink/20 bg-card/70 flex flex-col items-center justify-center text-center px-6">
           <span className="absolute top-4 right-4 rounded-full bg-ink px-2.5 py-1 text-[11px] font-extrabold tracking-widest text-paper">NEW</span>
-          <button onClick={() => setOpen(true)} aria-label="Choose widgets" className="widget-plus relative w-16 h-16 rounded-full bg-ink text-paper grid place-items-center">
+          <button onClick={() => setOpen(true)} aria-label="Choose widgets" className="widget-plus relative w-14 h-14 rounded-full bg-ink text-paper grid place-items-center">
             <Plus weight="bold" className="w-7 h-7" />
           </button>
-          <h3 className="font-display text-[26px] leading-tight mt-4">Make this space yours</h3>
-          <p className="text-[15px] text-mute mt-1.5 max-w-[17rem] leading-snug">You&rsquo;re all caught up. Choose what you&rsquo;d like to see here when the day is done.</p>
-          <button onClick={() => setOpen(true)} className="widget-cta mt-4 h-11 px-6 rounded-full bg-ink text-paper text-[15px] font-bold">
+          <h3 className="font-display text-[23px] leading-tight mt-3">Make this space yours</h3>
+          <p className="text-[14px] text-mute mt-1.5 max-w-[17rem] leading-snug">You&rsquo;re all caught up. Choose what you&rsquo;d like to see here when the day is done.</p>
+          <button onClick={() => setOpen(true)} className="widget-cta mt-3 h-10 px-5 rounded-full bg-ink text-paper text-[15px] font-bold">
             Choose widgets
           </button>
           <div className="flex flex-wrap justify-center gap-1.5 mt-3.5">
@@ -324,7 +319,7 @@ export default function TodayWidgets(data: Data) {
           </span>
           <span>
             <span className="block text-[16px] font-semibold">Add a widget</span>
-            <span className="block text-[13px] text-mute">Skip forecast, where you stand, deadlines</span>
+            <span className="block text-[13px] text-mute">Tomorrow lectures, where you stand, deadlines</span>
           </span>
         </button>
       ) : (
@@ -348,7 +343,7 @@ export default function TodayWidgets(data: Data) {
                 <button
                   onClick={() => setOpen(true)}
                   aria-label="Edit widgets"
-                  className={`absolute top-3.5 right-3.5 w-[38px] h-[38px] rounded-full grid place-items-center ${isLight(id) ? "bg-secondary text-ink" : "bg-black/30 text-white backdrop-blur"}`}
+                  className={`absolute top-2.5 right-2.5 w-9 h-9 rounded-full grid place-items-center ${isLight(id) ? "bg-secondary text-ink" : "bg-black/30 text-white backdrop-blur"}`}
                 >
                   <PencilSimple weight="bold" className="w-[18px] h-[18px]" />
                 </button>
