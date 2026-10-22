@@ -324,6 +324,7 @@ function TodayContent({
           Add a subject
         </button>
         <div className="mt-6"><TodayWidgets subjects={subjects} tasks={tasks} now={now} scheduleOverrides={scheduleOverrides} onOpenTomorrow={onOpenTomorrow} demoActive={demoActive} /></div>
+        <footer className="pt-8 pb-3 text-center text-[12px] text-mute/80 tracking-wide">Made with love by Aditya Waghmare</footer>
       </div>
     )
   }
@@ -650,6 +651,7 @@ function TodayContent({
         )}
       </div>
       </div>
+      <footer className="pt-10 pb-3 text-center text-[12px] text-mute/80 tracking-wide">Made with love by Aditya Waghmare</footer>
     </div>
   )
 }
