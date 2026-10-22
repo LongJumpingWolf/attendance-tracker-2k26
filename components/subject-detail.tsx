@@ -1,6 +1,6 @@
 "use client"
 
-import { CaretLeft, Check, X, PencilSimple, DownloadSimple, SpinnerGap } from "@phosphor-icons/react"
+import { CaretLeft, Check, X, PencilSimple, DownloadSimple, SpinnerGap, Trash } from "@phosphor-icons/react"
 import { useRef, useState } from "react"
 import ClassActionMenu from "./class-action-menu"
 import type { ScheduleOverride, Subject } from "@/lib/types"
@@ -34,12 +34,13 @@ interface SubjectDetailProps {
   /** The same call Today makes, so both screens write the same record for the same class */
   onSet: (date: string, status: "P" | "A" | null, meta?: MarkMeta) => void
   onEdit: () => void
+  onDelete: () => void
   onPlan: (date: string, value: "attend" | "skip" | null) => void
 }
 
 const WEEKDAYS = ["S", "M", "T", "W", "T", "F", "S"]
 
-export default function SubjectDetail({ subject, allSubjects = [subject], scheduleOverrides = [], onClassActions, onSleep, onBack, onSet, onEdit, onPlan }: SubjectDetailProps) {
+export default function SubjectDetail({ subject, allSubjects = [subject], scheduleOverrides = [], onClassActions, onSleep, onBack, onSet, onEdit, onDelete, onPlan }: SubjectDetailProps) {
   const [reportBusy, setReportBusy] = useState(false)
   const reportActionRef = useRef(false)
   const [reportNotice, setReportNotice] = useState("")
@@ -106,9 +107,18 @@ export default function SubjectDetail({ subject, allSubjects = [subject], schedu
           <button
             onClick={onEdit}
             aria-label="Edit subject"
+            title="Edit subject"
             className="w-9 h-9 grid place-items-center rounded-full bg-secondary text-ink"
           >
             <PencilSimple weight="bold" className="w-[18px] h-[18px]" />
+          </button>
+          <button
+            onClick={onDelete}
+            aria-label="Delete subject"
+            title="Delete subject"
+            className="w-9 h-9 grid place-items-center rounded-full bg-bad/10 text-bad"
+          >
+            <Trash weight="bold" className="w-[18px] h-[18px]" />
           </button>
         </div>
       </div>
