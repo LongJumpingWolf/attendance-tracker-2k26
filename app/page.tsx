@@ -65,7 +65,6 @@ import FirstVisitTour, { type GuidedTab } from "@/components/first-visit-tour"
 import ScanCheckIn, { type ScanState } from "@/components/scan-check-in"
 import ScanGate from "@/components/scan-gate"
 import DemoTour from "@/components/demo-tour"
-import { buildDemoData } from "@/lib/demo-data"
 import { isInAppBrowser, safariUrl, chromeIntentUrl } from "@/lib/in-app"
 import { pickScanTarget } from "@/lib/scan"
 import { buildTestSubjects, isTestSubject } from "@/lib/scan-test"
@@ -555,7 +554,8 @@ export default function Home() {
           localStorage.setItem("attendance-first-used-at", String(firstUsed))
         }
         const dismissedAt = Number(localStorage.getItem("attendance-sync-nudge-dismissed-at") || 0)
-        const eligible = sync.ready && cloudAvailable(sync.kind) && !sync.account && now - firstUsed >= 2 * 86400000 && now - dismissedAt >= 7 * 86400000
+        const setupStillIncomplete = localStorage.getItem("onboardingDone") !== "1"
+        const eligible = setupStillIncomplete && sync.ready && cloudAvailable(sync.kind) && !sync.account && now - firstUsed >= 2 * 86400000 && now - dismissedAt >= 7 * 86400000
         setShowSyncNudge(eligible)
         if (sync.account) setShowSyncNudge(false)
       } catch {
@@ -567,22 +567,45 @@ export default function Home() {
     return () => window.clearInterval(timer)
   }, [loaded, consentReady, consentAccepted, subjects.length, tasks.length, mates.length, sync.kind, sync.account, sync.ready])
 
-  // Ask for a rating or bug report after roughly a day and a half of real use. The prompt is dismissible and Settings
-  // always provides a permanent entry point. Existing installations are treated as established, like the sync reminder.
+  // Rating prompt: first appearance after 48 hours, at most twice, with three days between appearances.
   useEffect(() => {
     if (!loaded || !consentReady || !consentAccepted) return
-    try {
-      const now = Date.now()
-      let firstUsed = Number(localStorage.getItem("attendance-first-used-at") || 0)
-      if (!firstUsed) {
-        const existingData = subjects.length + tasks.length + mates.length > 0
-        firstUsed = existingData ? now - 3 * 86400000 : now
-        localStorage.setItem("attendance-first-used-at", String(firstUsed))
+    const evaluateRatingPrompt = () => {
+      try {
+        const now = Date.now()
+        let firstUsed = Number(localStorage.getItem("attendance-first-used-at") || 0)
+        if (!firstUsed) {
+          const existingData = subjects.length + tasks.length + mates.length > 0
+          firstUsed = existingData ? now - 3 * 86400000 : now
+          localStorage.setItem("attendance-first-used-at", String(firstUsed))
+        }
+        if (localStorage.getItem("attendance-rating-submitted") === "1") {
+          setShowFeedbackNudge(false)
+          return
+        }
+        const storedCount = localStorage.getItem("attendance-rating-prompt-count")
+        const count = storedCount === null ? 0 : Math.max(0, Number(storedCount) || 0)
+        const lastShown = Number(localStorage.getItem("attendance-rating-prompt-last-shown-at") || 0)
+        if (storedCount === null && localStorage.getItem("attendance-feedback-prompt-dismissed") === "1") {
+          localStorage.setItem("attendance-rating-prompt-count", "1")
+          localStorage.setItem("attendance-rating-prompt-last-shown-at", String(now))
+          return
+        }
+        const eligible = count === 0
+          ? now - firstUsed >= 48 * 60 * 60 * 1000
+          : count === 1 && now - lastShown >= 3 * 86400000
+        if (eligible) {
+          localStorage.setItem("attendance-rating-prompt-count", String(count + 1))
+          localStorage.setItem("attendance-rating-prompt-last-shown-at", String(now))
+          setShowFeedbackNudge(true)
+        }
+      } catch {
+        // Rating prompts must never affect attendance recording.
       }
-      const dismissed = localStorage.getItem("attendance-feedback-prompt-dismissed") === "1"
-      const submitted = localStorage.getItem("attendance-feedback-submitted") === "1"
-      setShowFeedbackNudge(!dismissed && !submitted && now - firstUsed >= 36 * 60 * 60 * 1000)
-    } catch { /* Feedback is optional; private storage restrictions must not affect the tracker. */ }
+    }
+    evaluateRatingPrompt()
+    const timer = window.setInterval(evaluateRatingPrompt, 60_000)
+    return () => window.clearInterval(timer)
   }, [loaded, consentReady, consentAccepted, subjects.length, tasks.length, mates.length])
 
   // Scanner apps often open the link in a temporary browser that forgets everything. Before marking anything there, try to
@@ -918,9 +941,11 @@ export default function Home() {
     setCalendarFocusDate(null)
     try {
       // Only browsers that completed the first-run guide receive these one-time tab introductions.
-      if (destination !== "today" && localStorage.getItem("firstRunGuidesEnabled") === "1") {
+      if (destination !== "today") {
         const key = `firstTabGuideSeen:${destination}`
-        if (!localStorage.getItem(key)) {
+        const isNewUserGuide = localStorage.getItem("firstRunGuidesEnabled") === "1"
+        const shouldOffer = destination === "mates" || isNewUserGuide
+        if (shouldOffer && !localStorage.getItem(key)) {
           localStorage.setItem(key, "1")
           setFirstVisitTourPage(destination)
         }
@@ -942,25 +967,12 @@ export default function Home() {
    *  data is snapshotted first and put back exactly as it was on Exit demo. Demo data is never written to storage
    *  (see the persistence effects) and sync is paused, so it reaches neither this device's saved data nor the cloud. */
   const startDemo = () => {
-    const release = tryAcquire("demo")
-    if (!release) return showToast(BUSY_MESSAGE) // a restore or reset is replacing the data right now
-    demoSnapshot.current = { subjects: latest.current.subjects, tasks: latest.current.tasks, tags: latest.current.tags, mates: latest.current.mates }
-    const demo = buildDemoData(new Date())
-    setSubjects(demo.subjects)
-    setTasks(demo.tasks)
-    setAllTags(demo.tags)
-    setMates(demo.mates)
-    setDetailId(null)
-    demoActiveRef.current = true // at once: a restore or reset that asks next must already see it
-    setDemoLive(true) // and background sync, whose paused option only changes on the next render
-    setDemoActive(true)
-    setCurrentPage("today")
+    // App guide is illustrative and never swaps or mutates real user data.
     setIsSettingsOpen(false)
     setDemoTourOpen(true)
-    release()
   }
-
   const exitDemo = () => {
+    if (!demoActiveRef.current) { setDemoTourOpen(false); return }
     const release = tryAcquire("demo")
     if (!release) return showToast(BUSY_MESSAGE)
     const snap = demoSnapshot.current
@@ -1193,9 +1205,9 @@ export default function Home() {
         </div>
       )}
       {showFeedbackNudge && consentAccepted && !showFeedback && (
-        <FeedbackNudge onRate={() => { setFeedbackKind("rating"); setShowFeedbackNudge(false); setShowFeedback(true) }} onReportBug={() => { setFeedbackKind("bug"); setShowFeedbackNudge(false); setShowFeedback(true) }} onSuggest={() => { setFeedbackKind("suggestion"); setShowFeedbackNudge(false); setShowFeedback(true) }} onDismiss={() => { setShowFeedbackNudge(false); try { localStorage.setItem("attendance-feedback-prompt-dismissed", "1") } catch {} }} />
+        <FeedbackNudge onRate={() => { setFeedbackKind("rating"); setShowFeedbackNudge(false); setShowFeedback(true) }} onReportBug={() => { setFeedbackKind("bug"); setShowFeedbackNudge(false); setShowFeedback(true) }} onSuggest={() => { setFeedbackKind("suggestion"); setShowFeedbackNudge(false); setShowFeedback(true) }} onDismiss={() => setShowFeedbackNudge(false)} />
       )}
-      <FeedbackSheet key={feedbackKind} initialKind={feedbackKind} open={showFeedback} onClose={() => setShowFeedback(false)} onSubmitted={() => { try { localStorage.setItem("attendance-feedback-submitted", "1") } catch {}; setShowFeedbackNudge(false); setFeedbackCelebration(null); setFeedbackReplyText(""); showToast("Feedback sent — thank you") }} />
+      <FeedbackSheet key={feedbackKind} initialKind={feedbackKind} open={showFeedback} onClose={() => setShowFeedback(false)} onSubmitted={() => { try { localStorage.setItem("attendance-feedback-submitted", "1"); if (feedbackKind === "rating") localStorage.setItem("attendance-rating-submitted", "1") } catch {}; setShowFeedbackNudge(false); setFeedbackCelebration(null); setFeedbackReplyText(""); showToast("Feedback sent — thank you") }} />
       <FeedbackReplyWatcher onReply={(reply, kind) => { setFeedbackReplyText(reply); setFeedbackCelebration(kind === "bug" ? "bug" : "thanks") }} />
       <FeedbackCelebration open={feedbackCelebration !== null} kind={feedbackCelebration ?? "thanks"} message={feedbackReplyText || undefined} onClose={() => { setFeedbackCelebration(null); setFeedbackReplyText("") }} />
       <TermsGate
@@ -1292,6 +1304,8 @@ export default function Home() {
         subjects={subjects}
         currentName={social.name}
         onSetName={(n) => void social.setName(n)}
+        showGoogleSyncPrompt={sync.ready && !sync.account}
+        onOpenAccount={() => { setIsOnboardingOpen(false); setSettingsStartPanel("sync"); setIsSettingsOpen(true) }}
         onImportTimetable={() => setIsImportOpen(true)}
         onAddSubject={() => setIsAddOpen(true)}
         notificationSupported={notificationSupported}
