@@ -112,6 +112,8 @@ function TodayContent({
   onOpenSubject,
   onGoto,
   onAddSubject,
+  onOpenTomorrow,
+  demoActive,
 }: TodayViewProps & { now: Date }) {
   const scroller = useRef<HTMLDivElement>(null)
   const lastFocus = useRef<string | null>(null)
