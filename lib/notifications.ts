@@ -58,21 +58,16 @@ export async function subscribeToPushNotifications() {
   return null;
 }
 
-export async function sendLocalNotification(title: string, options?: NotificationOptions) {
-  if (Notification.permission !== 'granted') {
-    console.warn('Notification permission not granted');
-    return;
-  }
-
+export async function sendLocalNotification(title: string, options?: NotificationOptions): Promise<boolean> {
+  if (typeof window === 'undefined' || !('Notification' in window) || Notification.permission !== 'granted') return false
+  if (!('serviceWorker' in navigator)) return false
   try {
-    const registration = await navigator.serviceWorker.ready;
-    await registration.showNotification(title, {
-      icon: '/favicon-192.png',
-      badge: '/favicon-192.png',
-      ...options,
-    });
+    const registration = await navigator.serviceWorker.ready
+    await registration.showNotification(title, { icon: '/favicon-192.png', badge: '/favicon-192.png', ...options })
+    return true
   } catch (error) {
-    console.error('Error sending notification:', error);
+    console.error('Error sending notification:', error)
+    return false
   }
 }
 

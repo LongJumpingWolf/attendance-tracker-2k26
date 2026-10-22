@@ -50,6 +50,7 @@ interface SettingsSheetProps {
   onImportData: (data: RestoreRequest) => Promise<boolean>
   notificationSupported: boolean
   notificationPermission: NotificationPermission | null
+  isSubscribed: boolean
   onEnableNotifications: () => Promise<void>
   onImportTimetable: () => void
   onToast: (message: string, undo?: () => void) => void
@@ -397,6 +398,7 @@ export default function SettingsSheet(p: SettingsSheetProps) {
         <NotificationsPanel
           supported={p.notificationSupported}
           permission={p.notificationPermission}
+          isSubscribed={p.isSubscribed}
           onEnable={p.onEnableNotifications}
           onToast={(m) => p.onToast(m)}
         />

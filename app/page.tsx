@@ -135,7 +135,7 @@ export default function Home() {
   const [feedbackCelebration, setFeedbackCelebration] = useState<"thanks" | "bug" | null>(null)
   const [feedbackReplyText, setFeedbackReplyText] = useState("")
 
-  const { notificationSupported, notificationPermission, enableNotifications } = useNotifications(subjects, scheduleOverrides)
+  const { notificationSupported, notificationPermission, isSubscribed, enableNotifications } = useNotifications(subjects, scheduleOverrides)
   const social = useSocial()
   const [pendingLink, setPendingLink] = useState<{ kind: "add" | "invite"; value: string } | null>(null)
 
@@ -243,6 +243,29 @@ export default function Home() {
       // Storage may be unavailable in private browsing; the current-page flow still works.
     }
 
+    const recordInviteOpenOnce = (token: string) => {
+      let shouldRecord = true
+      try {
+        const key = `attendance-mate-invite-opened:${token}`
+        if (sessionStorage.getItem(key)) shouldRecord = false
+        else sessionStorage.setItem(key, "1")
+      } catch { /* best-effort */ }
+      if (shouldRecord) void social.trackInviteOpen(token)
+    }
+    try {
+      const raw = sessionStorage.getItem("attendance-pending-mate-link")
+      if (raw) {
+        const saved = JSON.parse(raw) as { kind?: unknown; value?: unknown }
+        if ((saved.kind === "add" || saved.kind === "invite") && typeof saved.value === "string" && saved.value.length > 0 && saved.value.length <= 2048) {
+          setPendingLink({ kind: saved.kind, value: saved.value })
+          setCurrentPage("mates")
+          if (saved.kind === "invite") recordInviteOpenOnce(saved.value)
+        } else {
+          sessionStorage.removeItem("attendance-pending-mate-link")
+        }
+      }
+    } catch { /* session storage may be unavailable */ }
+
     const p = new URLSearchParams(window.location.search)
     const add = p.get("add")
     const inv = p.get("invite")
@@ -250,9 +273,11 @@ export default function Home() {
       const link: { kind: "add" | "invite"; value: string } = { kind: add ? "add" : "invite", value: (add || inv) as string }
       setPendingLink(link)
       try { sessionStorage.setItem("attendance-pending-mate-link", JSON.stringify(link)) } catch {}
+      if (inv) recordInviteOpenOnce(inv)
       window.history.replaceState(null, "", window.location.pathname)
       setCurrentPage("mates")
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   // Open the normal app Settings → Sync screen from the clean app URL when the invite-page popup fails.
@@ -715,10 +740,12 @@ export default function Home() {
       const registration = await registerServiceWorker()
       if (!registration) return alert("The service worker could not be registered. Background push isn't ready on this browser.")
       const subscription = await subscribeToPushNotifications()
-      await sendLocalNotification("Attendance Tracker test", { body: "This device accepted a local notification request." })
-      alert(subscription
-        ? "Local notification requested and an FCM token is available. Remote Ping alerts still depend on the configured server sender. Scheduled class reminders may pause when the app is backgrounded or closed."
-        : "Local notification requested, but no FCM token was obtained. Remote Ping alerts are not confirmed. Scheduled class reminders may pause when the app is backgrounded or closed.")
+      const notificationShown = await sendLocalNotification("Attendance Tracker test", { body: "This device accepted a local notification request." })
+      alert(!notificationShown
+        ? "No notification was displayed. Check notification permission, the active service worker, and Home Screen installation on iPhone if applicable."
+        : subscription
+          ? "Test notification displayed and an FCM token is available. Remote Ping alerts still depend on the configured server sender. Timetable reminders are checked while the app is open."
+          : "Test notification displayed, but no FCM token was obtained. Remote Ping alerts are not confirmed. Timetable reminders are checked while the app is open.")
     } catch (err) {
       console.error("Test notification error", err)
       alert("Failed to test notifications: " + (err instanceof Error ? err.message : String(err)))
@@ -1151,6 +1178,7 @@ export default function Home() {
         }}
         notificationSupported={notificationSupported}
         notificationPermission={notificationPermission}
+        isSubscribed={isSubscribed}
         onEnableNotifications={enableNotifications}
         onImportTimetable={() => setIsImportOpen(true)}
         onToast={showToast}

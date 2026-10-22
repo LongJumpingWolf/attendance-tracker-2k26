@@ -25,11 +25,12 @@ const note = "text-[13px] text-mute leading-snug px-1"
 interface NotificationsProps {
   supported: boolean
   permission: NotificationPermission | null
+  isSubscribed: boolean
   onEnable: () => Promise<void>
   onToast: (message: string) => void
 }
 
-export function NotificationsPanel({ supported, permission, onEnable, onToast }: NotificationsProps) {
+export function NotificationsPanel({ supported, permission, isSubscribed, onEnable, onToast }: NotificationsProps) {
   const [busy, setBusy] = useState(false)
 
   const on = permission === "granted"
@@ -45,12 +46,8 @@ export function NotificationsPanel({ supported, permission, onEnable, onToast }:
   }
 
   const test = async () => {
-    try {
-      await sendLocalNotification("Class reminder", { body: "This is what your reminders will look like." })
-      onToast("Test notification sent")
-    } catch {
-      onToast("Couldn't show a notification")
-    }
+    const shown = await sendLocalNotification("Class reminder", { body: "This is a test. If you can see this, this device displayed a notification." })
+    onToast(shown ? "Test notification displayed by the browser." : "No notification was displayed. Check permissions, service-worker setup, and Home Screen installation on iPhone.")
   }
 
   return (
@@ -70,14 +67,16 @@ export function NotificationsPanel({ supported, permission, onEnable, onToast }:
           {!supported
             ? "This browser or device can't show notifications. Installing the app to your home screen may help."
             : on
-              ? "Class reminders appear while the app is open. They can't reach you once it is closed."
+              ? isSubscribed
+                ? "This device has a push subscription. Class reminders are checked every 30 seconds only while this page is running, so closing the app stops those local reminders. Background Ping alerts still depend on a configured server sender."
+                : "Permission is granted, but this device has no confirmed push subscription. Class reminders run only while this page is open. Tap Finish notification setup to try registering this device."
               : blocked
-                ? "You said no earlier, so the browser won't ask again. Tap the lock icon in the address bar, set Notifications to Allow, then come back."
-                : "Turn them on to get a nudge before class while the app is open, and to be told when a mate replies."}
+                ? "Notifications are blocked in the browser. Change this site's notification permission in Safari or device settings, then return here."
+                : "Enable notifications for local class-reminder nudges while this page is open. Enabling notifications alone does not create a timetable; add reminders under Settings → Reminders."}
         </p>
-        {supported && !on && !blocked && (
+        {supported && !blocked && (!on || !isSubscribed) && (
           <button onClick={enable} disabled={busy} className={`${primaryButton} mt-4 disabled:opacity-50`}>
-            {busy ? "Asking…" : "Turn on notifications"}
+            {busy ? "Setting up…" : on ? "Finish notification setup" : "Turn on notifications"}
           </button>
         )}
         {on && (
@@ -85,6 +84,8 @@ export function NotificationsPanel({ supported, permission, onEnable, onToast }:
             Send me a test
           </button>
         )}
+        {on && !isSubscribed && <p className={note}>On iPhone/iPad, web push requires adding the site to the Home Screen and opening it as a web app. If you already did that, retry setup above.</p>}
+        {on && <p className={note}>Background class reminders need a server push schedule. This version's timetable reminder timer only runs while the app is open.</p>}
       </div>
     </div>
   )

@@ -18,6 +18,7 @@ import { announceProfile, completeCarry } from "./identity"
 import { forget, idFor, logicalKey } from "./ping-id"
 import { deviceId } from "./device"
 import { shareableAppOrigin } from "./share-ping-link"
+import { recordProductLinkEvent } from "./link-analytics"
 
 /** Register this device for ping alerts. Only when notifications are allowed (or asked for), and never fatal. */
 async function registerPingAlerts(uid: string, ask: boolean): Promise<boolean> {
@@ -64,6 +65,7 @@ export interface SocialApi {
   makeInvite: () => Promise<{ link: string; expiresAt: number } | null>
   connectViaUid: (uid: string) => Promise<ConnectResult>
   connectViaInvite: (token: string) => Promise<ConnectResult>
+  trackInviteOpen: (token: string) => Promise<void>
   /** Ask a connected mate whether they marked you present in these classes (from your own subject list) */
   sendPing: (to: { uid: string; name: string }, date: string, items: PingInput[]) => Promise<ConnectResult>
   /** Create a token-protected response link to share by WhatsApp or another direct-message app. */
@@ -509,6 +511,16 @@ export function useSocial(onNotice?: (message: string) => void): SocialApi {
 
   const connectViaUid = useCallback((target: string) => connect(target), [connect])
 
+  const trackInviteOpen = useCallback(async (token: string) => {
+    if (mockMode || !token) return
+    try {
+      await ensureSignedIn()
+      const invite = await getDomainBackend("social").invites.read(token)
+      if (!invite) return
+      void recordProductLinkEvent({ source: "mate-invite", linkId: token, kind: "opened", ownerUid: invite.owner, fromName: invite.ownerName, recipientName: me.current.name || "" })
+    } catch { /* never block invite/sign-in on analytics */ }
+  }, [mockMode])
+
   const connectViaInvite = useCallback(
     async (token: string): Promise<ConnectResult> => {
       if (mockMode) {
@@ -535,7 +547,9 @@ export function useSocial(onNotice?: (message: string) => void): SocialApi {
       const invite = await getDomainBackend("social").invites.read(token)
       if (!invite) return { ok: false, message: "That link isn't valid." }
       if (invite.expired) return { ok: false, message: "That link has expired. Ask for a new one." }
-      return connect(invite.owner, invite.ownerName)
+      const result = await connect(invite.owner, invite.ownerName)
+      if (result.ok) void recordProductLinkEvent({ source: "mate-invite", linkId: token, kind: "used", ownerUid: invite.owner, fromName: invite.ownerName, recipientName: me.current.name || "" })
+      return result
     },
     [connect, mockMode],
   )
@@ -578,6 +592,7 @@ export function useSocial(onNotice?: (message: string) => void): SocialApi {
     }
 
     const { token, expiresAt } = await getDomainBackend("social").invites.create(myUid, myName, 15)
+    void recordProductLinkEvent({ source: "mate-invite", linkId: token, kind: "created", ownerUid: myUid, fromName: myName, recipientName: "" })
     return { link: `${publicOrigin.origin}/?invite=${token}`, expiresAt }
   }, [mockMode])
 
@@ -666,10 +681,12 @@ export function useSocial(onNotice?: (message: string) => void): SocialApi {
       const id = Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("")
       const now = Date.now()
       const asked = items.map((item) => ({ key: item.key, subjectId: item.subjectId, name: item.name.slice(0, 60), ...(item.t ? { t: item.t } : {}), ...(item.substituted ? { substituted: true } : {}), answer: null }))
+      const fromName = senderName.slice(0, 40)
+      const recipientName = toName.trim().slice(0, 40)
       await setDoc(doc(db, "sharePings", id), {
         ownerUid: myUid,
-        fromName: senderName.slice(0, 40),
-        recipientName: toName.trim().slice(0, 40),
+        fromName,
+        recipientName,
         date,
         items: asked,
         status: "asking",
@@ -677,6 +694,7 @@ export function useSocial(onNotice?: (message: string) => void): SocialApi {
         expiresAt: Timestamp.fromMillis(now + SHARE_PING_TTL_MS),
         purgeAt: Timestamp.fromMillis(now + SHARE_PING_TTL_MS + 30 * 24 * 60 * 60 * 1000),
       })
+      void recordProductLinkEvent({ source: "share-ping", linkId: id, kind: "created", ownerUid: myUid, fromName, recipientName })
       const link = `${shareOrigin.origin}/ping/${id}`
       return { ok: true, message: "Secure Ping link created.", link }
     } catch (e) {
