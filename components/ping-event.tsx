@@ -6,6 +6,7 @@ import { formatDayMonth, formatTime } from "@/lib/attendance"
 import { whenLabel } from "@/lib/pings"
 import { resultSummary, type PingEvent } from "@/lib/ping-presentation"
 import { useScrollLock } from "@/lib/use-scroll-lock"
+import type { Ping } from "@/lib/types"
 
 interface Props {
   event: PingEvent
