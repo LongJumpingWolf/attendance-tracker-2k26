@@ -305,11 +305,23 @@ export function createFirebaseBackend({ db, ensureSignedIn }: FirebaseDeps): Bac
     }),
 
     /** Explicitly decline an answer without applying it to attendance; the decision is shared across devices. */
-    dismiss: guard(async (id) => {
+    dismiss: guard(async (id, deviceId) => {
       const ref = doc(db, "pings", id)
       try {
-        await updateDoc(ref, { status: "dismissed", dismissedAt: serverTimestamp() })
-        return "dismissed" as const
+        return await runTransaction(db, async (tx) => {
+          const snap = await tx.get(ref)
+          if (!snap.exists()) throw new Error("Ping not found.")
+          const data = snap.data()
+          if (data.status === "dismissed") return "already-dismissed" as const
+          if (data.status === "processed") return "already-processed" as const
+          if (data.status !== "answered") throw new Error("Ping is not waiting for a decision.")
+          const claimedAt = ms(data.claimedAt) as number | null | undefined
+          if (data.claimedBy !== deviceId || claimedAt == null || Date.now() - claimedAt >= LEASE_MS) {
+            throw new Error("This device no longer holds the Ping decision lease.")
+          }
+          tx.update(ref, { status: "dismissed", dismissedAt: serverTimestamp() })
+          return "dismissed" as const
+        })
       } catch (e) {
         if (codeOf(e) === "permission-denied") {
           const snap = await getDoc(ref).catch(() => null)
