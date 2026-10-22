@@ -135,6 +135,7 @@ export default function Home() {
 
   const [toast, setToast] = useState<ToastState | null>(null)
   const [showFeedback, setShowFeedback] = useState(false)
+  const [feedbackKind, setFeedbackKind] = useState<"rating" | "bug" | "suggestion">("bug")
   const [showFeedbackNudge, setShowFeedbackNudge] = useState(false)
   const [feedbackCelebration, setFeedbackCelebration] = useState<"thanks" | "bug" | null>(null)
   const [feedbackReplyText, setFeedbackReplyText] = useState("")
@@ -1172,9 +1173,9 @@ export default function Home() {
         </div>
       )}
       {showFeedbackNudge && consentAccepted && !showFeedback && (
-        <FeedbackNudge onOpen={() => { setShowFeedbackNudge(false); setShowFeedback(true) }} onDismiss={() => { setShowFeedbackNudge(false); try { localStorage.setItem("attendance-feedback-prompt-dismissed", "1") } catch {} }} />
+        <FeedbackNudge onRate={() => { setFeedbackKind("rating"); setShowFeedbackNudge(false); setShowFeedback(true) }} onReportBug={() => { setFeedbackKind("bug"); setShowFeedbackNudge(false); setShowFeedback(true) }} onSuggest={() => { setFeedbackKind("suggestion"); setShowFeedbackNudge(false); setShowFeedback(true) }} onDismiss={() => { setShowFeedbackNudge(false); try { localStorage.setItem("attendance-feedback-prompt-dismissed", "1") } catch {} }} />
       )}
-      <FeedbackSheet open={showFeedback} onClose={() => setShowFeedback(false)} onSubmitted={() => { try { localStorage.setItem("attendance-feedback-submitted", "1") } catch {}; setShowFeedbackNudge(false); setFeedbackCelebration(null); setFeedbackReplyText(""); showToast("Feedback sent — thank you") }} />
+      <FeedbackSheet key={feedbackKind} initialKind={feedbackKind} open={showFeedback} onClose={() => setShowFeedback(false)} onSubmitted={() => { try { localStorage.setItem("attendance-feedback-submitted", "1") } catch {}; setShowFeedbackNudge(false); setFeedbackCelebration(null); setFeedbackReplyText(""); showToast("Feedback sent — thank you") }} />
       <FeedbackReplyWatcher onReply={(reply, kind) => { setFeedbackReplyText(reply); setFeedbackCelebration(kind === "bug" ? "bug" : "thanks") }} />
       <FeedbackCelebration open={feedbackCelebration !== null} kind={feedbackCelebration ?? "thanks"} message={feedbackReplyText || undefined} onClose={() => { setFeedbackCelebration(null); setFeedbackReplyText("") }} />
       <TermsGate
@@ -1210,7 +1211,7 @@ export default function Home() {
           showToast(enabled ? "Optional app-usage analytics enabled" : "Optional app-usage analytics disabled")
         }}
         onShowSyncNudge={() => { setShowSyncNudge(true); setIsSettingsOpen(false) }}
-        onOpenFeedback={() => { setIsSettingsOpen(false); setShowFeedback(true) }}
+        onOpenFeedback={(kind) => { setFeedbackKind(kind); setIsSettingsOpen(false); setShowFeedback(true) }}
         onPreviewFeedbackAnimation={(kind) => { setFeedbackReplyText(kind === "bug" ? "Preview only: this is the bug-report reply animation." : "Preview only: this is the thank-you animation for ratings and suggestions."); setFeedbackCelebration(kind) }}
         subjects={subjects}
         tasks={tasks}
