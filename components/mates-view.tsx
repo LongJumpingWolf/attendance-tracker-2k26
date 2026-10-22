@@ -529,50 +529,100 @@ export default function MatesView({ mates, social, subjects, scheduleOverrides =
     <div className="space-y-7 lg:space-y-0 lg:columns-2 lg:gap-x-10 lg:[&>*]:break-inside-avoid lg:[&>*]:mb-7">
       <section className={`${card} p-4 sm:p-5`} data-tour="mates-quick-ping">
         <div className="flex items-start gap-3">
-          <span className="w-11 h-11 rounded-2xl bg-good/15 text-good grid place-items-center flex-shrink-0"><ShareNetwork weight="bold" className="w-5 h-5" /></span>
+          <span className="grid h-11 w-11 flex-shrink-0 place-items-center rounded-2xl bg-good/15 text-good">
+            <ShareNetwork weight="bold" className="h-5 w-5" />
+          </span>
           <div className="min-w-0 flex-1">
             <div className="flex flex-wrap items-center gap-2">
-              <h2 className="text-[17px] font-bold">Quick WhatsApp Ping</h2>
+              <h2 className="text-[17px] font-bold leading-tight">Quick WhatsApp Ping</h2>
               <InfoTip label="About Quick WhatsApp Ping">
                 Create a one-time link that expires after 24 hours. The recipient answers Yes or No, and you review the result before it changes your attendance. In-app Pings require Google sign-in and an accepted Mate connection.
               </InfoTip>
             </div>
-            <div className="mt-3 grid grid-cols-1 min-[360px]:grid-cols-2 gap-2">
-              <button
-                onClick={() => setPinging({ id: "__general__", name: "", covered: 0, repaid: 0 })}
-                className="grid min-h-12 w-full min-w-0 grid-cols-[auto_minmax(0,1fr)] items-center justify-center gap-2 rounded-2xl bg-ink px-3 py-3 text-left text-[14px] font-semibold leading-tight text-paper transition hover:opacity-90"
-              >
-                <ShareNetwork className="h-5 w-5" />
-                <span className="min-w-0">WhatsApp Ping<span className="mt-0.5 block text-[11px] font-medium opacity-75">One-time link · 24h</span></span>
-              </button>
-              {canUseDirectPings && connectedMates.length > 0 && (
-                <button onClick={() => setDirectChooserOpen(true)} className="grid min-h-12 w-full min-w-0 grid-cols-[auto_minmax(0,1fr)] items-center justify-center gap-2 rounded-2xl bg-secondary px-3 py-3 text-left text-[14px] font-semibold leading-tight">
-                  <ChatCircleDots className="h-5 w-5" />
-                  <span className="min-w-0">In-app Ping<span className="mt-0.5 block text-[11px] font-medium text-mute">Connected mates</span></span>
-                </button>
-              )}
-              {social.configured && social.anonymous && (
-                <button type="button" disabled title="Sign in with Google to enable direct Pings" className="grid min-h-12 w-full min-w-0 grid-cols-[auto_minmax(0,1fr)] items-center gap-2 rounded-2xl bg-secondary/70 px-3 py-3 text-left text-[13px] font-semibold text-mute disabled:opacity-70">
-                  <LockKey className="h-5 w-5" /><span className="min-w-0">In-app Ping<span className="mt-0.5 block text-[11px] font-medium">Google sign-in required</span></span>
-                </button>
-              )}
-              {canUseDirectPings && connectedMates.length === 0 && (
-                <button type="button" disabled title="Connect with a friend and wait for them to accept first" className="grid min-h-12 w-full min-w-0 grid-cols-[auto_minmax(0,1fr)] items-center gap-2 rounded-2xl bg-secondary/70 px-3 py-3 text-left text-[13px] font-semibold text-mute disabled:opacity-70">
-                  <LockKey className="h-5 w-5" /><span className="min-w-0">In-app Ping<span className="mt-0.5 block text-[11px] font-medium">Connect a friend first</span></span>
-                </button>
-              )}
-            </div>
-            {(social.configured && social.anonymous) || (canUseDirectPings && connectedMates.length === 0) ? (
-              <p className="mt-2 text-[12px] leading-snug text-mute">
-                {social.configured && social.anonymous
-                  ? "Sign in with Google and connect with a friend to enable in-app Pings. WhatsApp links remain available."
-                  : "Connect with a friend and wait for them to accept to enable in-app Pings."}
-              </p>
-            ) : null}
+            <p className="mt-1.5 text-[13px] leading-snug text-mute">
+              Create a Yes/No link for selected classes. No Mate connection is needed, and the link expires after 24 hours.
+            </p>
           </div>
         </div>
-        <div className="mt-3 flex items-center gap-1.5 text-[12px] text-mute">
-          <span>Attendance changes only after you approve a reply.</span>
+
+        <div className="mt-4 grid grid-cols-1 gap-2.5 sm:grid-cols-2">
+          <button
+            type="button"
+            onClick={() => setPinging({ id: "__general__", name: "", covered: 0, repaid: 0 })}
+            className="flex min-h-[68px] w-full min-w-0 items-center gap-3 rounded-2xl bg-ink px-3.5 py-3 text-left text-paper transition hover:opacity-90"
+          >
+            <span className="grid h-10 w-10 flex-shrink-0 place-items-center rounded-xl bg-good/15 text-good">
+              <ShareNetwork weight="bold" className="h-5 w-5" />
+            </span>
+            <span className="min-w-0 flex-1">
+              <span className="block text-[14px] font-semibold leading-tight">WhatsApp Ping</span>
+              <span className="mt-1 block text-[12px] font-medium leading-tight opacity-75">One-time link · 24 hours</span>
+            </span>
+            <span aria-hidden="true" className="text-lg opacity-65">›</span>
+          </button>
+
+          {canUseDirectPings && connectedMates.length > 0 && (
+            <button
+              type="button"
+              onClick={() => setDirectChooserOpen(true)}
+              className="flex min-h-[68px] w-full min-w-0 items-center gap-3 rounded-2xl bg-secondary px-3.5 py-3 text-left text-ink transition hover:opacity-85"
+            >
+              <span className="grid h-10 w-10 flex-shrink-0 place-items-center rounded-xl bg-ink/10">
+                <ChatCircleDots className="h-5 w-5" />
+              </span>
+              <span className="min-w-0 flex-1">
+                <span className="block text-[14px] font-semibold leading-tight">In-app Ping</span>
+                <span className="mt-1 block text-[12px] font-medium leading-tight text-mute">Connected mates</span>
+              </span>
+              <span aria-hidden="true" className="text-lg opacity-65">›</span>
+            </button>
+          )}
+
+          {social.configured && social.anonymous && (
+            <button
+              type="button"
+              disabled
+              title="Sign in with Google to enable direct Pings"
+              className="flex min-h-[68px] w-full min-w-0 items-center gap-3 rounded-2xl bg-secondary/70 px-3.5 py-3 text-left text-mute disabled:opacity-80"
+            >
+              <span className="grid h-10 w-10 flex-shrink-0 place-items-center rounded-xl bg-ink/5">
+                <LockKey className="h-5 w-5" />
+              </span>
+              <span className="min-w-0 flex-1">
+                <span className="block text-[14px] font-semibold leading-tight">In-app Ping</span>
+                <span className="mt-1 block text-[12px] font-medium leading-tight">Google sign-in required</span>
+              </span>
+            </button>
+          )}
+
+          {canUseDirectPings && connectedMates.length === 0 && (
+            <button
+              type="button"
+              disabled
+              title="Connect with a friend and wait for them to accept first"
+              className="flex min-h-[68px] w-full min-w-0 items-center gap-3 rounded-2xl bg-secondary/70 px-3.5 py-3 text-left text-mute disabled:opacity-80"
+            >
+              <span className="grid h-10 w-10 flex-shrink-0 place-items-center rounded-xl bg-ink/5">
+                <LockKey className="h-5 w-5" />
+              </span>
+              <span className="min-w-0 flex-1">
+                <span className="block text-[14px] font-semibold leading-tight">In-app Ping</span>
+                <span className="mt-1 block text-[12px] font-medium leading-tight">Connect a friend first</span>
+              </span>
+            </button>
+          )}
+        </div>
+
+        {(social.configured && social.anonymous) || (canUseDirectPings && connectedMates.length === 0) ? (
+          <p className="mt-2.5 text-[12px] leading-snug text-mute">
+            {social.configured && social.anonymous
+              ? "Sign in with Google and connect with a friend to enable in-app Pings. WhatsApp links remain available."
+              : "Connect with a friend and wait for them to accept to enable in-app Pings."}
+          </p>
+        ) : null}
+
+        <div className="mt-3 flex items-start gap-1.5 text-[12px] leading-snug text-mute">
+          <span>By default, attendance changes only after you approve a reply.</span>
           <InfoTip label="How Ping responses affect attendance">
             Each Yes marks the selected class present only when you approve integration. You can enable automatic integration separately for a specific connected Mate. A one-time WhatsApp reply never counts as a favour.
           </InfoTip>
