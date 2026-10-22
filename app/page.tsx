@@ -283,6 +283,12 @@ export default function Home() {
     pings: social.sent.filter((ping) =>
       !ping.shareLink &&
       !social.anonymous &&
+      !!social.uid &&
+      social.requests.some((request) =>
+        request.status === "accepted" &&
+        request.participants.includes(social.uid as string) &&
+        request.participants.includes(ping.to),
+      ) &&
       mates.some((mate) => (mate.uid ?? mate.id) === ping.to && mate.autoIntegrateResponses === true),
     ),
     enabled: loaded && consentReady && consentAccepted && !demoActive,
