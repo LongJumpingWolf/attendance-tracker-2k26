@@ -11,7 +11,6 @@ import SyncPanel from "./settings-sync"
 export default function MatesAccessGate({ sync, social, onToast }: { sync: CloudSync; social: SocialApi; onToast: (message: string) => void }) {
   const [email, setEmail] = useState("")
   const [busy, setBusy] = useState(false)
-  const [redirectBusy, setRedirectBusy] = useState(false)
   const [error, setError] = useState("")
 
   if (sync.switchPlan) {
@@ -30,13 +29,20 @@ export default function MatesAccessGate({ sync, social, onToast }: { sync: Cloud
     finally { setBusy(false) }
   }
 
-  const submitRedirect = async () => {
-    setRedirectBusy(true); setError("")
-    try {
-      const problem = await sync.signInRedirect()
-      if (problem) setError(problem)
-    } catch (e) { setError(e instanceof Error ? e.message : "Full-page sign-in could not start. Please try again.") }
-    finally { setRedirectBusy(false) }
+  const openSignInSettings = () => {
+    // Keep the invitation in this tab's sessionStorage while going to the clean, canonical app URL.
+    window.location.assign(`${window.location.origin}/?openSettings=sync`)
+  }
+
+  const continueWithGoogle = () => {
+    const ua = typeof navigator === "undefined" ? "" : navigator.userAgent
+    // iPhone browsers all use WebKit; open the regular Settings → Sync sign-in path rather than
+    // launching the popup from the magic-link gate, which is the reported failure mode.
+    if (sync.kind !== "dev" && /iPhone|iPad|iPod/.test(ua)) {
+      openSignInSettings()
+      return
+    }
+    void submit()
   }
 
   return <div className="mx-auto w-full max-w-xl space-y-3">
@@ -57,19 +63,14 @@ export default function MatesAccessGate({ sync, social, onToast }: { sync: Cloud
       {sync.kind === "none" ? <div className="rounded-2xl bg-secondary p-3 mt-4"><p className="text-[14px] font-semibold">Sign-in is not available yet</p><p className="text-[13px] text-mute leading-snug mt-1">The app owner needs to configure Google sign-in and cloud sync first. Your local attendance remains available.</p></div> : <div className="mt-4 space-y-3">
         {sync.kind === "dev" && <label className="block"><span className="block text-[12px] font-medium uppercase tracking-wider text-mute mb-2 px-1">Test account email</span><input value={email} onChange={e => { setEmail(e.target.value); setError("") }} placeholder="test@example.com" inputMode="email" autoCapitalize="off" autoCorrect="off" spellCheck={false} className={inputClass} /></label>}
         {social.configured && social.status !== "ready" && <p className="text-[12px] text-mute leading-snug" role="status">{social.status === "error" ? `Friend setup needs attention: ${social.error}` : "Getting your account ready…"}</p>}
-        <button type="button" disabled={busy || (sync.kind === "dev" ? !/^\S+@\S+$/.test(email.trim()) : !social.configured || social.status !== "ready")} onClick={() => void submit()} className={`${primaryButton} w-full flex items-center justify-center gap-2 disabled:opacity-55`}>
+        <button type="button" disabled={busy || (sync.kind === "dev" ? !/^\S+@\S+$/.test(email.trim()) : !social.configured || social.status !== "ready")} onClick={continueWithGoogle} className={`${primaryButton} w-full flex items-center justify-center gap-2 disabled:opacity-55`}>
           {busy ? <SpinnerGap className="h-5 w-5 animate-spin" /> : sync.kind === "dev" ? <CloudArrowUp weight="bold" className="h-5 w-5" /> : <GoogleLogo weight="bold" className="h-5 w-5" />}
           {busy ? "Connecting securely…" : sync.kind === "dev" ? "Test sign-in and sync" : "Continue with Google"}
         </button>
         {social.configured && (social.status === "error" || social.status === "idle" || social.status === "off") && <button type="button" onClick={social.enable} className={`${tintButton} w-full`}>Try connection again</button>}
         {error && <p className="text-[13px] text-bad leading-snug" role="alert">{error}</p>}
-        {/(closed before|cancelled|popup|window closed|didn.t work)/i.test(error) && sync.kind !== "dev" && (
-          <button type="button" disabled={redirectBusy || busy} onClick={() => void submitRedirect()} className={`${tintButton} w-full flex items-center justify-center gap-2 disabled:opacity-55`}>
-            {redirectBusy ? <SpinnerGap className="h-4 w-4 animate-spin" /> : <GoogleLogo weight="bold" className="h-4 w-4" />}
-            {redirectBusy ? "Opening Google sign-in…" : "Try full-page Google sign-in"}
-          </button>
-        )}
-        <p className="text-center text-[12px] text-mute leading-snug">If Safari closes the Google sign-in window before returning, use the full-page sign-in option. A pending friend link is kept while you sign in.</p>
+        <button type="button" onClick={openSignInSettings} className={`${tintButton} w-full`}>Open sign-in in app Settings</button>
+        <p className="text-center text-[12px] text-mute leading-snug">On iPhone, Continue with Google opens the regular Settings sign-in screen to avoid the invite-page popup. Your friend link is kept for after sign-in.</p>
       </div>}
     </section>
 

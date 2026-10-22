@@ -255,6 +255,17 @@ export default function Home() {
     }
   }, [])
 
+  // Open the normal app Settings → Sync screen from the clean app URL when the invite-page popup fails.
+  // The pending friend link remains in sessionStorage and is processed after the account is ready.
+  useEffect(() => {
+    const url = new URL(window.location.href)
+    if (url.searchParams.get("openSettings") !== "sync") return
+    setSettingsStartPanel("sync")
+    setIsSettingsOpen(true)
+    url.searchParams.delete("openSettings")
+    window.history.replaceState(null, "", `${url.pathname}${url.search}${url.hash}`)
+  }, [])
+
   useEffect(() => {
     if (isOnline === true && consentReady && consentAccepted && currentPage === "mates") social.enable()
     // eslint-disable-next-line react-hooks/exhaustive-deps

@@ -1,7 +1,7 @@
 "use client"
 
 import { useState } from "react"
-import { GoogleLogo } from "@phosphor-icons/react"
+import { GoogleLogo, SpinnerGap } from "@phosphor-icons/react"
 import type { CloudSync } from "@/hooks/use-cloud-sync"
 import { inputClass, primaryButton, tintButton } from "./sheet"
 
@@ -23,14 +23,33 @@ export default function SyncPanel({ sync, onToast }: { sync: CloudSync; onToast:
   const [email, setEmail] = useState("")
   const [error, setError] = useState("")
   const [busy, setBusy] = useState(false)
+  const [redirectBusy, setRedirectBusy] = useState(false)
   const [confirmOut, setConfirmOut] = useState(false)
 
   const signIn = async () => {
     setBusy(true)
     setError("")
-    const problem = await sync.signIn(email)
-    setBusy(false)
-    if (problem) setError(problem)
+    try {
+      const problem = await sync.signIn(email)
+      if (problem) setError(problem)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Sign-in could not start. Please try again.")
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const signInRedirect = async () => {
+    setRedirectBusy(true)
+    setError("")
+    try {
+      const problem = await sync.signInRedirect()
+      if (problem) setError(problem)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Full-page sign-in could not start. Please try again.")
+    } finally {
+      setRedirectBusy(false)
+    }
   }
 
   if (sync.kind === "none") {
@@ -147,15 +166,15 @@ export default function SyncPanel({ sync, onToast }: { sync: CloudSync; onToast:
                       setConfirmOut(false)
                       void sync.signOut()
                     }}
-                    className={`${tintButton} text-bad`}
+                    className="h-12 rounded-xl bg-bad text-white text-[15px] font-bold flex items-center justify-center gap-2 shadow-sm hover:opacity-90"
                   >
                     Sign out
                   </button>
                 </div>
               </div>
             ) : (
-              <button onClick={() => setConfirmOut(true)} className="text-[14px] text-mute px-1">
-                Sign out in this browser
+              <button type="button" onClick={() => setConfirmOut(true)} className="w-full h-12 rounded-xl border border-bad/25 bg-bad/10 text-bad px-4 font-semibold flex items-center justify-center gap-2 hover:bg-bad/15">
+                Sign out of this browser
               </button>
             )}
           </section>
@@ -194,9 +213,15 @@ export default function SyncPanel({ sync, onToast }: { sync: CloudSync; onToast:
               <GoogleLogo weight="bold" className="w-5 h-5" />
               {busy ? "Signing in…" : sync.kind === "dev" ? "Test sign-in" : "Sign in with Google"}
             </button>
-            {error && <p className="text-[13px] text-bad mt-2 leading-snug">{error}</p>}
+            {error && <p className="text-[13px] text-bad mt-2 leading-snug" role="alert">{error}</p>}
+            {/(closed before|cancelled|popup|window closed|didn.t work)/i.test(error) && sync.kind === "firebase" && (
+              <button disabled={busy || redirectBusy} onClick={() => void signInRedirect()} className={`${tintButton} w-full mt-2 flex items-center justify-center gap-2 disabled:opacity-50`}>
+                {redirectBusy && <SpinnerGap className="h-4 w-4 animate-spin" />}
+                {redirectBusy ? "Opening Google sign-in…" : "Try full-page Google sign-in"}
+              </button>
+            )}
             <p className="text-[12px] text-mute mt-3 leading-snug">
-              Google may refuse to sign in inside a scanner app’s built-in browser. If it does, open the page in Safari or Chrome.
+              If Safari closes the sign-in window, retry here or use full-page Google sign-in. The friend link is preserved until sign-in finishes.
             </p>
           </div>
         </section>
