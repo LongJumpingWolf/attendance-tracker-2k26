@@ -28,5 +28,8 @@ export const leasePing = (db: Firestore, id: string, deviceId: string, now = Dat
 /** The answer has been applied (and saved) on this device: mark the Ping processed. Already processed counts as done. */
 export const finalizePing = (db: Firestore, id: string) => firebaseBackendFor(db).pings.finalize(id)
 
+/** The asker explicitly declined to integrate the answer. A live lease is required; this is not "processed". */
+export const dismissPing = (db: Firestore, id: string, deviceId: string) => firebaseBackendFor(db).pings.dismiss(id, deviceId)
+
 /** Withdraw or clear a Ping. The rules keep an answer that hasn't been applied yet. */
 export const removePing = (db: Firestore, id: string) => firebaseBackendFor(db).pings.remove(id)
