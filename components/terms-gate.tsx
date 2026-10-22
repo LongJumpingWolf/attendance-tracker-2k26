@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react"
 import { ShieldCheck } from "@phosphor-icons/react"
 
-export const CONSENT_VERSION = "attendance-terms-consent-v1"
+export const CONSENT_VERSION = "attendance-terms-consent-v2"
 
 export function TermsContent() {
   return <div className="space-y-4 text-[14px] leading-relaxed text-mute">
