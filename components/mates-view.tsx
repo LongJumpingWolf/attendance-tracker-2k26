@@ -776,7 +776,7 @@ export default function MatesView({ mates, social, subjects, scheduleOverrides =
                       onChange={async (e) => {
                         try {
                           await onSaveIntegrationPreference(m, e.target.checked)
-                          onToast(e.target.checked ? `Future replies from ${visibleMateName(m)} will integrate automatically.` : "Approval will be required for future replies again.")
+                          onToast(e.target.checked ? `Replies from ${visibleMateName(m)}, including any already waiting for review, will integrate automatically.` : "You'll be asked before integrating replies from this Mate again.")
                         } catch {
                           onToast("Couldn't save the preference. Please try again.")
                         }
@@ -785,7 +785,7 @@ export default function MatesView({ mates, social, subjects, scheduleOverrides =
                     />
                     <span className="min-w-0">Auto-integrate replies</span>
                     <InfoTip label={`About automatic integration for ${visibleMateName(m)}`}>
-                      When enabled, future replies from this Mate can update your attendance without a separate approval. Leave it off to review every answer first. One-time WhatsApp links always ask.
+                      When enabled, answers from this Mate that are already waiting and future replies can update your attendance without another approval. Leave it off to review each answer. One-time WhatsApp links always ask.
                     </InfoTip>
                   </label>
                 </div>
