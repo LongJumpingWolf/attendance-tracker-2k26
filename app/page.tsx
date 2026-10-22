@@ -427,6 +427,9 @@ export default function Home() {
 
   const declinePingIntegration = async (ping: Ping) => {
     try {
+      // Take the same per-Ping lease used by apply so a second device cannot integrate while we dismiss it.
+      const leased = await social.leasePing(ping.id)
+      if (!leased) return { ok: false, message: "This answer is active on another device. Wait briefly and try again; attendance was not changed here." }
       // Finalize without calling applyDurably: dismissing never writes attendance.
       await social.finalizePing(ping.id)
       return { ok: true, message: "Response dismissed. Attendance was not changed." }
@@ -1075,6 +1078,7 @@ export default function Home() {
               onOpenWrapped={openWrapped}
               showWrappedInPingSection={wrappedDue}
               onSaveAlias={saveAliasForMate}
+              onSaveIntegrationPreference={saveMatePreference}
               onRemove={(id) => {
                 const m = mates.find((x) => x.id === id)
                 // removing a connected mate also ends the connection
