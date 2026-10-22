@@ -60,6 +60,12 @@ describe("a Ping asking for my answer", () => {
     expect(resolveFocus([ping({ status: "processed" })], ME, "p1", none)).toEqual({ ok: false, reason: "answered" })
   })
 
+  it("a dismissed answer is neither pending review nor mistaken for an integrated result on another device", () => {
+    const dismissed = ping({ status: "dismissed" })
+    expect(nextEvent([dismissed], ME, none)).toBeNull()
+    expect(resolveFocus([dismissed], ME, "p1", none)).toEqual({ ok: false, reason: "seen" })
+  })
+
   it("an expired request is not put in front of anyone", () => {
     const old = ping({ date: daysAgo(5) })
     expect(nextEvent([old], ME, none)).toBeNull()

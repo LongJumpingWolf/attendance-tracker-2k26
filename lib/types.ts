@@ -85,6 +85,10 @@ export interface Mate {
   covered: number
   repaid: number
   uid?: string
+  /** This user's chosen display alias. Never inferred from an account ID. */
+  alias?: string
+  /** When true, answers from this connected mate are safely integrated without a per-Ping approval. */
+  autoIntegrateResponses?: boolean
   /** Dates (YYYY-MM-DD) each favour happened, so the monthly wrap-up can count them */
   coveredLog?: string[]
   repaidLog?: string[]
@@ -128,9 +132,11 @@ export interface Ping {
   date: string
   items: PingItem[]
   /** asking -> answered (by the mate) -> processed (the asker's device applied the answer, exactly once) */
-  status: "asking" | "answered" | "processed" | "cancelled"
+  status: "asking" | "answered" | "processed" | "dismissed" | "cancelled"
   /** When the mate answered. A Firestore timestamp from the server (null while pending), a number elsewhere. */
   respondedAt?: unknown
+  /** When the asker explicitly chose not to apply this answer to attendance. */
+  dismissedAt?: unknown
   /** When the server created it (its own clock). Direct in-app Pings live 3 days from this. */
   createdAt?: unknown
   /** Explicit deadline for one-time share-link Pings (24 hours). */

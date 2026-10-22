@@ -12,6 +12,8 @@ interface Props {
   open: boolean
   onClose: () => void
   mate: Mate | null
+  /** Private display alias for this local user; it must never be included in the Ping payload. */
+  displayName?: string
   subjects: Subject[]
   scheduleOverrides?: ScheduleOverride[]
   /** Direct in-app delivery is allowed only for a Google-authenticated, accepted Mate connection. */
@@ -30,7 +32,7 @@ type Row = { key: string; subject: Subject; attendanceSubjectId: string; display
 
 const dayDate = (offset: number) => new Date(new Date().getFullYear(), new Date().getMonth(), new Date().getDate() - offset)
 
-export default function PingSheet({ open, onClose, mate, subjects, scheduleOverrides = [], canDirect = false, canChooseDirectMate = false, onChooseDirectMate, waiting, onAsk, onCreateSharePing, onToast }: Props) {
+export default function PingSheet({ open, onClose, mate, displayName, subjects, scheduleOverrides = [], canDirect = false, canChooseDirectMate = false, onChooseDirectMate, waiting, onAsk, onCreateSharePing, onToast }: Props) {
   const [offset, setOffset] = useState(0)
   const [picked, setPicked] = useState<Set<string>>(new Set())
   const [showOther, setShowOther] = useState(false)
@@ -87,6 +89,7 @@ export default function PingSheet({ open, onClose, mate, subjects, scheduleOverr
 
   if (!mate) return null
   const general = mate.id === "__general__"
+  const shownMateName = displayName?.trim() || mate.name
   const directAvailable = canDirect && connected && !general
 
   const all = [...scheduled, ...other]
@@ -219,7 +222,7 @@ This link expires in 24 hours. The selected classes and times are listed on the 
             {shareLink ? "24-hour Ping link ready" : shareFallback ? "Interactive link not created" : `Ping sent to ${mate.name}`}
           </p>
           <p className="wrap-rise text-[15px] text-mute mt-1.5 leading-snug max-w-[17rem] mx-auto" style={{ animationDelay: "0.55s" }}>
-            {shareLink ? "Once the recipient answers, your app can apply the reply when it is open or next syncs." : shareFallback ? "No official response link exists for this message. A plain-message reply must be recorded manually." : "You’ll get a bubble on Mates when they reply."}
+            {shareLink ? "When they answer, you'll review their response before it changes attendance." : shareFallback ? "No official response link exists for this message. A plain-message reply must be recorded manually." : "You’ll get a bubble on Mates when they reply."}
           </p>
           {(shareLink || shareFallback) && <div className="mt-5 min-w-0 rounded-2xl bg-secondary p-3 sm:p-4 text-left overflow-hidden">
             <p className="text-[12px] text-mute mb-1">{shareLink ? "Unique response link · expires in 24 hours" : "Message without interactive link"}</p>
@@ -231,7 +234,7 @@ This link expires in 24 hours. The selected classes and times are listed on the 
               <button onClick={()=>{window.open(`https://wa.me/?text=${encodeURIComponent(shareMessage)}`,"_blank","noopener,noreferrer")}} className="min-w-0 min-h-10 px-3 py-2 rounded-xl bg-ink text-paper font-semibold text-[13px] leading-tight text-center whitespace-normal sm:col-span-2">{shareLink ? "Open WhatsApp" : "Share plain message"}</button>
             </div>
             {shareFallback && <button onClick={()=>{setPhase("pick");setShareMessage("");setShareFallback(false);setShareFailureReason("")}} className="w-full mt-2 min-h-10 px-3 py-2 rounded-xl bg-card text-[13px] leading-tight font-semibold whitespace-normal">Try creating the official link again</button>}
-            <p className="text-[12px] text-mute mt-3 leading-snug">{shareLink ? "A Yes response may update the selected attendance record." : "No interactive link was created. Plain-message replies do not update attendance automatically."}</p>
+            <p className="text-[12px] text-mute mt-3 leading-snug">{shareLink ? "The sender must approve your response before attendance changes." : "No interactive link was created. Plain-message replies do not update attendance automatically."}</p>
             <button onClick={onClose} className="w-full mt-3 min-h-10 px-3 py-2 rounded-xl bg-card text-[13px] leading-tight font-semibold">Done</button>
           </div>}
         </div>
@@ -242,11 +245,11 @@ This link expires in 24 hours. The selected classes and times are listed on the 
               {connected && <span className="ping-ring absolute inset-0 rounded-full bg-ink/15" />}
               {connected && <span className="ping-ring ping-ring-2 absolute inset-0 rounded-full bg-ink/15" />}
               <span className="relative w-16 h-16 rounded-full bg-ink text-paper grid place-items-center text-[26px] font-bold">
-                {mate.name.slice(0, 1).toUpperCase()}
+                {shownMateName.slice(0, 1).toUpperCase()}
               </span>
             </div>
             <div className="min-w-0">
-              <h3 className="text-[22px] font-bold tracking-tight leading-tight truncate">{general ? "Create a 24-hour Ping link" : mate.name}</h3>
+              <h3 className="text-[22px] font-bold tracking-tight leading-tight truncate">{general ? "Create a 24-hour Ping link" : shownMateName}</h3>
               <p className="text-[15px] text-mute leading-snug">
                 {directAvailable ? "Send directly inside Attendance Tracker or create a 24-hour WhatsApp link." : connected ? "In-app Pings require Google sign-in. You can still create a 24-hour WhatsApp link." : "Create a 24-hour link the recipient can open to answer Yes or No. Connect through a unique account code to enable in-app Pings."}
               </p>

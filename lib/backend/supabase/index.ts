@@ -227,6 +227,11 @@ export function createSupabaseBackend({ transport, guard, realtime, watchPollMs 
     async finalize(id) {
       return (await rpc("finalize_ping", { p_id: id })) === "already" ? "already" : "processed"
     },
+    async dismiss(id, deviceId) {
+      const result = await rpc("dismiss_ping", { p_id: id, p_device_id: deviceId })
+      if (result === "dismissed" || result === "already-dismissed" || result === "already-processed") return result
+      throw new BackendError("unknown", "Unexpected response from dismiss_ping.", { code: "unexpected-dismiss-response" })
+    },
     async remove(id) {
       await rpc("remove_ping", { p_id: id })
     },

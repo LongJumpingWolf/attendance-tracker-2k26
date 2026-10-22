@@ -53,7 +53,7 @@ export interface FirebaseDeps {
 /** A Firestore Timestamp becomes milliseconds; null (a write still pending), numbers and missing values pass through */
 const ms = (v: unknown): unknown => (v && typeof (v as { toMillis?: unknown }).toMillis === "function" ? (v as Timestamp).toMillis() : v)
 
-const TIME_FIELDS = ["createdAt", "respondedAt", "claimedAt", "processedAt"] as const
+const TIME_FIELDS = ["createdAt", "respondedAt", "claimedAt", "processedAt", "dismissedAt"] as const
 const plain = <T extends { id: string }>(id: string, data: Record<string, unknown>): T => {
   const out: Record<string, unknown> = { id, ...data }
   for (const f of TIME_FIELDS) if (f in out) out[f] = ms(out[f])
@@ -299,6 +299,34 @@ export function createFirebaseBackend({ db, ensureSignedIn }: FirebaseDeps): Bac
         if (codeOf(e) === "permission-denied") {
           const snap = await getDoc(ref).catch(() => null)
           if (snap?.exists() && snap.data().status === "processed") return "already" as const
+        }
+        throw e
+      }
+    }),
+
+    /** Explicitly decline an answer without applying it to attendance; the decision is shared across devices. */
+    dismiss: guard(async (id, deviceId) => {
+      const ref = doc(db, "pings", id)
+      try {
+        return await runTransaction(db, async (tx) => {
+          const snap = await tx.get(ref)
+          if (!snap.exists()) throw new Error("Ping not found.")
+          const data = snap.data()
+          if (data.status === "dismissed") return "already-dismissed" as const
+          if (data.status === "processed") return "already-processed" as const
+          if (data.status !== "answered") throw new Error("Ping is not waiting for a decision.")
+          const claimedAt = ms(data.claimedAt) as number | null | undefined
+          if (data.claimedBy !== deviceId || claimedAt == null || Date.now() - claimedAt >= LEASE_MS) {
+            throw new Error("This device no longer holds the Ping decision lease.")
+          }
+          tx.update(ref, { status: "dismissed", dismissedAt: serverTimestamp() })
+          return "dismissed" as const
+        })
+      } catch (e) {
+        if (codeOf(e) === "permission-denied") {
+          const snap = await getDoc(ref).catch(() => null)
+          if (snap?.exists() && snap.data().status === "dismissed") return "already-dismissed" as const
+          if (snap?.exists() && snap.data().status === "processed") return "already-processed" as const
         }
         throw e
       }

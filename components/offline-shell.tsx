@@ -17,7 +17,7 @@ export default function OfflineShell() {
         await navigator.serviceWorker.ready
         if (cancelled || !("caches" in window)) return
         // The first page load happened before the worker was in charge, so it never saw those requests. Save them now.
-        const cache = await caches.open("shell-v1")
+        const cache = await caches.open("shell-v2")
         const used = performance
           .getEntriesByType("resource")
           .map((e) => new URL(e.name))

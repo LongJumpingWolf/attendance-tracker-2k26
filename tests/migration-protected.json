@@ -10,17 +10,17 @@
   "lib/ping-apply.ts": "6674ac49763525287ed05a3b767dc0c8d2aa9069b0116323ffbb05ac3db26981",
   "lib/ping-id.ts": "4f9cebe433b01dbd676fc881f9376a335dd5f072766278b095be034df31a0757",
   "lib/pings.ts": "8f36d6e756c28a015c0d763b233ab567bbc169bf9cf10893f4a8c8390da40335",
-  "lib/identity.ts": "853e88da325acfce0c2087d28b815d695a0d2faa10637592368d941b1ded2761",
+  "lib/identity.ts": "0815b9f2ecf41826bb4d1aa0fd794e2aafe53317fe60a9788f9b080aad7bf1bc",
   "lib/social-session.ts": "91a1a523f4054bdc8b542fd9f6a9f6d589f1c617ea9c7b35a7b11f8cb798a613",
   "lib/account.ts": "2262da363002a28c582b977f5eb0535536d3a504419b0da3383373e96c8ab924",
   "lib/realtime.ts": "bacee3438b0eebfc21af2dba27bde71f331643ab9d38efcd72f046f8ce82e899",
-  "lib/backend/firebase/index.ts": "cc4b720f871e535ef4ed17dbc28398a0ac9bd612678861b491b3d19a1b30473b",
+  "lib/backend/firebase/index.ts": "a6e8bde7af80bcf02c10cd720dcc475753af0aa962b44fff157e17e620fa6ae3",
   "hooks/use-cloud-sync.ts": "5abc4b9e039fe60407c65093abb76301fe9fc2e2b58cd57c35629706e4c0b925",
-  "firestore.rules": "4751e29c564f048f6ec4419b405b9b24a6bb6aa66109da03e6e857ff49845950",
+  "firestore.rules": "6b05d0237150202ced794dbed5a3f407b1e9e995a02f0f1d9f2f5a9247233442",
   "firestore.indexes.json": "244f5cd12bc39edffc0a412dfc27af0e8cdf3f1847d65ce1cd3c39e59c49b883",
   "functions/index.js": "63fdbbd1527d56e4146fe0645a9cf0a08899d878f56b67b521a87bd0adf44605",
   "functions/pings.js": "782226d5dce35c70e1ad4a0dd5c39c4a4eb4befc6cce6f6b073fba828b457a43",
   "functions/ping-handlers.js": "9e458a7b0edfaf108109968a1c3ebc781a8cb9825e3801e8ca28869fb6534e81",
   "functions/ping-messages.js": "dd494518ca6dd8a8b680b001d88ffcf05cc71fea7caf9d6ea2e02fdfe2c56a19",
-  "public/sw.js": "f777790c6cb547d8b6f71caf986eccddea51a03c286897a069448d7b18636785"
+  "public/sw.js": "d3187ddf7dc2c57ef74c6d77b9c543d0a855dc00bb1e87e6c6fa5d972343ced7"
 }

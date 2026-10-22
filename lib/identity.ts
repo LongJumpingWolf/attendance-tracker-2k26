@@ -150,7 +150,7 @@ export const announceProfile = (db: Firestore, uid: string, name: string) => (na
  * different people and must never transfer favour history between accounts. A unique hand-added row without a UID can
  * be linked when that contact connects; stale UID-bearing rows are retained rather than overwritten.
  */
-export function adoptConnections(mates: Mate[], connections: { uid: string; name: string }[]): Mate[] {
+export function adoptConnections(mates: Mate[], connections: { uid: string; name: string; alias?: string }[]): Mate[] {
   const norm = (s: string) => s.trim().normalize("NFKC").toLocaleLowerCase().replace(/\s+/g, " ")
   let next = mates
   for (const c of connections) {
@@ -158,7 +158,7 @@ export function adoptConnections(mates: Mate[], connections: { uid: string; name
     const connectedIndex = next.findIndex((m) => m.uid === c.uid)
     if (connectedIndex >= 0) {
       // The account UID is the identity. Update the display label without changing the ledger row or its counters.
-      next = next.map((m, index) => index === connectedIndex ? { ...m, name: c.name || m.name } : m)
+      next = next.map((m, index) => index === connectedIndex ? { ...m, name: c.name || m.name, alias: m.alias?.trim() ? m.alias : c.alias?.trim() || undefined } : m)
       continue
     }
 
@@ -167,9 +167,9 @@ export function adoptConnections(mates: Mate[], connections: { uid: string; name
     const candidates = next.map((m, index) => ({ m, index })).filter(({ m }) => !m.uid && norm(m.name) === norm(c.name))
     if (candidates.length === 1) {
       const targetIndex = candidates[0].index
-      next = next.map((m, index) => index === targetIndex ? { ...m, uid: c.uid, name: c.name || m.name } : m)
+      next = next.map((m, index) => index === targetIndex ? { ...m, uid: c.uid, name: c.name || m.name, alias: m.alias?.trim() ? m.alias : c.alias?.trim() || undefined } : m)
     } else {
-      next = [...next, { id: c.uid, uid: c.uid, name: c.name || "Mate", covered: 0, repaid: 0 }]
+      next = [...next, { id: c.uid, uid: c.uid, name: c.name || "Mate", alias: c.alias?.trim() || undefined, covered: 0, repaid: 0 }]
     }
   }
   return next

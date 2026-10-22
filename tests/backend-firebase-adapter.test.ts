@@ -295,6 +295,28 @@ describe("ping store", () => {
     })
   })
 
+  describe("dismiss", () => {
+    const id = "ping-AB-00000002"
+    it("requires the current lease and writes a distinct dismissed status", async () => {
+      fake.state.docs.set(`pings/${id}`, { status: "answered", claimedBy: "dev1", claimedAt: Date.now() })
+      expect(await be.pings.dismiss(id, "dev1")).toBe("dismissed")
+      expect(fake.state.writes.at(-1)).toEqual({
+        op: "tx.update",
+        path: `pings/${id}`,
+        data: { status: "dismissed", dismissedAt: SERVER },
+      })
+    })
+
+    it("recognises an already dismissed reply and won't reinterpret an integrated reply", async () => {
+      fake.state.docs.set(`pings/${id}`, { status: "dismissed" })
+      fake.state.failNext.set("runTransaction", "permission-denied")
+      expect(await be.pings.dismiss(id, "dev1")).toBe("already-dismissed")
+      fake.state.docs.set(`pings/${id}`, { status: "processed" })
+      fake.state.failNext.set("runTransaction", "permission-denied")
+      expect(await be.pings.dismiss(id, "dev1")).toBe("already-processed")
+    })
+  })
+
   it("remove deletes the document", async () => {
     await be.pings.create(ping())
     await be.pings.remove("ping-AB-00000001")
