@@ -359,9 +359,10 @@ function pingStatus(sent: Ping[], m: Mate) {
   if (!latest) return null
   const names = latest.items.map((i) => i.name).join(", ")
   if (latest.status === "asking") {
-    if (isExpired(latest)) return { id: latest.id, tone: "expired" as const, text: `No reply from ${m.name} · ${names}`, cancel: false }
-    return { id: latest.id, tone: "wait" as const, text: `Waiting for ${m.name} · ${names}`, cancel: true }
+    if (isExpired(latest)) return { id: latest.id, tone: "expired" as const, text: `No reply from ${visibleMateName(m)} · ${names}`, cancel: false }
+    return { id: latest.id, tone: "wait" as const, text: `Waiting for ${visibleMateName(m)} · ${names}`, cancel: true }
   }
+  if (latest.status === "dismissed") return { id: latest.id, tone: "mute" as const, text: `Reply reviewed; attendance unchanged · ${names}`, cancel: false }
   return { id: latest.id, ...outcome(latest), cancel: false }
 }
 
@@ -375,6 +376,7 @@ function PingHistory({ sent, received, onClear }: { sent: Ping[]; received: Ping
       .map((p): Row => {
         const names = p.items.map((i) => i.name).join(", ")
         if (p.status === "asking") return { id: p.id, date: p.date, tone: "mute", text: isExpired(p) ? `${p.toName} didn't reply · ${names}` : `Waiting for ${p.toName} · ${names}`, sentByMe: true }
+        if (p.status === "dismissed") return { id: p.id, date: p.date, tone: "mute", text: `${p.toName}: reply reviewed, attendance unchanged · ${names}`, sentByMe: true }
         const o = outcome(p)
         return { id: p.id, date: p.date, tone: o.tone === "yes" ? "yes" : o.tone === "no" ? "no" : "mute", text: `${p.toName}: ${o.text.toLowerCase()}`, sentByMe: true }
       }),
