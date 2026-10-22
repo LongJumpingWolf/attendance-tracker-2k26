@@ -627,22 +627,22 @@ export default function DeveloperAnalytics() {
         <section className="rounded-2xl bg-card p-4 flex flex-wrap items-center justify-between gap-3">
           <div>
             <p className="font-semibold text-sm">{statusLabel}</p>
-            <p className="text-xs text-mute mt-1">{user ? `Current Firebase session: ${user.email || (user.isAnonymous ? "anonymous account" : "no email")}` : "Firebase has not restored a signed-in account."}</p>
-            <p className="text-xs text-mute mt-1">Developer account required: {DEVELOPER_EMAIL}</p>
+            <p className="text-xs text-mute mt-1">{!authReady ? "Checking Firebase sign-in…" : !user ? "No signed-in account was restored." : user.isAnonymous ? "An anonymous app session is active." : isAdmin ? "Developer account verified." : "A Google account is signed in, but it is not authorized for this page."}</p>
+            <p className="text-xs text-mute mt-1">This is a private, developer-only dashboard. Regular app users cannot access it.</p>
           </div>
           {isAdmin && <span className="rounded-full bg-good/15 text-good px-3 py-1 text-xs font-semibold">Authorized</span>}
         </section>
 
         {needsSignIn && <section className="rounded-2xl bg-card p-5 space-y-3">
-          <p className="font-semibold">Developer login required</p>
-          <p className="text-sm text-mute">Your browser may already have an anonymous Attendance Tracker session. Sign in with the verified developer Google account to open analytics; this keeps the current account flow and follows the app’s normal account-switch safeguards.</p>
-          <button disabled={busy} onClick={() => void signIn()} className="rounded-xl bg-ink text-paper px-4 py-3 font-semibold inline-flex items-center gap-2 disabled:opacity-50"><SignIn size={18}/>{busy ? "Signing in…" : "Sign in with Google"}</button>
+          <p className="font-semibold">Developer-only access</p>
+          <p className="text-sm text-mute">This page is for the app developer only. Signing in with your own Google account will not grant access unless you are using the developer’s authorized account. Regular Attendance Tracker users cannot use this dashboard.</p>
+          <button disabled={busy} onClick={() => void signIn()} className="rounded-xl bg-ink text-paper px-4 py-3 font-semibold inline-flex items-center gap-2 disabled:opacity-50"><SignIn size={18}/>{busy ? "Signing in…" : "Sign in with developer account"}</button>
           <Link href="/?openSettings=sync" className="block text-sm underline text-mute">Having trouble? Open sign-in in app Settings.</Link>
         </section>}
 
         {authReady && user && !user.isAnonymous && !isAdmin && <section className="rounded-2xl bg-card p-5 space-y-2">
-          <p className="font-semibold">This account does not have developer access</p>
-          <p className="text-sm text-mute">You are signed in as {user.email || "an account without an email"}. The dashboard requires the verified account shown above. If this is the wrong account, use the app’s Settings → Sync account flow to switch safely rather than signing out here and risking disruption to app sync.</p>
+          <p className="font-semibold">Developer-only page — this sign-in will not work for regular users</p>
+          <p className="text-sm text-mute">Your current Google account is not authorized for the developer dashboard. Signing in again with this same account will not grant access. Only the app developer’s authorized account can open these analytics. To protect synced app data, use Settings → Sync account to change accounts safely if needed.</p>
           <Link href="/?openSettings=sync" className="inline-block text-sm underline text-mute">Open app account settings</Link>
         </section>}
 
