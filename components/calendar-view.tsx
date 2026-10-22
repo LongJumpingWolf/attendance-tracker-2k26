@@ -367,7 +367,7 @@ export default function CalendarView({ tasks, subjects, onAdd, onEdit, onToggleD
           </button>
         </div>
       ) : (
-        <div className="space-y-7">
+        <div data-tour="calendar-deadlines" className="space-y-7">
           {groups.length === 0 && <p className="text-[15px] text-mute text-center py-4">Everything is done. Nicely done.</p>}
           {groups.map((g) => (
             <section key={g.title}>
