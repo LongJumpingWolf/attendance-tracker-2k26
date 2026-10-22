@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useRef, useState } from "react"
+import { useEffect, useState } from "react"
 import { ShieldCheck } from "@phosphor-icons/react"
 
 export const CONSENT_VERSION = "attendance-terms-consent-v3"
@@ -20,23 +20,57 @@ export function TermsContent() {
 }
 
 export default function TermsGate({ open, onAgree }: { open: boolean; onAgree: (usageAnalyticsEnabled: boolean) => void }) {
-  const [atEnd, setAtEnd] = useState(false)
   const [checked, setChecked] = useState(false)
-  const [usageAnalyticsChecked, setUsageAnalyticsChecked] = useState(false)
-  const scrollRegion = useRef<HTMLDivElement>(null)
+  const [usageAnalyticsChecked, setUsageAnalyticsChecked] = useState(true)
+
   useEffect(() => {
-    if (!open) { setAtEnd(false); setChecked(false); return }
-    try { setUsageAnalyticsChecked(localStorage.getItem("attendance-usage-analytics-consent") === "1") }
-    catch { setUsageAnalyticsChecked(false) }
-    const el = scrollRegion.current
-    if (el && el.scrollHeight <= el.clientHeight + 12) setAtEnd(true)
+    if (!open) {
+      setChecked(false)
+      return
+    }
+    // Default to enabled as requested, while honoring an explicit previous opt-out.
+    try {
+      setUsageAnalyticsChecked(localStorage.getItem("attendance-usage-analytics-consent") !== "0")
+    } catch {
+      setUsageAnalyticsChecked(true)
+    }
   }, [open])
+
   if (!open) return null
-  return <div className="fixed inset-0 z-[100] bg-black/55 flex items-center justify-center p-3 sm:p-6">
-    <section role="dialog" aria-modal="true" aria-labelledby="terms-heading" className="w-full max-w-xl max-h-[94dvh] rounded-[28px] bg-card shadow-2xl overflow-hidden flex flex-col">
-      <header className="px-5 pt-5 pb-3 border-b border-ink/10 flex gap-3 items-center"><span className="w-11 h-11 rounded-xl bg-info/10 text-info grid place-items-center flex-shrink-0"><ShieldCheck className="w-6 h-6"/></span><div><h2 id="terms-heading" className="text-[22px] font-bold tracking-tight">Your data and how the app works</h2><p className="text-[13px] text-mute mt-1">Please read this notice to continue.</p></div></header>
-      <div ref={scrollRegion} tabIndex={0} aria-label="Scroll through privacy and terms" className="overflow-y-auto overscroll-contain px-5 py-4" onScroll={e=>{const el=e.currentTarget;if(el.scrollTop+el.clientHeight>=el.scrollHeight-12)setAtEnd(true)}}><TermsContent/><p className="mt-4 text-[12px] text-mute">End of notice. Scroll to this point before continuing.</p></div>
-      <footer className="border-t border-ink/10 px-5 py-4 bg-card">{!atEnd&&<p role="status" aria-live="polite" className="text-[12px] font-bold text-bad mb-2">Scroll to the very bottom of this notice to enable the checkboxes.</p>}<label className={`flex items-start gap-2.5 text-[13px] leading-snug mb-3 ${atEnd?"text-ink":"text-mute"}`}><input type="checkbox" checked={usageAnalyticsChecked} disabled={!atEnd} onChange={e=>setUsageAnalyticsChecked(e.target.checked)} className="mt-0.5 accent-current"/><span><b>Optional:</b> Share pseudonymous app-usage analytics to help improve Attendance Tracker. This can be changed separately from accepting the notice.</span></label><label className={`flex items-start gap-2.5 text-[13px] leading-snug ${atEnd?"text-ink":"text-mute"}`}><input type="checkbox" checked={checked} disabled={!atEnd} onChange={e=>setChecked(e.target.checked)} className="mt-0.5 accent-current"/><span>I have read and agree to this notice.</span></label><button disabled={!atEnd||!checked} onClick={() => onAgree(usageAnalyticsChecked)} className="w-full h-[50px] rounded-2xl bg-ink text-paper text-[16px] font-semibold mt-3 disabled:opacity-35">Agree and continue</button></footer>
-    </section>
-  </div>
+
+  return (
+    <div className="fixed inset-0 z-[100] bg-black/55 flex items-center justify-center p-3 sm:p-6">
+      <section role="dialog" aria-modal="true" aria-labelledby="terms-heading" className="w-full max-w-xl h-[94dvh] max-h-[860px] rounded-[28px] bg-card shadow-2xl overflow-hidden flex flex-col">
+        <header className="px-5 pt-5 pb-3 border-b border-ink/10 flex gap-3 items-center flex-shrink-0">
+          <span className="w-11 h-11 rounded-xl bg-info/10 text-info grid place-items-center flex-shrink-0"><ShieldCheck className="w-6 h-6" /></span>
+          <div className="min-w-0">
+            <h2 id="terms-heading" className="text-[22px] font-bold tracking-tight">Your data and how the app works</h2>
+            <p className="text-[13px] text-mute mt-1">Choose your preferences, then review the notice below.</p>
+          </div>
+        </header>
+
+        <div className="px-5 py-3 border-b border-ink/10 bg-card space-y-3 flex-shrink-0">
+          <label className="flex items-start gap-2.5 text-[13px] leading-snug text-ink">
+            <input type="checkbox" checked={usageAnalyticsChecked} onChange={(e) => setUsageAnalyticsChecked(e.target.checked)} className="mt-0.5 accent-current flex-shrink-0" />
+            <span><b>Share optional usage analytics</b><span className="block text-mute mt-0.5">Preselected to help improve the app. This records broad feature-use events, not subject names or attendance values. You can switch it off.</span></span>
+          </label>
+          <label className="flex items-start gap-2.5 text-[13px] leading-snug text-ink">
+            <input type="checkbox" checked={checked} onChange={(e) => setChecked(e.target.checked)} className="mt-0.5 accent-current flex-shrink-0" />
+            <span><b>I agree to the data and usage notice</b><span className="block text-mute mt-0.5">Required to continue using the app.</span></span>
+          </label>
+        </div>
+
+        <div tabIndex={0} aria-label="Scrollable privacy and terms notice" className="flex-1 min-h-0 overflow-y-auto overscroll-contain px-5 py-4">
+          <TermsContent />
+          <p className="mt-4 text-[12px] text-mute">End of notice.</p>
+        </div>
+
+        <footer className="border-t border-ink/10 px-5 py-4 bg-card flex-shrink-0">
+          <button disabled={!checked} onClick={() => onAgree(usageAnalyticsChecked)} className="w-full h-[50px] rounded-2xl bg-ink text-paper text-[16px] font-semibold disabled:opacity-35">
+            Agree and continue
+          </button>
+        </footer>
+      </section>
+    </div>
+  )
 }
