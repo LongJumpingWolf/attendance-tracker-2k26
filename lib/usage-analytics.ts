@@ -1,6 +1,7 @@
 "use client"
 
-import { collection, doc, getAuth, getDocs, limit, orderBy, query, serverTimestamp, setDoc, Timestamp, where, writeBatch } from "firebase/firestore"
+import { collection, doc, getDocs, limit, orderBy, query, serverTimestamp, setDoc, Timestamp, where, writeBatch } from "firebase/firestore"
+import { getAuth } from "firebase/auth"
 import { app, db } from "@/lib/firebase"
 
 export const USAGE_ANALYTICS_KEY = "attendance-usage-analytics-consent"
