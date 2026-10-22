@@ -81,6 +81,8 @@ export interface SocialApi {
   leasePing: (id: string) => Promise<boolean>
   /** The answer has been applied and saved here: mark the ping processed, for good */
   finalizePing: (id: string) => Promise<void>
+  /** Explicitly reject attendance integration; the server records this separately from an applied result. */
+  dismissPing: (id: string) => Promise<"dismissed" | "already-dismissed" | "already-processed">
   /** Dummy trigger: a mate has answered a ping you sent (local only, nothing is sent) */
   simulateReply: (mateName: string, items: PingInput[], answer: "yes" | "no") => void
   /** Dummy trigger: a mate is asking you whether you marked them present (local only) */
@@ -101,9 +103,10 @@ type SharePingDoc = {
   recipientName?: string
   date: string
   items: Array<{ key: string; subjectId: string; name: string; t?: string; substituted?: boolean; answer?: "yes" | "no" | null }>
-  status: "asking" | "answered" | "processed" | "cancelled"
+  status: "asking" | "answered" | "processed" | "dismissed" | "cancelled"
   createdAt?: { toMillis?: () => number } | number
   respondedAt?: { toMillis?: () => number } | number
+  dismissedAt?: { toMillis?: () => number } | number
   claimedBy?: string
   claimedAt?: { toMillis?: () => number } | number
   expiresAt?: { toMillis?: () => number } | number
@@ -138,6 +141,7 @@ function mapSharePing(id: string, raw: SharePingDoc): Ping {
     ...(asMillis(raw.createdAt) !== undefined ? { createdAt: asMillis(raw.createdAt) } : {}),
     ...(asMillis(raw.expiresAt) !== undefined ? { expiresAt: asMillis(raw.expiresAt) } : {}),
     ...(asMillis(raw.respondedAt) !== undefined ? { respondedAt: asMillis(raw.respondedAt) } : {}),
+    ...(asMillis(raw.dismissedAt) !== undefined ? { dismissedAt: asMillis(raw.dismissedAt) } : {}),
     ...(raw.claimedBy ? { claimedBy: raw.claimedBy } : {}),
     ...(asMillis(raw.claimedAt) !== undefined ? { claimedAt: asMillis(raw.claimedAt) } : {}),
     shareLink: true,
@@ -794,6 +798,57 @@ export function useSocial(onNotice?: (message: string) => void): SocialApi {
     [mockMode],
   )
 
+  const dismissPing = useCallback(
+    async (id: string): Promise<"dismissed" | "already-dismissed" | "already-processed"> => {
+      const dev = deviceId()
+      const resultFor = (status: Ping["status"] | undefined) => {
+        if (status === "dismissed") return "already-dismissed" as const
+        if (status === "processed") return "already-processed" as const
+        return null
+      }
+      if (id.startsWith("demo-")) {
+        const current = pingsRef.current.find((p) => p.id === id)
+        const terminal = resultFor(current?.status)
+        if (terminal) return terminal
+        if (!current || current.status !== "answered") throw new Error("Ping is not waiting for a decision.")
+        setDemoPings((prev) => prev.map((p) => p.id === id ? { ...p, status: "dismissed", dismissedAt: Date.now() } : p))
+        return "dismissed"
+      }
+      if (id.startsWith("share-")) {
+        if (mockMode || !me.current.uid) throw new Error("This response is not available on the current account.")
+        const ref = doc(db, "sharePings", id.slice("share-".length))
+        return runTransaction(db, async (tx) => {
+          const snap = await tx.get(ref)
+          if (!snap.exists()) throw new Error("Ping not found.")
+          const raw = snap.data() as SharePingDoc
+          if (raw.ownerUid !== me.current.uid) throw new Error("This response belongs to another account.")
+          const terminal = resultFor(raw.status)
+          if (terminal) return terminal
+          if (raw.status !== "answered") throw new Error("Ping is not waiting for a decision.")
+          const claimedAt = asMillis(raw.claimedAt)
+          if (raw.claimedBy !== dev || claimedAt == null || Date.now() - claimedAt >= LEASE_MS) {
+            throw new Error("This device no longer holds the Ping decision lease.")
+          }
+          tx.update(ref, { status: "dismissed", dismissedAt: serverTimestamp() })
+          return "dismissed" as const
+        })
+      }
+      if (mockMode) {
+        const current = readMockPings()
+        const found = current.find((p) => p.id === id)
+        const terminal = resultFor(found?.status)
+        if (terminal) return terminal
+        if (!found || found.status !== "answered") throw new Error("Ping is not waiting for a decision.")
+        const updated = current.map((p) => p.id === id ? { ...p, status: "dismissed" as const, dismissedAt: Date.now() } : p)
+        writeMockPings(updated)
+        setRemotePings(updated)
+        return "dismissed"
+      }
+      return getDomainBackend("ping").pings.dismiss(id, dev)
+    },
+    [mockMode],
+  )
+
   const cancelPing = useCallback(
     async (id: string) => {
       if (id.startsWith("demo-")) {
@@ -896,6 +951,7 @@ export function useSocial(onNotice?: (message: string) => void): SocialApi {
     enableAlerts,
     leasePing,
     finalizePing,
+    dismissPing,
     simulateReply,
     simulateIncoming,
   }
