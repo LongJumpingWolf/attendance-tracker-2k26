@@ -298,7 +298,7 @@ function Inner({ event, onAnswer, onApproveIntegration, onDeclineIntegration, di
                           : "Your mate answered No for all selected classes. Nothing has been changed."}
                       </p>
                     </div>
-                    {!ping.shareLink && (
+                    {!ping.shareLink && !autoIntegrate && (
                       <label className="mt-3 flex cursor-pointer items-start gap-3 rounded-2xl bg-card p-3.5 text-[13px] leading-snug">
                         <input
                           type="checkbox"
@@ -311,9 +311,16 @@ function Inner({ event, onAnswer, onApproveIntegration, onDeclineIntegration, di
                       </label>
                     )}
                     {approvalAutomatic && (
-                      <p role="status" className="mt-3 rounded-2xl bg-secondary p-3 text-[13px] text-mute leading-snug">
-                        Your saved preference is integrating this response. You can choose Later to review the status again.
-                      </p>
+                      <div role="status" className="mt-3 rounded-2xl bg-secondary p-3 text-[13px] text-mute leading-snug">
+                        <p>Your saved preference allows this response to integrate automatically. Attendance is only considered updated after this device verifies the saved records.</p>
+                        <button
+                          onClick={() => void approve()}
+                          disabled={integrationBusy}
+                          className="mt-3 min-h-11 w-full rounded-xl bg-ink px-4 text-[14px] font-bold text-paper disabled:opacity-45"
+                        >
+                          {integrationBusy ? "Retrying integration…" : "Retry integration now"}
+                        </button>
+                      </div>
                     )}
                     {error && <p role="alert" className="mt-3 text-[13px] font-medium text-bad leading-snug">{error}</p>}
                     {!approvalAutomatic && (
