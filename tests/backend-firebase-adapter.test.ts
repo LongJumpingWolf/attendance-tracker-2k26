@@ -301,7 +301,7 @@ describe("ping store", () => {
       fake.state.docs.set(`pings/${id}`, { status: "answered", claimedBy: "dev1", claimedAt: Date.now() })
       expect(await be.pings.dismiss(id, "dev1")).toBe("dismissed")
       expect(fake.state.writes.at(-1)).toEqual({
-        op: "updateDoc",
+        op: "tx.update",
         path: `pings/${id}`,
         data: { status: "dismissed", dismissedAt: SERVER },
       })
