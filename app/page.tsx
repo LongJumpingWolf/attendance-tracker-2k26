@@ -393,17 +393,36 @@ export default function Home() {
     }
   }
 
+  const saveMatePreference = async (target: Mate, enabled: boolean) => {
+    const current = latestMates.current
+    const index = current.findIndex((mate) => mate.id === target.id || (!!target.uid && (mate.uid === target.uid || mate.id === target.uid)))
+    if (index < 0) throw new Error("Mate not found.")
+    const next = current.map((mate, i) => i === index ? { ...mate, autoIntegrateResponses: enabled } : mate)
+    latestMates.current = next
+    setMates(next)
+    try {
+      await dbSet("mates", next)
+    } catch (error) {
+      latestMates.current = current
+      setMates(current)
+      throw error
+    }
+  }
+
   const approvePingIntegration = async (ping: Ping, alwaysIntegrate: boolean) => {
+    // Apply this answer first so enabling the future default cannot race the current manual approval.
+    const result = await processPingNow(ping)
+    if (result !== "processed") {
+      const message = result === "not-leased" || result === "busy"
+        ? "This answer is being handled on another device. Try again shortly."
+        : "Attendance wasn't changed. Check your connection and device storage, then try again."
+      return { ok: false, message }
+    }
     if (alwaysIntegrate) {
       const saved = await saveIntegrationPreference(ping, true)
-      if (!saved.ok) return saved
+      if (!saved.ok) return { ok: true, message: "Attendance was integrated, but the preference could not be saved. You will be asked again next time." }
     }
-    const result = await processPingNow(ping)
-    if (result === "processed") return { ok: true, message: "Attendance response integrated." }
-    const message = result === "not-leased" || result === "busy"
-      ? "This answer is being handled on another device. Try again shortly."
-      : "Attendance wasn't changed. Check your connection and device storage, then try again."
-    return { ok: false, message }
+    return { ok: true, message: "Attendance response integrated." }
   }
 
   const declinePingIntegration = async (ping: Ping) => {
