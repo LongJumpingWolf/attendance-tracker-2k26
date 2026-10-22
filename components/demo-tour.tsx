@@ -15,38 +15,74 @@ const STEPS: Step[] = [
   {
     page: "today",
     selector: null,
-    title: "Welcome to the demo",
-    body: "This is what the app looks like after a few weeks of real use — sample subjects, deadlines and mates. Nothing here is real, and you can exit any time.",
+    title: "Welcome to your walkthrough",
+    body: "This is a safe sample term. Try the main parts of College Tracker without changing your real subjects, marks, deadlines or mates.",
   },
   {
     page: "today",
     selector: "today-carousel",
-    title: "Mark as you go",
-    body: "Swipe between today's classes. One's ended without a mark, one's happening right now, one's still ahead — the app always knows which is which.",
+    title: "Your day, at a glance",
+    body: "The timetable puts today's classes first. Mark each class from its card and see your attendance update immediately.",
+  },
+  {
+    page: "today",
+    selector: "tomorrow-lectures-widget",
+    title: "Plan for tomorrow",
+    body: "The compact lecture card previews four upcoming classes. Tap it to open Calendar on tomorrow, with the full schedule and any deadlines.",
+  },
+  {
+    page: "today",
+    selector: "where-you-stand-widget",
+    title: "Spot subjects that need you",
+    body: "The attendance rings summarize each subject, showing your percentage and whether you have skips left or need to attend the next classes.",
+  },
+  {
+    page: "today",
+    selector: "deadline-widget",
+    title: "Deadlines without surprises",
+    body: "Keep the next exam or assignment in view. Add and complete deadlines from Calendar; the widget updates with your next due item.",
   },
   {
     page: "subjects",
     selector: "subjects-list",
-    title: "Every subject, one place",
-    body: "Every subject with its attendance percentage and what it needs, least safe first. Tap one for its history and plan.",
+    title: "All your subjects, organized",
+    body: "Browse attendance percentages, class days and tags. The list puts subjects that need attention near the top.",
+  },
+  {
+    page: "subjects",
+    selector: "subject-row",
+    title: "Open a subject's history",
+    body: "Choose any subject to inspect past marks, edit its timetable, plan attendance and download a monthly report. You can also delete a subject from its detail screen.",
   },
   {
     page: "calendar",
     selector: "calendar-day",
-    title: "Deadlines that don't hide",
-    body: "Exams and assignments sit right next to your classes for the day, not in a separate list you forget to check.",
+    title: "Classes and deadlines together",
+    body: "Pick a date to see its scheduled classes, attendance and holidays. You can add a deadline or a holiday right from the selected day.",
+  },
+  {
+    page: "calendar",
+    selector: "calendar-deadlines",
+    title: "Keep work moving",
+    body: "Deadlines are grouped by urgency, so overdue work and items due this week are easy to find. Mark completed work to clear the list.",
+  },
+  {
+    page: "mates",
+    selector: "mates-favour-balance",
+    title: "Keep track of favours",
+    body: "Mates helps you coordinate attendance cover and see the favour balance between connected friends. Sign in when you're ready to use the real social features.",
   },
   {
     page: "mates",
     selector: "mates-leaderboard",
-    title: "Proxy-mates",
-    body: "Friends who mark you present when you can't make it. Ping one to ask if they covered you, and the favour is logged automatically.",
+    title: "See your connected mates",
+    body: "Your friends and their relevant activity live here. The demo uses sample people only; your own account and connections are not modified.",
   },
   {
     page: "mates",
     selector: "mates-quick-ping",
-    title: "Quick WhatsApp Ping",
-    body: "Send a secure one-time Yes/No link for selected classes. It expires after 24 hours. Weekly Wrapped appears here on Saturdays only.",
+    title: "Send a focused Ping",
+    body: "Quick Pings create a shareable Yes/No link for selected classes. Always share it with the intended person. Press Finish to exit the demo and restore your own data automatically.",
   },
 ]
 
@@ -188,8 +224,8 @@ export default function DemoTour({ open, onGoto, onEnd }: Props) {
           top bar and the caption can still be read in full by scrolling, rather than being force-fitted or cut off */}
       <div className="absolute inset-0 pointer-events-auto touch-pan-y" aria-hidden />
 
-      <div className="absolute inset-x-0 bottom-0 px-4 pb-[calc(env(safe-area-inset-bottom)+16px)]">
-        <div ref={captionRef} className="mx-auto max-w-md rounded-[28px] bg-paper p-5 shadow-2xl">
+      <div className="absolute inset-x-0 bottom-0 px-3 pb-[calc(env(safe-area-inset-bottom)+10px)]">
+        <div ref={captionRef} className="mx-auto max-w-sm rounded-2xl bg-paper p-4 shadow-xl shadow-black/20">
           <div className="flex items-center justify-between">
             <span className="num text-[12px] font-semibold text-mute">
               {i + 1} / {STEPS.length}
@@ -198,12 +234,12 @@ export default function DemoTour({ open, onGoto, onEnd }: Props) {
               <X weight="bold" className="w-4 h-4" />
             </button>
           </div>
-          <h2 className="font-display text-[22px] leading-[1.15] mt-2">{step.title}</h2>
-          <p className="text-[14.5px] text-mute mt-1.5 leading-snug">{step.body}</p>
+          <h2 className="font-display text-[19px] leading-[1.18] mt-1.5">{step.title}</h2>
+          <p className="text-[13px] text-mute mt-1 leading-snug">{step.body}</p>
 
-          <div className="flex items-center gap-2.5 mt-5">
+          <div className="flex items-center gap-2 mt-3">
             {i > 0 && (
-              <button onClick={() => setI((n) => n - 1)} aria-label="Back" className="w-11 h-11 rounded-2xl bg-card grid place-items-center flex-shrink-0">
+              <button onClick={() => setI((n) => n - 1)} aria-label="Back" className="w-10 h-10 rounded-xl bg-card grid place-items-center flex-shrink-0">
                 <CaretLeft weight="bold" className="w-4 h-4" />
               </button>
             )}
@@ -215,7 +251,7 @@ export default function DemoTour({ open, onGoto, onEnd }: Props) {
                   setI((n) => n + 1)
                 }
               }}
-              className="flex-1 h-[52px] rounded-2xl bg-ink text-paper text-[17px] font-semibold hover:bg-ink/90 transition"
+              className="flex-1 h-11 rounded-xl bg-ink text-paper text-[14px] font-semibold"
             >
               {last ? "Finish tour" : "Next"}
             </button>

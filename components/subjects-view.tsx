@@ -41,7 +41,7 @@ function classDays(s: Subject) {
 function SubjectRow({ s, info, onOpen, onSleep }: Item & { onOpen: (id: string) => void; onSleep?: (subject: Subject) => void }) {
   return (
     <li className="relative rounded-2xl bg-card flex items-stretch gap-1 pr-2">
-      <button data-testid="subject-row" onClick={() => onOpen(s.id)} className="flex-1 min-w-0 text-left rounded-2xl px-4 py-3.5 flex items-center gap-3.5 min-h-[76px] active:bg-ink/[0.04] transition">
+      <button data-tour="subject-row" data-testid="subject-row" onClick={() => onOpen(s.id)} className="flex-1 min-w-0 text-left rounded-2xl px-4 py-3.5 flex items-center gap-3.5 min-h-[76px] active:bg-ink/[0.04] transition">
         <span className="w-1.5 self-stretch rounded-full flex-shrink-0" style={{ background: s.glowColor }} />
         <span className="min-w-0 flex-1">
           <span className="block text-[16px] font-semibold leading-snug truncate">{s.name}</span>

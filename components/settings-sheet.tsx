@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { ArrowsClockwise, BellRinging, Bell, CalendarPlus, CaretRight, CircleHalf, FloppyDisk, Sparkle, Tag, Trash, Info } from "@phosphor-icons/react"
+import { BellRinging, Bell, CalendarPlus, CaretRight, CircleHalf, FloppyDisk, Sparkle, Tag, Trash, Info, Star, Bug, Lightbulb, UserCircle } from "@phosphor-icons/react"
 import Sheet, { Segmented, tintButton } from "./sheet"
 import { RemindersList, ReminderEditor } from "./settings-reminders"
 import ScanPanel from "./settings-scan"
@@ -29,7 +29,7 @@ const TITLES: Record<Panel, string> = {
   backup: "Backup & restore",
   reset: "Reset all data",
   scan: "Scan check-in",
-  sync: "Sync between browsers",
+  sync: "Account",
   "tips-terms": "Tips, privacy & terms",
 }
 
@@ -82,7 +82,7 @@ interface SettingsSheetProps {
   usageAnalyticsEnabled: boolean
   onUsageAnalyticsChange: (enabled: boolean) => void
   onShowSyncNudge: () => void
-  onOpenFeedback: () => void
+  onOpenFeedback: (kind: "rating" | "bug" | "suggestion") => void
   onPreviewFeedbackAnimation: (kind: "thanks" | "bug") => void
 }
 
@@ -153,7 +153,7 @@ export default function SettingsSheet(p: SettingsSheetProps) {
     }
   }, [p.isOpen, p.startPanel])
 
-  const back = panel === "home" ? undefined : () => setPanel(panel === "reminder-edit" ? "reminders" : "home")
+  const back = panel === "home" ? undefined : () => setPanel(panel === "reminder-edit" ? "reminders" : panel === "reset" || panel === "backup" ? "sync" : "home")
 
   const upsert = (entries: ScheduleEntry[]) => {
     setSchedule((prev) => {
@@ -218,62 +218,32 @@ export default function SettingsSheet(p: SettingsSheetProps) {
 
   return (
     <Sheet open={p.isOpen} onClose={close} title={TITLES[panel]} onBack={back}
-      headerActions={<button type="button" onClick={() => setPanel("tips-terms")} aria-label="Tips, privacy and terms" title="Tips, privacy and terms" className="w-8 h-8 grid place-items-center rounded-full bg-secondary text-mute hover:text-ink"><Info weight="bold" className="w-4 h-4"/></button>}>
+      headerActions={<div className="flex items-center gap-1.5">
+        <button type="button" onClick={then(p.demoActive ? p.onExitDemo : p.onTryDemo)} aria-label={p.demoActive ? "Exit demo" : "Start demo"} title={p.demoActive ? "Exit demo" : "Try a demo"} className="h-8 px-3 rounded-full bg-secondary text-[12px] font-semibold text-mute hover:text-ink inline-flex items-center gap-1.5"><Sparkle weight="duotone" className="w-3.5 h-3.5"/>{p.demoActive ? "Exit demo" : "Demo"}</button>
+        <button type="button" onClick={() => setPanel("tips-terms")} aria-label="Tips, privacy and terms" title="Tips, privacy and terms" className="w-8 h-8 grid place-items-center rounded-full bg-secondary text-mute hover:text-ink"><Info weight="bold" className="w-4 h-4"/></button>
+      </div>}>
 
       {panel === "home" && (
-        <div className="space-y-6">
+        <div className="space-y-5">
           <section>
-            <div className="rounded-2xl bg-secondary p-3.5 flex items-center gap-3.5">
-              <span className="w-10 h-10 rounded-xl bg-card text-ink grid place-items-center flex-shrink-0">
-                <Sparkle weight="duotone" className={icon} />
-              </span>
-              <span className="min-w-0 flex-1">
-                <span className="block text-[16px] font-semibold leading-snug">{p.demoActive ? "Viewing demo data" : "Try a demo"}</span>
-                <span className="block text-[13px] text-mute leading-snug">
-                  {p.demoActive ? "Get your own data back any time." : "See the app filled in with a full sample term, with a guided tour."}
-                </span>
-              </span>
-              <button onClick={then(p.demoActive ? p.onExitDemo : p.onTryDemo)} className={`${tintButton} flex-shrink-0`}>
-                {p.demoActive ? "Exit" : "Start"}
-              </button>
-            </div>
-          </section>
-
-          <section>
-            <h3 className={label}>Appearance</h3>
-            <div className="rounded-2xl bg-secondary p-3.5">
-              <div className="flex items-center gap-3.5 mb-3">
-                <span className="w-10 h-10 rounded-xl bg-card text-ink grid place-items-center flex-shrink-0">
-                  <CircleHalf weight="duotone" className={icon} />
-                </span>
-                <span className="min-w-0">
-                  <span className="block text-[16px] font-semibold leading-snug">Theme</span>
-                  <span className="block text-[13px] text-mute leading-snug">System follows your phone&rsquo;s setting</span>
-                </span>
-              </div>
-              <Segmented
-                label="Theme"
-                value={theme}
-                onChange={(v) => {
-                  setThemeState(v)
-                  setTheme(v)
-                }}
-                options={[
-                  { id: "system", label: "System" },
-                  { id: "light", label: "Light" },
-                  { id: "dark", label: "Dark" },
-                ]}
-              />
-            </div>
-          </section>
-
-          <section>
-            <h3 className={label}>Reminders</h3>
+            <h3 className={label}>Your day</h3>
             <ul className={groupClass}>
+              <Row
+                icon={<CalendarPlus weight="duotone" className={icon} />}
+                title="Import timetable"
+                hint="Add subjects and classes from a photo"
+                onClick={then(p.onImportTimetable)}
+              />
+              <Row
+                icon={<Tag weight="duotone" className={icon} />}
+                title="Tags"
+                hint={p.tags.length ? `${p.tags.length} ${p.tags.length === 1 ? "tag" : "tags"}` : "Group your subjects"}
+                onClick={() => setPanel("tags")}
+              />
               <Row
                 icon={<BellRinging weight="duotone" className={icon} />}
                 title="Class reminders"
-                hint={schedule.length ? `${schedule.length} ${schedule.length === 1 ? "reminder" : "reminders"} set` : "A nudge around your classes while the app is open"}
+                hint={schedule.length ? `${schedule.length} ${schedule.length === 1 ? "reminder" : "reminders"} set` : "A nudge before your classes"}
                 onClick={() => setPanel("reminders")}
               />
               <Row
@@ -287,74 +257,85 @@ export default function SettingsSheet(p: SettingsSheetProps) {
           </section>
 
           <section>
-            <h3 className={label}>Your data</h3>
+            <h3 className={label}>Improve College Tracker</h3>
             <ul className={groupClass}>
               <Row
-                icon={<CalendarPlus weight="duotone" className={icon} />}
-                title="Import timetable"
-                hint="Add subjects and classes from a photo"
-                onClick={then(p.onImportTimetable)}
+                icon={<Star weight="duotone" className={icon} />}
+                title="Rate the app"
+                hint="Leave a quick rating for the developer"
+                onClick={() => p.onOpenFeedback("rating")}
               />
               <Row
-                icon={<ArrowsClockwise weight="duotone" className={icon} />}
-                title="Sync between browsers"
-                hint={p.sync.account ? `Signed in as ${p.sync.account.email}` : "Sign in to use your data in any browser"}
-                status={p.sync.account ? { text: p.sync.status === "offline" ? "Offline" : "On", tone: p.sync.status === "offline" ? "bad" : "good" } : undefined}
-                onClick={() => setPanel("sync")}
+                icon={<Bug weight="duotone" className={icon} />}
+                title="Report a bug"
+                hint="Tell us what went wrong"
+                onClick={() => p.onOpenFeedback("bug")}
               />
               <Row
-                icon={<Tag weight="duotone" className={icon} />}
-                title="Tags"
-                hint={p.tags.length ? `${p.tags.length} ${p.tags.length === 1 ? "tag" : "tags"}` : "Group your subjects"}
-                onClick={() => setPanel("tags")}
-              />
-              <Row
-                icon={<FloppyDisk weight="duotone" className={icon} />}
-                title="Backup & restore"
-                hint="Export your data, or bring it back"
-                onClick={() => setPanel("backup")}
+                icon={<Lightbulb weight="duotone" className={icon} />}
+                title="Request a feature"
+                hint="Share an idea or suggestion"
+                onClick={() => p.onOpenFeedback("suggestion")}
               />
             </ul>
           </section>
 
           <section>
+            <h3 className={label}>Account & data</h3>
             <ul className={groupClass}>
               <Row
-                icon={<Trash weight="duotone" className={icon} />}
-                title="Reset all data"
-                hint="Start a new year from scratch"
-                danger
-                onClick={() => setPanel("reset")}
+                icon={<UserCircle weight="duotone" className={icon} />}
+                title="Account"
+                hint={p.sync.account ? p.sync.account.email : "Profile, sign-in, backups and reset"}
+                status={p.sync.account ? { text: p.sync.status === "offline" ? "Offline" : p.sync.status === "synced" ? "Up to date" : "Signed in", tone: p.sync.status === "offline" ? "bad" : p.sync.status === "synced" ? "good" : "mute" } : undefined}
+                onClick={() => setPanel("sync")}
               />
             </ul>
           </section>
 
-          <section className="space-y-2">
-            <button onClick={p.onOpenFeedback} className="block text-[14px] text-mute px-1">Rate app / report a bug</button>
-            <button onClick={() => setPanel("tips-terms")} className="block text-[14px] text-mute px-1">Tips, privacy and terms</button>
-            <button onClick={then(p.onShowWelcome)} className="block text-[14px] text-mute px-1">Show the welcome tour</button>
+          <section>
+            <h3 className={label}>Appearance</h3>
+            <div className="rounded-2xl bg-secondary p-3.5">
+              <div className="flex items-center gap-3.5 mb-3">
+                <span className="w-9 h-9 rounded-xl bg-card text-ink grid place-items-center flex-shrink-0">
+                  <CircleHalf weight="duotone" className={icon} />
+                </span>
+                <span className="min-w-0">
+                  <span className="block text-[15px] font-semibold leading-snug">Theme</span>
+                  <span className="block text-[12.5px] text-mute leading-snug">Light is the default. Dark is optional.</span>
+                </span>
+              </div>
+              <Segmented
+                label="Theme"
+                value={theme}
+                onChange={(v) => {
+                  setThemeState(v)
+                  setTheme(v)
+                }}
+                options={[
+                  { id: "light", label: "Light" },
+                  { id: "dark", label: "Dark" },
+                  { id: "system", label: "System" },
+                ]}
+              />
+            </div>
+          </section>
+
+          <section className="space-y-2 pt-1">
+            <button onClick={() => setPanel("tips-terms")} className="block text-[13px] text-mute px-1">Tips, privacy and terms</button>
+            <button onClick={then(p.onShowWelcome)} className="block text-[13px] text-mute px-1">Show the welcome tour</button>
             {DEV_TOOLS && (
-              <button onClick={() => setShowDev(!showDev)} aria-expanded={showDev} className="block text-[14px] text-mute px-1">
+              <button onClick={() => setShowDev(!showDev)} aria-expanded={showDev} className="block text-[13px] text-mute px-1">
                 {showDev ? "Hide" : "Show"} developer tools
               </button>
             )}
             {DEV_TOOLS && showDev && (
               <div className="mt-3 grid grid-cols-2 gap-2">
-                <button onClick={() => setPanel("scan")} className={`${tintButton} col-span-2`}>
-                  Scan check-in: QR code and test tools
-                </button>
-                <button onClick={p.onTestNotification} className={tintButton}>
-                  Test notification
-                </button>
-                <button onClick={p.onTestFcm} className={tintButton}>
-                  Test FCM token
-                </button>
-                <button onClick={then(p.onSimulateReply)} className={`${tintButton} col-span-2`}>
-                  Simulate a mate replying &ldquo;yes, I covered you&rdquo;
-                </button>
-                <button onClick={then(p.onSimulateIncoming)} className={`${tintButton} col-span-2`}>
-                  Simulate a mate pinging you
-                </button>
+                <button onClick={() => setPanel("scan")} className={`${tintButton} col-span-2`}>Scan check-in: QR code and test tools</button>
+                <button onClick={p.onTestNotification} className={tintButton}>Test notification</button>
+                <button onClick={p.onTestFcm} className={tintButton}>Test FCM token</button>
+                <button onClick={then(p.onSimulateReply)} className={`${tintButton} col-span-2`}>Simulate a mate replying “yes, I covered you”</button>
+                <button onClick={then(p.onSimulateIncoming)} className={`${tintButton} col-span-2`}>Simulate a mate pinging you</button>
                 <button onClick={then(p.onSimulateWrapped)} className={`${tintButton} col-span-2`}>Queue Wrapped for Saturday</button>
                 <button onClick={p.onShowSyncNudge} className={`${tintButton} col-span-2`}>Test Google sync reminder</button>
                 <button onClick={p.onResetConsent} className={`${tintButton} col-span-2`}>Replay privacy and terms gate</button>
@@ -433,7 +414,29 @@ export default function SettingsSheet(p: SettingsSheetProps) {
         </div>
       )}
 
-      {panel === "sync" && <SyncPanel sync={p.sync} onToast={(m) => p.onToast(m)} />}
+      {panel === "sync" && (
+        <div className="space-y-5">
+          <SyncPanel sync={p.sync} onToast={(m) => p.onToast(m)} />
+          <section className="space-y-3">
+            <h3 className={label}>Your data</h3>
+            <div className={groupClass}>
+              <Row
+                icon={<FloppyDisk weight="duotone" className={icon} />}
+                title="Backup & restore"
+                hint="Export a copy or restore saved records"
+                onClick={() => setPanel("backup")}
+              />
+              <Row
+                icon={<Trash weight="duotone" className={icon} />}
+                title="Reset all data"
+                hint="Start a new year from scratch"
+                danger
+                onClick={() => setPanel("reset")}
+              />
+            </div>
+          </section>
+        </div>
+      )}
 
       {panel === "tips-terms" && <div className="space-y-5">
         <p className="text-[14px] leading-relaxed text-mute">Keep a recent backup, confirm that sync completed on another device, and test notification permissions on the device where you need alerts.</p>

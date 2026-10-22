@@ -98,6 +98,8 @@ export default function Home() {
   const [scheduleOverrides, setScheduleOverrides] = useState<ScheduleOverride[]>([])
   const [allTags, setAllTags] = useState<string[]>([])
   const [detailId, setDetailId] = useState<string | null>(null)
+  const [calendarFocusDate, setCalendarFocusDate] = useState<string | null>(null)
+  const [deleteSubjectTarget, setDeleteSubjectTarget] = useState<Subject | null>(null)
   const [loaded, setLoaded] = useState(false)
   const [dateLabel, setDateLabel] = useState("")
 
@@ -133,6 +135,7 @@ export default function Home() {
 
   const [toast, setToast] = useState<ToastState | null>(null)
   const [showFeedback, setShowFeedback] = useState(false)
+  const [feedbackKind, setFeedbackKind] = useState<"rating" | "bug" | "suggestion">("bug")
   const [showFeedbackNudge, setShowFeedbackNudge] = useState(false)
   const [feedbackCelebration, setFeedbackCelebration] = useState<"thanks" | "bug" | null>(null)
   const [feedbackReplyText, setFeedbackReplyText] = useState("")
@@ -906,7 +909,15 @@ export default function Home() {
   const goto = (page: string) => {
     setCurrentPage(page as Page)
     setDetailId(null)
-    window.scrollTo({ top: 0 })
+    setCalendarFocusDate(null)
+    window.scrollTo({ top: 0, behavior: "auto" })
+  }
+
+  const openTomorrowCalendar = (date: string) => {
+    setCalendarFocusDate(date)
+    setCurrentPage("calendar")
+    setDetailId(null)
+    window.scrollTo({ top: 0, behavior: "auto" })
   }
 
   /** Settings > "Try a demo": swaps in a full sample term so every screen has something worth looking at. Your own
@@ -1046,6 +1057,8 @@ export default function Home() {
               onOpenSubject={openSubject}
               onGoto={goto}
               onAddSubject={() => setIsAddOpen(true)}
+              onOpenTomorrow={openTomorrowCalendar}
+              demoActive={demoActive}
             />
           )}
 
@@ -1060,6 +1073,7 @@ export default function Home() {
                 onBack={() => setDetailId(null)}
                 onSet={(date, status, meta) => setToday(detailSubject.id, date, status, meta)}
                 onEdit={() => setEditingSubjectId(detailSubject.id)}
+                onDelete={() => setDeleteSubjectTarget(detailSubject)}
                 onPlan={(date, value) => setPlan(detailSubject.id, date, value)}
               />
             ) : (
@@ -1069,6 +1083,8 @@ export default function Home() {
           {currentPage === "calendar" && (
             <CalendarView
               onSet={setToday}
+              initialDate={calendarFocusDate}
+              onInitialDateConsumed={() => setCalendarFocusDate(null)}
               tasks={tasks}
               subjects={subjects}
               holidays={holidays}
@@ -1158,9 +1174,9 @@ export default function Home() {
         </div>
       )}
       {showFeedbackNudge && consentAccepted && !showFeedback && (
-        <FeedbackNudge onOpen={() => { setShowFeedbackNudge(false); setShowFeedback(true) }} onDismiss={() => { setShowFeedbackNudge(false); try { localStorage.setItem("attendance-feedback-prompt-dismissed", "1") } catch {} }} />
+        <FeedbackNudge onRate={() => { setFeedbackKind("rating"); setShowFeedbackNudge(false); setShowFeedback(true) }} onReportBug={() => { setFeedbackKind("bug"); setShowFeedbackNudge(false); setShowFeedback(true) }} onSuggest={() => { setFeedbackKind("suggestion"); setShowFeedbackNudge(false); setShowFeedback(true) }} onDismiss={() => { setShowFeedbackNudge(false); try { localStorage.setItem("attendance-feedback-prompt-dismissed", "1") } catch {} }} />
       )}
-      <FeedbackSheet open={showFeedback} onClose={() => setShowFeedback(false)} onSubmitted={() => { try { localStorage.setItem("attendance-feedback-submitted", "1") } catch {}; setShowFeedbackNudge(false); setFeedbackCelebration(null); setFeedbackReplyText(""); showToast("Feedback sent — thank you") }} />
+      <FeedbackSheet key={feedbackKind} initialKind={feedbackKind} open={showFeedback} onClose={() => setShowFeedback(false)} onSubmitted={() => { try { localStorage.setItem("attendance-feedback-submitted", "1") } catch {}; setShowFeedbackNudge(false); setFeedbackCelebration(null); setFeedbackReplyText(""); showToast("Feedback sent — thank you") }} />
       <FeedbackReplyWatcher onReply={(reply, kind) => { setFeedbackReplyText(reply); setFeedbackCelebration(kind === "bug" ? "bug" : "thanks") }} />
       <FeedbackCelebration open={feedbackCelebration !== null} kind={feedbackCelebration ?? "thanks"} message={feedbackReplyText || undefined} onClose={() => { setFeedbackCelebration(null); setFeedbackReplyText("") }} />
       <TermsGate
@@ -1196,7 +1212,7 @@ export default function Home() {
           showToast(enabled ? "Optional app-usage analytics enabled" : "Optional app-usage analytics disabled")
         }}
         onShowSyncNudge={() => { setShowSyncNudge(true); setIsSettingsOpen(false) }}
-        onOpenFeedback={() => { setIsSettingsOpen(false); setShowFeedback(true) }}
+        onOpenFeedback={(kind) => { setFeedbackKind(kind); setIsSettingsOpen(false); setShowFeedback(true) }}
         onPreviewFeedbackAnimation={(kind) => { setFeedbackReplyText(kind === "bug" ? "Preview only: this is the bug-report reply animation." : "Preview only: this is the thank-you animation for ratings and suggestions."); setFeedbackCelebration(kind) }}
         subjects={subjects}
         tasks={tasks}
@@ -1292,7 +1308,7 @@ export default function Home() {
         />
       )}
       <ScanGate open={scanGate} link={typeof window === "undefined" ? "" : `${window.location.origin}/scan`} onContinue={() => setScanGate(false)} />
-      <DemoTour open={demoTourOpen} onGoto={goto} onEnd={() => setDemoTourOpen(false)} />
+      <DemoTour open={demoTourOpen} onGoto={goto} onEnd={exitDemo} />
       <WrappedStory open={isWrappedOpen} onClose={() => setIsWrappedOpen(false)} subjects={subjects} mates={mates} onRepay={repayQuiet} />
 
       <SubjectSheet
@@ -1304,8 +1320,25 @@ export default function Home() {
         subject={editingSubject}
         existingTags={allTags}
         onSubmit={editingSubject ? handleEditSubject : handleAddSubject}
-        onDelete={editingSubject ? () => handleDeleteSubject(editingSubject) : undefined}
+        onDelete={editingSubject ? () => setDeleteSubjectTarget(editingSubject) : undefined}
       />
+
+      <Sheet
+        open={deleteSubjectTarget !== null}
+        onClose={() => setDeleteSubjectTarget(null)}
+        title="Delete this subject?"
+      >
+        <p className="text-[14px] text-mute leading-relaxed">
+          <span className="font-semibold text-ink">{deleteSubjectTarget?.name}</span> and its saved attendance history will be removed from this device’s subject list. This can be undone briefly after deletion.
+        </p>
+        <div className="grid grid-cols-2 gap-2 mt-5">
+          <button type="button" onClick={() => setDeleteSubjectTarget(null)} className={tintButton}>Cancel</button>
+          <button type="button" onClick={() => {
+            if (deleteSubjectTarget) handleDeleteSubject(deleteSubjectTarget)
+            setDeleteSubjectTarget(null)
+          }} className="h-12 rounded-xl bg-bad text-white text-[15px] font-semibold">Delete subject</button>
+        </div>
+      </Sheet>
       <DeadlineSheet
         open={deadlineEditor !== null}
         onClose={() => setDeadlineEditor(null)}

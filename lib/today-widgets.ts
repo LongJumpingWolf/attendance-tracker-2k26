@@ -5,7 +5,7 @@
 export type WidgetId = "skip" | "stand" | "deadline"
 
 export const WIDGETS: { id: WidgetId; title: string; description: string }[] = [
-  { id: "skip", title: "Can I skip tomorrow?", description: "A verdict for each of tomorrow's classes, and what skipping would do to your percentage." },
+  { id: "skip", title: "Lectures tomorrow", description: "A quick preview of at least four scheduled lectures. Tap to open tomorrow in Calendar." },
   { id: "stand", title: "Where you stand", description: "One ring per subject: your percentage, skips left, or how many classes to attend to recover." },
   { id: "deadline", title: "Deadline", description: "Your next deadline as a big countdown, with the one after it." },
 ]

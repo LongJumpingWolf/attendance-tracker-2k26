@@ -44,6 +44,8 @@ interface TodayViewProps {
   onOpenSubject: (id: string) => void
   onGoto: (page: string) => void
   onAddSubject: () => void
+  onOpenTomorrow?: (date: string) => void
+  demoActive?: boolean
 }
 
 const BANNER_TONE = {
@@ -110,6 +112,8 @@ function TodayContent({
   onOpenSubject,
   onGoto,
   onAddSubject,
+  onOpenTomorrow,
+  demoActive,
 }: TodayViewProps & { now: Date }) {
   const scroller = useRef<HTMLDivElement>(null)
   const lastFocus = useRef<string | null>(null)
@@ -319,7 +323,7 @@ function TodayContent({
         <button onClick={onAddSubject} className={primaryButton}>
           Add a subject
         </button>
-        <div className="mt-6"><TodayWidgets subjects={subjects} tasks={tasks} now={now} scheduleOverrides={scheduleOverrides} /></div>
+        <div className="mt-6"><TodayWidgets subjects={subjects} tasks={tasks} now={now} scheduleOverrides={scheduleOverrides} onOpenTomorrow={onOpenTomorrow} demoActive={demoActive} /></div>
       </div>
     )
   }
@@ -593,7 +597,7 @@ function TodayContent({
 
         {/* Keep widgets immediately below the carousel, even before all classes are marked. */}
         <div className="mt-6">
-          <TodayWidgets subjects={subjects} tasks={tasks} now={now} scheduleOverrides={scheduleOverrides} />
+          <TodayWidgets subjects={subjects} tasks={tasks} now={now} scheduleOverrides={scheduleOverrides} onOpenTomorrow={onOpenTomorrow} demoActive={demoActive} />
         </div>
       </div>
 
