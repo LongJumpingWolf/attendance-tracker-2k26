@@ -241,8 +241,10 @@ export default function Home() {
       adoptConnections(
         prev,
         accepted.flatMap((r) => {
-          const other = r.participants.find((p) => p !== social.uid)
-          return other ? [{ uid: other, name: r.from === social.uid ? r.toName : r.fromName, alias: readMateAlias(social.uid, other) }] : []
+          const ownerUid = social.uid
+          if (!ownerUid) return []
+          const other = r.participants.find((p) => p !== ownerUid)
+          return other ? [{ uid: other, name: r.from === ownerUid ? r.toName : r.fromName, alias: readMateAlias(ownerUid, other) }] : []
         }),
       ),
     )
@@ -1255,8 +1257,8 @@ export default function Home() {
           onAcknowledge={pingEvents.acknowledge}
           onApproveIntegration={approvePingIntegration}
           onDeclineIntegration={declinePingIntegration}
-          displayName={pingEvents.event.kind === "result" ? latestMates.current.find((mate) => (mate.uid ?? mate.id) === pingEvents.event.ping.to)?.alias : undefined}
-          autoIntegrate={pingEvents.event.kind === "result" && !!latestMates.current.find((mate) => (mate.uid ?? mate.id) === pingEvents.event.ping.to)?.autoIntegrateResponses}
+          displayName={pingEvents.event.kind === "result" ? latestMates.current.find((mate) => (mate.uid ?? mate.id) === pingEvents.event?.ping.to)?.alias : undefined}
+          autoIntegrate={pingEvents.event.kind === "result" && !!latestMates.current.find((mate) => (mate.uid ?? mate.id) === pingEvents.event?.ping.to)?.autoIntegrateResponses}
           alertsOffer={pingEvents.alertsOffer}
           onEnableAlerts={pingEvents.enableAlerts}
         />
