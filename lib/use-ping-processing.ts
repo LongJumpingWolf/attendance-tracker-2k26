@@ -14,6 +14,11 @@ const RETRY_MAX = 300_000
  * Anything that couldn't finish is tried again later; a lease held by your other device is tried again after it runs out.
  */
 export function usePingProcessing({ pings, enabled, deps }: { pings: Ping[]; enabled: boolean; deps: ProcessDeps }) {
+  /** Process one answer on explicit user approval using the same lease/apply/read-back/finalize path as automatic integration. */
+  const processNow = useCallback(async (ping: Ping) => {
+    if (!enabledRef.current) return "apply-failed" as const
+    return processAnswered(ping, depsRef.current)
+  }, [])
   const pingsRef = useRef(pings)
   pingsRef.current = pings
   const depsRef = useRef(deps)
@@ -51,4 +56,6 @@ export function usePingProcessing({ pings, enabled, deps }: { pings: Ping[]; ena
       clearTimeout(timer.current)
     }
   }, [run])
+
+  return processNow
 }
