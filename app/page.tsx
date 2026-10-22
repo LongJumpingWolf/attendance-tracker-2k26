@@ -943,9 +943,10 @@ export default function Home() {
       // Only browsers that completed the first-run guide receive these one-time tab introductions.
       if (destination !== "today") {
         const key = `firstTabGuideSeen:${destination}`
-        const isNewUserGuide = localStorage.getItem("firstRunGuidesEnabled") === "1"
-        const shouldOffer = destination === "mates" || isNewUserGuide
-        if (shouldOffer && !localStorage.getItem(key)) {
+        // Show each tab's guide once per browser. Mates is intentionally included for existing users
+        // because its feature set changed substantially; Subjects/Calendar are also available on
+        // their first post-update visit because earlier versions did not persist historic tab visits.
+        if (!localStorage.getItem(key)) {
           localStorage.setItem(key, "1")
           setFirstVisitTourPage(destination)
         }
