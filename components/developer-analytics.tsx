@@ -7,7 +7,7 @@ import { ArrowClockwise, DownloadSimple, SignIn } from "@phosphor-icons/react"
 import { app } from "@/lib/firebase"
 import { confirmSwitch, signInWithGoogle } from "@/lib/account"
 import { getDeveloperProductLinkEvents, type ProductLinkEvent, type ProductLinkSource } from "@/lib/link-analytics"
-import { getDeveloperProductUsageEvents, type ProductUsageEvent, type UsageEventName } from "@/lib/usage-analytics"
+import { getDeveloperProductUsageEvents, type ProductUsageEvent, type UsageEventName, type UsageScreen } from "@/lib/usage-analytics"
 
 const DEVELOPER_EMAIL = (process.env.NEXT_PUBLIC_DEVELOPER_EMAIL || "adityavw2006@gmail.com").toLowerCase()
 type RangeKey = "24h" | "7d" | "30d" | "90d"
