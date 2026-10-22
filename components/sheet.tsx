@@ -23,6 +23,8 @@ export const tintButton =
 interface SheetProps {
   open: boolean
   onClose: () => void
+  /** Return false to keep the sheet open when a downward drag would otherwise dismiss it. */
+  canDismiss?: () => boolean
   title: string
   children: React.ReactNode
   wide?: boolean
@@ -37,7 +39,7 @@ interface SheetProps {
 const openSheets: symbol[] = []
 
 /** Bottom sheet on phones, centred dialog on larger screens. */
-export default function Sheet({ open, onClose, title, children, wide, onBack, headerActions, priority = "normal" }: SheetProps) {
+export default function Sheet({ open, onClose, canDismiss, title, children, wide, onBack, headerActions, priority = "normal" }: SheetProps) {
   const dragStart = useRef<{ y: number; at: number } | null>(null)
   const dismissTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [dragOffset, setDragOffset] = useState(0)
@@ -74,14 +76,19 @@ export default function Sheet({ open, onClose, title, children, wide, onBack, he
     const elapsed = start ? Math.max(1, performance.now() - start.at) : 1000
     const fastEnough = delta > 36 && delta / elapsed > 0.55
     if (delta > 120 || fastEnough) {
-      setIsDismissing(true)
-      setDragOffset(typeof window === "undefined" ? 900 : window.innerHeight)
-      dismissTimer.current = setTimeout(() => {
-        dismissTimer.current = null
-        setIsDismissing(false)
+      if (canDismiss && !canDismiss()) {
+        // Keep editing in place; the caller presents its unsaved-changes prompt.
         setDragOffset(0)
-        onClose()
-      }, 200)
+      } else {
+        setIsDismissing(true)
+        setDragOffset(typeof window === "undefined" ? 900 : window.innerHeight)
+        dismissTimer.current = setTimeout(() => {
+          dismissTimer.current = null
+          setIsDismissing(false)
+          setDragOffset(0)
+          onClose()
+        }, 200)
+      }
     } else {
       // A short pull returns to its resting position with a soft spring-like settle.
       setDragOffset(0)
@@ -110,7 +117,7 @@ export default function Sheet({ open, onClose, title, children, wide, onBack, he
   return (
     <div
       className={`fixed inset-0 ${priority === "high" ? "z-[80]" : "z-50"} flex items-end sm:items-center justify-center sm:p-4`}
-      style={{ backgroundColor: `rgba(0,0,0,${Math.max(0, 0.4 * (1 - dragOffset / (typeof window === "undefined" ? 900 : Math.max(1, window.innerHeight))))})` }}
+      style={{ backgroundColor: "rgba(0,0,0,0.4)" }}
     >
       <div
         role="dialog"

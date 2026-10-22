@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react"
 import { MagnifyingGlass, WarningCircle } from "@phosphor-icons/react"
-import ClassActionMenu from "./class-action-menu"
+import SubjectActionMenu from "./subject-action-menu"
 import type { Subject } from "@/lib/types"
 import { DAY_ORDER } from "@/lib/reminders"
 import { getAttendance, needsAttention, bySafety, STATUS_STYLES, DAY_SHORT, isSubjectSleeping, localDate, type AttendanceInfo } from "@/lib/attendance"
@@ -14,6 +14,8 @@ interface SubjectsViewProps {
   onAdd: () => void
   onImport: () => void
   onSleep?: (subject: Subject) => void
+  onEditSubject: (id: string) => void
+  onDeleteSubject: (id: string) => void
 }
 
 type Item = { s: Subject; info: AttendanceInfo }
@@ -38,7 +40,12 @@ function classDays(s: Subject) {
   return days.size ? DAY_ORDER.filter((d) => days.has(d)).map((d) => DAY_SHORT[d]).join(" · ") : "No class days yet"
 }
 
-function SubjectRow({ s, info, onOpen, onSleep }: Item & { onOpen: (id: string) => void; onSleep?: (subject: Subject) => void }) {
+function SubjectRow({ s, info, onOpen, onSleep, onEditSubject, onDeleteSubject }: Item & {
+  onOpen: (id: string) => void
+  onSleep?: (subject: Subject) => void
+  onEditSubject: (id: string) => void
+  onDeleteSubject: (id: string) => void
+}) {
   return (
     <li className="relative rounded-2xl bg-card flex items-stretch gap-1 pr-2">
       <button data-tour="subject-row" data-testid="subject-row" onClick={() => onOpen(s.id)} className="flex-1 min-w-0 text-left rounded-2xl px-4 py-3.5 flex items-center gap-3.5 min-h-[76px] active:bg-ink/[0.04] transition">
@@ -52,7 +59,9 @@ function SubjectRow({ s, info, onOpen, onSleep }: Item & { onOpen: (id: string) 
         </span>
         <PctPill info={info} />
       </button>
-      {onSleep && <div className="flex items-center"><ClassActionMenu subject={s} onSleep={onSleep} /></div>}
+      <div className="flex items-center">
+        <SubjectActionMenu subject={s} onEdit={() => onEditSubject(s.id)} onDelete={() => onDeleteSubject(s.id)} onSleep={onSleep} />
+      </div>
     </li>
   )
 }
@@ -61,7 +70,7 @@ function SubjectRow({ s, info, onOpen, onSleep }: Item & { onOpen: (id: string) 
  * Every subject in one list, least safe first, each with where it stands and what it needs. Search finds a subject;
  * "Needs attention" and the tag chips narrow the list. Today's classes live on Today, not here.
  */
-export default function SubjectsView({ subjects, onOpen, onAdd, onImport, onSleep }: SubjectsViewProps) {
+export default function SubjectsView({ subjects, onOpen, onAdd, onImport, onSleep, onEditSubject, onDeleteSubject }: SubjectsViewProps) {
   const [tag, setTag] = useState<string | null>(null)
   const [attention, setAttention] = useState(false)
   const [query, setQuery] = useState("")
@@ -143,7 +152,7 @@ export default function SubjectsView({ subjects, onOpen, onAdd, onImport, onSlee
         ) : (
           <ul className="space-y-2 lg:space-y-0 lg:grid lg:grid-cols-2 2xl:grid-cols-3 lg:gap-3 mt-4">
             {visible.map((it) => (
-              <SubjectRow key={it.s.id} {...it} onOpen={onOpen} onSleep={onSleep} />
+              <SubjectRow key={it.s.id} {...it} onOpen={onOpen} onSleep={onSleep} onEditSubject={onEditSubject} onDeleteSubject={onDeleteSubject} />
             ))}
           </ul>
         )}

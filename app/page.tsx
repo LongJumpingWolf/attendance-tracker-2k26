@@ -1088,7 +1088,6 @@ export default function Home() {
               onOpenSubject={openSubject}
               onGoto={goto}
               onAddSubject={() => setIsAddOpen(true)}
-              onImportTimetable={() => setIsImportOpen(true)}
               onOpenTomorrow={openTomorrowCalendar}
               demoActive={demoActive}
             />
@@ -1109,7 +1108,18 @@ export default function Home() {
                 onPlan={(date, value) => setPlan(detailSubject.id, date, value)}
               />
             ) : (
-              <SubjectsView subjects={subjects} onOpen={openSubject} onAdd={() => setIsAddOpen(true)} onImport={() => setIsImportOpen(true)} onSleep={(subject) => setSleepTarget(subject)} />
+              <SubjectsView
+                subjects={subjects}
+                onOpen={openSubject}
+                onAdd={() => setIsAddOpen(true)}
+                onImport={() => setIsImportOpen(true)}
+                onSleep={(subject) => setSleepTarget(subject)}
+                onEditSubject={(id) => setEditingSubjectId(id)}
+                onDeleteSubject={(id) => {
+                  const subject = subjects.find((item) => item.id === id)
+                  if (subject) setDeleteSubjectTarget(subject)
+                }}
+              />
             ))}
 
           {currentPage === "calendar" && (
@@ -1354,7 +1364,6 @@ export default function Home() {
         subject={editingSubject}
         existingTags={allTags}
         onSubmit={editingSubject ? handleEditSubject : handleAddSubject}
-        onDelete={editingSubject ? () => setDeleteSubjectTarget(editingSubject) : undefined}
       />
 
       <Sheet

@@ -1,8 +1,9 @@
 "use client"
 
-import { CaretLeft, Check, X, PencilSimple, DownloadSimple, SpinnerGap, Trash } from "@phosphor-icons/react"
+import { CaretLeft, Check, X, DownloadSimple, SpinnerGap } from "@phosphor-icons/react"
 import { useRef, useState } from "react"
 import ClassActionMenu from "./class-action-menu"
+import SubjectActionMenu from "./subject-action-menu"
 import type { ScheduleOverride, Subject } from "@/lib/types"
 import {
   getAttendance,
@@ -103,23 +104,7 @@ export default function SubjectDetail({ subject, allSubjects = [subject], schedu
           >
             {reportBusy ? <SpinnerGap weight="bold" className="w-[18px] h-[18px] animate-spin" /> : <DownloadSimple weight="bold" className="w-[18px] h-[18px]" />}
           </button>
-          {onSleep && <ClassActionMenu subject={subject} onSleep={onSleep} />}
-          <button
-            onClick={onEdit}
-            aria-label="Edit subject"
-            title="Edit subject"
-            className="w-9 h-9 grid place-items-center rounded-full bg-secondary text-ink"
-          >
-            <PencilSimple weight="bold" className="w-[18px] h-[18px]" />
-          </button>
-          <button
-            onClick={onDelete}
-            aria-label="Delete subject"
-            title="Delete subject"
-            className="w-9 h-9 grid place-items-center rounded-full bg-bad/10 text-bad"
-          >
-            <Trash weight="bold" className="w-[18px] h-[18px]" />
-          </button>
+          <SubjectActionMenu subject={subject} onEdit={onEdit} onDelete={onDelete} onSleep={onSleep} />
         </div>
       </div>
       {reportNotice && (

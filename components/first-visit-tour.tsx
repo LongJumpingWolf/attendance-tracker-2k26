@@ -107,11 +107,16 @@ function Preview({ visual }: { visual: TourCard["visual"] }) {
 export default function FirstVisitTour({ page, onClose }: { page: GuidedTab | null; onClose: () => void }) {
   const [step, setStep] = useState(0)
   const touchStartX = useRef<number | null>(null)
+  const contentRef = useRef<HTMLDivElement>(null)
   const cards = page ? TOURS[page] : []
   const card = cards[step]
   const final = step >= cards.length - 1
 
   useEffect(() => setStep(0), [page])
+
+  useEffect(() => {
+    if (contentRef.current) contentRef.current.scrollTop = 0
+  }, [page, step])
 
   useEffect(() => {
     if (!page) return
@@ -130,35 +135,41 @@ export default function FirstVisitTour({ page, onClose }: { page: GuidedTab | nu
   const previous = () => setStep((v) => Math.max(0, v - 1))
 
   return (
-    <div role="dialog" aria-modal="true" aria-labelledby="first-visit-title" className="fixed inset-0 z-[100] bg-black/45 backdrop-blur-[2px] flex items-center justify-center p-4">
+    <div role="dialog" aria-modal="true" aria-labelledby="first-visit-title" className="fixed inset-0 z-[100] bg-black/45 backdrop-blur-[2px] flex items-center justify-center p-3 sm:p-4 overflow-hidden">
       <div
-        className="w-full max-w-md max-h-[90dvh] overflow-y-auto rounded-[28px] bg-background text-foreground shadow-2xl"
+        className="w-full max-w-md max-h-[90dvh] flex flex-col overflow-hidden rounded-[28px] bg-background text-foreground shadow-2xl"
         onTouchStart={(event) => { touchStartX.current = event.changedTouches[0]?.clientX ?? null }}
         onTouchEnd={(event) => {
-          const start = touchStartX.current
+          const startX = touchStartX.current
           touchStartX.current = null
-          const end = event.changedTouches[0]?.clientX
-          if (start === null || end === undefined || Math.abs(end - start) < 48) return
-          if (end < start) next()
+          const endX = event.changedTouches[0]?.clientX
+          if (startX === null || endX === undefined || Math.abs(endX - startX) < 48) return
+          if (endX < startX) next()
           else previous()
         }}
       >
-        <header className="px-5 pt-5 flex items-start justify-between gap-3">
-          <div><p className="text-[11px] font-bold tracking-[0.16em] uppercase text-mute">FIRST VISIT GUIDE</p><p className="text-[12px] text-mute mt-1">{step+1} of {cards.length} · {page === "mates" ? "Mates" : page === "calendar" ? "Calendar" : "Subjects"}</p></div>
+        <header className="flex-shrink-0 px-4 pt-4 pb-2 flex items-start justify-between gap-3">
+          <div>
+            <p className="text-[11px] font-bold tracking-[0.16em] uppercase text-mute">FIRST VISIT GUIDE</p>
+            <p className="text-[12px] text-mute mt-1">{step + 1} of {cards.length} · {page === "mates" ? "Mates" : page === "calendar" ? "Calendar" : "Subjects"}</p>
+          </div>
           <button type="button" onClick={onClose} className="text-[12px] underline underline-offset-2 text-mute hover:text-ink rounded-lg p-1.5" aria-label="Skip this guide">Skip guide</button>
         </header>
-        <div className="px-5 pt-4 pb-5">
-          <div className="rounded-2xl bg-secondary p-4"><Preview visual={card.visual}/></div>
-          <p className="text-[11px] font-extrabold tracking-[0.15em] uppercase text-mute mt-5">{card.eyebrow}</p>
-          <h2 id="first-visit-title" className="font-display text-[27px] leading-[1.06] tracking-tight mt-2">{card.title}</h2>
-          <p className="text-[14px] text-mute leading-relaxed mt-2.5">{card.body}</p>
-          <ul className="mt-4 space-y-2.5">{card.bullets.map((bullet) => <li key={bullet} className="flex gap-2.5 text-[13px] leading-snug"><CheckCircle size={17} className="text-good flex-shrink-0 mt-0.5"/><span>{bullet}</span></li>)}</ul>
-          <div className="flex gap-1.5 mt-5" aria-hidden="true">{cards.map((item,index)=><span key={item.eyebrow} className={`h-1.5 flex-1 rounded-full ${index===step ? "bg-ink" : "bg-ink/15"}`}/>)}</div>
-          <div className="flex items-center justify-between gap-3 mt-4">
-            <button type="button" onClick={previous} disabled={step===0} className="h-10 px-3 rounded-xl text-[13px] font-semibold text-ink disabled:opacity-30 inline-flex items-center gap-1.5"><ArrowLeft size={16}/> Back</button>
-            <button type="button" onClick={next} className="h-11 px-5 rounded-xl bg-ink text-paper text-[14px] font-bold inline-flex items-center gap-2">{final ? "Got it" : "Next"} {!final && <ArrowRight size={16}/>}</button>
-          </div>
+        <div ref={contentRef} className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 pt-2 pb-3">
+          <div className="rounded-2xl bg-secondary p-3"><Preview visual={card.visual}/></div>
+          <p className="text-[10px] font-extrabold tracking-[0.15em] uppercase text-mute mt-3">{card.eyebrow}</p>
+          <h2 id="first-visit-title" className="font-display text-[24px] leading-[1.08] tracking-tight mt-1.5">{card.title}</h2>
+          <p className="text-[13px] text-mute leading-relaxed mt-2">{card.body}</p>
+          <ul className="mt-3 space-y-2">{card.bullets.map((bullet) => <li key={bullet} className="flex gap-2 text-[12px] leading-snug"><CheckCircle size={16} className="text-good flex-shrink-0 mt-0.5"/><span>{bullet}</span></li>)}</ul>
         </div>
+        <footer className="flex-shrink-0 border-t border-ink/10 bg-background px-4 pt-2 pb-3">
+          <div className="flex gap-1.5 mb-2" aria-hidden="true">{cards.map((item, index) => <span key={item.eyebrow} className={index === step ? "h-1.5 flex-1 rounded-full bg-ink" : "h-1.5 flex-1 rounded-full bg-ink/15"}/>)}</div>
+          <div className="flex items-center justify-between gap-2">
+            <button type="button" onClick={previous} disabled={step === 0} className="h-10 px-2 rounded-xl text-[13px] font-semibold text-ink disabled:opacity-30 inline-flex items-center gap-1"><ArrowLeft size={16}/> Back</button>
+            <p className="text-[10px] text-mute">Swipe between slides</p>
+            <button type="button" onClick={next} className="h-11 px-4 rounded-xl bg-ink text-paper text-[14px] font-bold inline-flex items-center gap-1.5">{final ? "Got it" : "Next"} {!final && <ArrowRight size={16}/>}</button>
+          </div>
+        </footer>
       </div>
     </div>
   )

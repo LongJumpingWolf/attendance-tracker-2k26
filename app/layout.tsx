@@ -14,7 +14,17 @@ export const metadata: Metadata = {
   description: "College Tracker - attendance and deadline tracker",
   generator: "v0.app",
   manifest: "/manifest.json",
-  icons: { icon: "/favicon-512.png", apple: "/favicon-192.png" },
+  icons: {
+    icon: [
+      { url: "/icon-adaptive.svg", type: "image/svg+xml" },
+      { url: "/icon-light.png", type: "image/png", sizes: "512x512", media: "(prefers-color-scheme: light)" },
+      { url: "/icon-dark.png", type: "image/png", sizes: "512x512", media: "(prefers-color-scheme: dark)" },
+    ],
+    apple: [
+      { url: "/icon-light.png", type: "image/png", sizes: "512x512", media: "(prefers-color-scheme: light)" },
+      { url: "/icon-dark.png", type: "image/png", sizes: "512x512", media: "(prefers-color-scheme: dark)" },
+    ],
+  },
   appleWebApp: {
     capable: true,
     statusBarStyle: "default",

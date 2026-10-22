@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import { Plus, Trash } from "@phosphor-icons/react"
 import Sheet, { Field, Stepper, inputClass, primaryButton, fieldLabel } from "./sheet"
 import { DAY_SHORT, toMin } from "@/lib/attendance"
@@ -24,27 +24,32 @@ interface SubjectSheetProps {
   subject?: (Omit<SubjectValues, "slots"> & { slots?: Slot[] }) | null
   existingTags: string[]
   onSubmit: (values: SubjectValues) => void
-  onDelete?: () => void
 }
 
 const COLORS = ["#30d158", "#0a84ff", "#bf5af2", "#ff375f", "#ff9f0a", "#64d2ff"]
 
 const EMPTY = { name: "", attended: 0, missed: 0, requirement: 75, glowColor: COLORS[1], tags: [] as string[] }
 
-export default function SubjectSheet({ open, onClose, subject, existingTags, onSubmit, onDelete }: SubjectSheetProps) {
+export default function SubjectSheet({ open, onClose, subject, existingTags, onSubmit }: SubjectSheetProps) {
   const [values, setValues] = useState(EMPTY)
+  const baseline = useRef("")
   // Every class is its own row, so a subject can meet at different times on different days
   const [slots, setSlots] = useState<Slot[]>([])
   const [newTag, setNewTag] = useState("")
   const [error, setError] = useState("")
+  const [showUnsavedPrompt, setShowUnsavedPrompt] = useState(false)
 
   useEffect(() => {
     if (!open) return
-    const { slots, ...rest } = subject ?? { ...EMPTY, slots: [] as Slot[] }
-    setValues({ ...rest, tags: rest.tags || [] })
-    setSlots((slots || []).map((x) => ({ ...x })))
+    const { slots: subjectSlots, ...rest } = subject ?? { ...EMPTY, slots: [] as Slot[] }
+    const nextValues = { ...rest, tags: rest.tags || [] }
+    const nextSlots = (subjectSlots || []).map((x) => ({ ...x }))
+    baseline.current = JSON.stringify({ values: nextValues, slots: nextSlots, newTag: "" })
+    setValues(nextValues)
+    setSlots(nextSlots)
     setNewTag("")
     setError("")
+    setShowUnsavedPrompt(false)
   }, [open, subject])
 
   const set = <K extends keyof typeof EMPTY>(key: K, v: (typeof EMPTY)[K]) => setValues((p) => ({ ...p, [key]: v }))
@@ -72,23 +77,51 @@ export default function SubjectSheet({ open, onClose, subject, existingTags, onS
     setNewTag("")
   }
 
-  const submit = (e: React.FormEvent) => {
-    e.preventDefault()
-    if (!values.name.trim()) return setError("Give the subject a name")
+  const saveChanges = (): boolean => {
+    if (!values.name.trim()) {
+      setError("Give the subject a name")
+      return false
+    }
     const bad = slots.findIndex((x) => x.end <= x.start)
-    if (bad !== -1) return setError(`${DAY_NAMES[slots[bad].day]}: the class must end after it starts`)
+    if (bad !== -1) {
+      setError(`${DAY_NAMES[slots[bad].day]}: the class must end after it starts`)
+      return false
+    }
     const seen = new Set<string>()
     for (const x of slots) {
       const k = `${x.day}|${x.start}`
-      if (seen.has(k)) return setError(`${DAY_NAMES[x.day]} has two classes starting at the same time`)
+      if (seen.has(k)) {
+        setError(`${DAY_NAMES[x.day]} has two classes starting at the same time`)
+        return false
+      }
       seen.add(k)
     }
     const sorted = [...slots].sort((a, b) => DAY_ORDER.indexOf(a.day) - DAY_ORDER.indexOf(b.day) || toMin(a.start) - toMin(b.start))
+    baseline.current = JSON.stringify({ values, slots: sorted, newTag: "" })
     onSubmit({ ...values, name: values.name.trim(), slots: sorted })
+    return true
+  }
+
+  const submit = (e: React.FormEvent) => {
+    e.preventDefault()
+    saveChanges()
+  }
+
+  const canDismiss = () => {
+    const changed = JSON.stringify({ values, slots, newTag }) !== baseline.current
+    if (changed) {
+      setShowUnsavedPrompt(true)
+      return false
+    }
+    return true
+  }
+
+  const requestClose = () => {
+    if (canDismiss()) onClose()
   }
 
   return (
-    <Sheet open={open} onClose={onClose} title={subject ? "Edit subject" : "New subject"}>
+    <Sheet open={open} onClose={requestClose} canDismiss={canDismiss} title={subject ? "Edit subject" : "New subject"}>
       <form onSubmit={submit}>
         <Field label="Name" error={error}>
           <input
@@ -221,12 +254,18 @@ export default function SubjectSheet({ open, onClose, subject, existingTags, onS
         <button type="submit" className={`${primaryButton} mt-1`}>
           {subject ? "Save changes" : "Add subject"}
         </button>
-        {subject && onDelete && (
-          <button type="button" onClick={onDelete} className="w-full mt-2 h-12 text-[17px] font-semibold text-bad">
-            Delete subject
-          </button>
-        )}
       </form>
+      {showUnsavedPrompt && (
+        <div role="alertdialog" aria-modal="true" aria-labelledby="unsaved-subject-title" className="mt-4 rounded-2xl border border-ink/10 bg-secondary p-4">
+          <h3 id="unsaved-subject-title" className="text-[16px] font-bold">Save your changes?</h3>
+          <p className="mt-1 text-[13px] leading-snug text-mute">You have edits that have not been saved yet.</p>
+          <div className="grid grid-cols-2 gap-2 mt-4">
+            <button type="button" onClick={() => setShowUnsavedPrompt(false)} className="h-11 rounded-xl bg-card text-ink text-[14px] font-semibold">Keep editing</button>
+            <button type="button" onClick={() => { if (saveChanges()) setShowUnsavedPrompt(false) }} className="h-11 rounded-xl bg-ink text-paper text-[14px] font-semibold">Save changes</button>
+          </div>
+          <button type="button" onClick={() => { setShowUnsavedPrompt(false); onClose() }} className="w-full h-10 mt-1 text-[13px] font-semibold text-bad">Discard changes</button>
+        </div>
+      )}
     </Sheet>
   )
 }
