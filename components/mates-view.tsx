@@ -772,7 +772,7 @@ export default function MatesView({ mates, social, subjects, scheduleOverrides =
                     <input
                       type="checkbox"
                       checked={!!m.autoIntegrateResponses}
-                      disabled={!m.uid || !isConnected(m)}
+                      disabled={!m.uid || (!isConnected(m) && !m.autoIntegrateResponses)}
                       onChange={async (e) => {
                         try {
                           await onSaveIntegrationPreference(m, e.target.checked)
