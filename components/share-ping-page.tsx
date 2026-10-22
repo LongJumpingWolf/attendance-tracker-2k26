@@ -8,7 +8,7 @@ import { db } from "@/lib/firebase"
 type SharedItem = { key: string; name: string; t?: string; answer: "yes" | "no" | null }
 type PublicPing = {
   id: string
-  status: "asking" | "answered" | "processed" | "cancelled" | "expired"
+  status: "asking" | "answered" | "processed" | "dismissed" | "cancelled" | "expired"
   fromName: string
   toName: string
   date: string
@@ -38,6 +38,7 @@ export default function SharePingPage({ pingId }: { pingId: string }) {
     let active = true
     setLoading(true)
     setError("")
+    setPing(null)
     if (!/^[a-f0-9]{64}$/.test(pingId)) {
       setLoading(false)
       setError("This Ping link is invalid. Ask the sender to create a new one.")
@@ -118,7 +119,7 @@ export default function SharePingPage({ pingId }: { pingId: string }) {
   }
 
   const alreadyAnswered = ping?.status === "answered" || ping?.status === "processed"
-  const unavailable = ping?.status === "cancelled" || ping?.status === "expired"
+  const unavailable = ping?.status === "cancelled" || ping?.status === "expired" || ping?.status === "dismissed"
 
   return (
     <main className="min-h-[100dvh] bg-paper text-ink flex items-center justify-center px-4 py-6 sm:px-6">
@@ -165,7 +166,7 @@ export default function SharePingPage({ pingId }: { pingId: string }) {
           {ping && !loading && (done || alreadyAnswered) && (
             <div className="px-6 sm:px-8 pb-8 text-center"><span className="mx-auto w-16 h-16 rounded-full bg-good/15 text-good grid place-items-center"><CheckCircle weight="duotone" className="w-9 h-9" /></span><h2 className="text-[22px] font-bold mt-4">{done ? "Answer sent" : "Already answered"}</h2><p className="text-[14px] text-mute leading-relaxed mt-2">{done ? "Thanks. Your answer is safely saved. The sender&apos;s app will receive it and process it when connected." : "This Ping has already received a response. You don't need to answer again."}</p></div>
           )}
-          {ping && !loading && unavailable && <div className="m-5 rounded-2xl bg-secondary p-4 text-[14px] leading-relaxed">{error || (ping.status === "cancelled" ? "The sender cancelled this Ping." : "This Ping is no longer available.")}</div>}
+          {ping && !loading && unavailable && <div className="m-5 rounded-2xl bg-secondary p-4 text-[14px] leading-relaxed">{error || (ping.status === "dismissed" ? "The sender reviewed this response and chose not to integrate it into attendance." : ping.status === "cancelled" ? "The sender cancelled this Ping." : "This Ping is no longer available.")}</div>}
           <div className="border-t border-ink/[0.08] px-5 py-4 text-center"><p className="text-[11px] text-mute leading-relaxed">Shared securely for one attendance question. The sender can see the result in their app. Anyone holding this private link can view and answer this Ping. Do not forward the link.</p></div>
         </section>
         <p className="text-center text-[11px] text-mute mt-4">If you weren&apos;t expecting this, you can close the page without responding.</p>
