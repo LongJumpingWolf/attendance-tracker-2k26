@@ -61,6 +61,7 @@ import SettingsSheet from "@/components/settings-sheet"
 import ReconcileSheet from "@/components/reconcile-sheet"
 import TimetableImportSheet from "@/components/timetable-import-sheet"
 import Onboarding from "@/components/onboarding"
+import FirstVisitTour, { type GuidedTab } from "@/components/first-visit-tour"
 import ScanCheckIn, { type ScanState } from "@/components/scan-check-in"
 import ScanGate from "@/components/scan-gate"
 import DemoTour from "@/components/demo-tour"
@@ -130,6 +131,7 @@ export default function Home() {
   const [isWrappedOpen, setIsWrappedOpen] = useState(false)
   const [isOnboardingOpen, setIsOnboardingOpen] = useState(false)
   const [onboardingResolved, setOnboardingResolved] = useState(false)
+  const [firstVisitTourPage, setFirstVisitTourPage] = useState<GuidedTab | null>(null)
   const [classActionsTarget, setClassActionsTarget] = useState<import("@/components/class-action-menu").ClassActionTarget | null>(null)
   const [sleepTarget, setSleepTarget] = useState<Subject | null>(null)
 
@@ -423,6 +425,9 @@ export default function Home() {
     setIsOnboardingOpen(false)
     try {
       localStorage.setItem("onboardingDone", "1")
+      localStorage.setItem("firstRunGuidesEnabled", "1")
+      // Today is introduced by the first-run screen itself.
+      localStorage.setItem("firstTabGuideSeen:today", "1")
     } catch {
       /* fine */
     }
@@ -907,9 +912,22 @@ export default function Home() {
   }
 
   const goto = (page: string) => {
-    setCurrentPage(page as Page)
+    const destination = page as Page
+    setCurrentPage(destination)
     setDetailId(null)
     setCalendarFocusDate(null)
+    try {
+      // Only browsers that completed the first-run guide receive these one-time tab introductions.
+      if (destination !== "today" && localStorage.getItem("firstRunGuidesEnabled") === "1") {
+        const key = `firstTabGuideSeen:${destination}`
+        if (!localStorage.getItem(key)) {
+          localStorage.setItem(key, "1")
+          setFirstVisitTourPage(destination)
+        }
+      }
+    } catch {
+      // Private browsing can disable persistence; don't block navigation.
+    }
     window.scrollTo({ top: 0, behavior: "auto" })
   }
 
@@ -1057,6 +1075,7 @@ export default function Home() {
               onOpenSubject={openSubject}
               onGoto={goto}
               onAddSubject={() => setIsAddOpen(true)}
+              onImportTimetable={() => setIsImportOpen(true)}
               onOpenTomorrow={openTomorrowCalendar}
               demoActive={demoActive}
             />
@@ -1180,7 +1199,7 @@ export default function Home() {
       <FeedbackReplyWatcher onReply={(reply, kind) => { setFeedbackReplyText(reply); setFeedbackCelebration(kind === "bug" ? "bug" : "thanks") }} />
       <FeedbackCelebration open={feedbackCelebration !== null} kind={feedbackCelebration ?? "thanks"} message={feedbackReplyText || undefined} onClose={() => { setFeedbackCelebration(null); setFeedbackReplyText("") }} />
       <TermsGate
-        open={loaded && onboardingResolved && consentReady && !consentAccepted && !isOnboardingOpen}
+        open={loaded && onboardingResolved && consentReady && !consentAccepted}
         onAgree={(usageEnabled) => {
           try {
             localStorage.setItem(CONSENT_VERSION, "1")
@@ -1279,7 +1298,6 @@ export default function Home() {
         notificationPermission={notificationPermission}
         onEnableNotifications={enableNotifications}
         onOpenMates={() => setCurrentPage("mates")}
-        onAgreeTerms={() => { try { localStorage.setItem(CONSENT_VERSION, "1") } catch {}; setConsentAccepted(true) }}
         onToast={showToast}
       />
       <TimetableImportSheet
@@ -1309,6 +1327,7 @@ export default function Home() {
       )}
       <ScanGate open={scanGate} link={typeof window === "undefined" ? "" : `${window.location.origin}/scan`} onContinue={() => setScanGate(false)} />
       <DemoTour open={demoTourOpen} onEnd={exitDemo} />
+      <FirstVisitTour page={firstVisitTourPage} onClose={() => setFirstVisitTourPage(null)} />
       <WrappedStory open={isWrappedOpen} onClose={() => setIsWrappedOpen(false)} subjects={subjects} mates={mates} onRepay={repayQuiet} />
 
       <SubjectSheet
