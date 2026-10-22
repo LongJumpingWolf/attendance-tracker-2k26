@@ -164,6 +164,18 @@ service cloud.firestore {
                     && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'processedAt'])
                     && request.resource.data.processedAt == request.time;
 
+      // The asker can explicitly decline after taking a live lease. This is terminal and never means attendance was applied.
+      allow update: if nonAnonymous()
+                    && resource.data.from == request.auth.uid
+                    && resource.data.status == 'answered'
+                    && request.resource.data.status == 'dismissed'
+                    && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'dismissedAt'])
+                    && request.resource.data.dismissedAt == request.time
+                    && resource.data.get('claimedBy', '') is string
+                    && resource.data.get('claimedBy', '') != ''
+                    && resource.data.claimedAt is timestamp
+                    && resource.data.claimedAt + duration.value(2, 'm') > request.time;
+
       // Either person can withdraw or clear a Ping, except an answer that hasn't been applied yet
       allow delete: if signedIn()
                     && request.auth.uid in resource.data.participants
@@ -266,7 +278,17 @@ service cloud.firestore {
                     && request.resource.data.status == 'processed'
                     && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'processedAt'])
                     && request.resource.data.processedAt == request.time;
-      allow delete: if owner() && (resource.data.status in ['cancelled', 'processed']
+      // A declined answer is a distinct terminal state: do not present it to another device as integrated.
+      allow update: if owner()
+                    && resource.data.status == 'answered'
+                    && request.resource.data.status == 'dismissed'
+                    && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'dismissedAt'])
+                    && request.resource.data.dismissedAt == request.time
+                    && resource.data.get('claimedBy', '') is string
+                    && resource.data.get('claimedBy', '') != ''
+                    && resource.data.claimedAt is timestamp
+                    && resource.data.claimedAt + duration.value(2, 'm') > request.time;
+      allow delete: if owner() && (resource.data.status in ['cancelled', 'processed', 'dismissed']
                     || (resource.data.status == 'asking' && request.time >= resource.data.expiresAt));
     }
 
