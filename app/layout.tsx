@@ -15,9 +15,10 @@ export const metadata: Metadata = {
   generator: "v0.app",
   manifest: "/manifest.json",
   icons: {
+    // Keep the browser favicon on directly-renderable PNGs: SVG favicons with
+    // external <image href> references can render blank in Chromium.
     icon: [
-      { url: "/icon-adaptive.svg", type: "image/svg+xml" },
-      { url: "/icon-light.png", type: "image/png", sizes: "512x512", media: "(prefers-color-scheme: light)" },
+      { url: "/icon-light.png", type: "image/png", sizes: "512x512" },
       { url: "/icon-dark.png", type: "image/png", sizes: "512x512", media: "(prefers-color-scheme: dark)" },
     ],
     apple: [
