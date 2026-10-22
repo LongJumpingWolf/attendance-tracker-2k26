@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useRef, useState } from "react"
-import { CaretRight, Check, WarningCircle, X } from "@phosphor-icons/react"
+import { CalendarPlus, CaretRight, Check, WarningCircle, X } from "@phosphor-icons/react"
 import ClassActionMenu from "./class-action-menu"
 import type { ScheduleOverride } from "@/lib/types"
 import type { Mate, Subject, Task } from "@/lib/types"
@@ -44,6 +44,7 @@ interface TodayViewProps {
   onOpenSubject: (id: string) => void
   onGoto: (page: string) => void
   onAddSubject: () => void
+  onImportTimetable?: () => void
   onOpenTomorrow?: (date: string) => void
   demoActive?: boolean
 }
@@ -112,6 +113,7 @@ function TodayContent({
   onOpenSubject,
   onGoto,
   onAddSubject,
+  onImportTimetable,
   onOpenTomorrow,
   demoActive,
 }: TodayViewProps & { now: Date }) {
@@ -320,11 +322,20 @@ function TodayContent({
           Add each subject with the minimum attendance it needs, plus its class days and time. This screen then follows
           your day.
         </p>
-        <button onClick={onAddSubject} className={primaryButton}>
-          Add a subject
-        </button>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+          <button onClick={onAddSubject} className={primaryButton}>
+            Add a subject
+          </button>
+          <button
+            type="button"
+            onClick={onImportTimetable}
+            className="w-full min-h-[48px] rounded-xl border border-ink/15 bg-card text-ink font-semibold text-[14px] inline-flex items-center justify-center gap-2 hover:bg-secondary transition-colors"
+          >
+            <CalendarPlus size={18} weight="duotone" /> Import timetable photo
+          </button>
+        </div>
         <div className="mt-6"><TodayWidgets subjects={subjects} tasks={tasks} now={now} scheduleOverrides={scheduleOverrides} onOpenTomorrow={onOpenTomorrow} demoActive={demoActive} /></div>
-        <footer className="pt-8 pb-3 text-center text-[12px] text-mute/80 tracking-wide">Made with love by Aditya Waghmare</footer>
+        <footer className="pt-8 pb-3 text-center text-[12px] text-mute/80 tracking-wide">Made with ♥ by Aditya Waghmare</footer>
       </div>
     )
   }
@@ -369,8 +380,15 @@ function TodayContent({
   return (
     <div>
       {/* Headline */}
-      <h1 className="font-display text-[clamp(26px,7.2vw,34px)] leading-[1.1]">{headline}</h1>
-      <p className="text-[15px] sm:text-[17px] text-mute mt-1.5">{subline}</p>
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <h1 className="font-display text-[clamp(26px,7.2vw,34px)] leading-[1.1]">{headline}</h1>
+          <p className="text-[15px] sm:text-[17px] text-mute mt-1.5">{subline}</p>
+        </div>
+        <button type="button" onClick={onImportTimetable} className="shrink-0 mt-0.5 h-9 px-3 rounded-full border border-ink/15 bg-card text-ink text-[12px] font-semibold inline-flex items-center gap-1.5 hover:bg-secondary transition-colors">
+          <CalendarPlus size={15} weight="duotone" /> Import photo
+        </button>
+      </div>
 
       <div className="mt-6 lg:grid lg:grid-cols-12 lg:gap-x-10 lg:items-start">
       <div className="space-y-6 lg:col-span-7">
@@ -651,7 +669,7 @@ function TodayContent({
         )}
       </div>
       </div>
-      <footer className="pt-10 pb-3 text-center text-[12px] text-mute/80 tracking-wide">Made with love by Aditya Waghmare</footer>
+      <footer className="pt-10 pb-3 text-center text-[12px] text-mute/80 tracking-wide">Made with ♥ by Aditya Waghmare</footer>
     </div>
   )
 }
