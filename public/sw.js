@@ -8,7 +8,7 @@
 // ---- Offline app shell ----
 // The app keeps its data on the device (IndexedDB), so opening it must never need the internet. Pages and the files
 // they use are kept here after the first visit and served when the network is down. Data and API calls are never cached.
-const SHELL = 'shell-v1';
+const SHELL = 'shell-v2';
 const PAGE_KEY = '/__shell';
 
 const fromNetworkWithTimeout = (req, ms) =>
@@ -40,14 +40,19 @@ async function page(req) {
   }
 }
 
-/** Built files have a fingerprint in their name, so a saved copy never goes stale */
+/** Prefer the current deployment's asset. Keep a cached copy only as an offline fallback. */
 async function builtFile(req) {
   const cache = await caches.open(SHELL);
-  const saved = await cache.match(req);
-  if (saved) return saved;
-  const res = await fetch(req);
-  if (res.ok) cache.put(req, res.clone());
-  return res;
+  try {
+    // Revalidate instead of trusting a cached chunk URL: deployments can reuse asset paths.
+    const res = await fetch(new Request(req, { cache: 'no-cache' }));
+    if (res.ok) await cache.put(req, res.clone());
+    return res;
+  } catch (error) {
+    const saved = await cache.match(req);
+    if (saved) return saved;
+    throw error;
+  }
 }
 
 /** Icons and the manifest: show the saved copy now, refresh it in the background */

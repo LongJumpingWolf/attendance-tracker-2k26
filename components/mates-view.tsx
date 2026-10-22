@@ -545,7 +545,7 @@ export default function MatesView({ mates, social, subjects, scheduleOverrides =
           </div>
         </div>
 
-        <div className="mt-4 grid grid-cols-1 gap-2.5 sm:grid-cols-2">
+        <div className="mt-4 flex flex-col gap-2.5">
           <button
             type="button"
             onClick={() => setPinging({ id: "__general__", name: "", covered: 0, repaid: 0 })}
