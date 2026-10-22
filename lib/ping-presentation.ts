@@ -65,7 +65,7 @@ export const isActionableIncoming = (p: Ping, me: string) => involves(p, me) && 
 
 /** The answer to my own Ping, recent enough to be worth a screen of its own (older ones are just in the history) */
 export function isPresentableResult(p: Ping, me: string, nowMs: number) {
-  if (!involves(p, me) || p.from !== me || !isAnswered(p)) return false
+  if (!involves(p, me) || p.from !== me || !isAnswered(p) || p.status === "dismissed") return false
   const at = msOf(p.respondedAt)
   return at !== null ? nowMs - at <= PING_EXPIRES_DAYS * DAY_MS : daysSince(p.date) <= PING_EXPIRES_DAYS + 1
 }
@@ -138,6 +138,7 @@ export function resolveFocus(pings: Ping[], me: string | null, id: string, prese
     return { ok: true, event: { kind: "incoming", ping: p } }
   }
   if (p.from === me) {
+    if (p.status === "dismissed") return { ok: false, reason: "seen" }
     if (!isAnswered(p)) return { ok: false, reason: "waiting" }
     if (presented.result[id]) return { ok: false, reason: "seen" }
     return { ok: true, event: { kind: "result", ping: p } }
