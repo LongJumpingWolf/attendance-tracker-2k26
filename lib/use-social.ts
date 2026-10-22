@@ -904,6 +904,7 @@ export function useSocial(onNotice?: (message: string) => void): SocialApi {
     makeInvite,
     connectViaUid,
     connectViaInvite,
+    trackInviteOpen,
     sendPing,
     createSharePing,
     cancelPing,
