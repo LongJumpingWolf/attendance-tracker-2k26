@@ -7,7 +7,7 @@ import { ArrowClockwise, DownloadSimple, SignIn } from "@phosphor-icons/react"
 import { app } from "@/lib/firebase"
 import { confirmSwitch, signInWithGoogle } from "@/lib/account"
 import { getDeveloperProductLinkEvents, type ProductLinkEvent, type ProductLinkSource } from "@/lib/link-analytics"
-import { getDeveloperProductUsageEvents, type ProductUsageEvent, type UsageEventName } from "@/lib/usage-analytics"
+import { getDeveloperProductUsageEvents, type ProductUsageEvent, type UsageEventName, type UsageScreen } from "@/lib/usage-analytics"
 
 const DEVELOPER_EMAIL = (process.env.NEXT_PUBLIC_DEVELOPER_EMAIL || "adityavw2006@gmail.com").toLowerCase()
 type RangeKey = "24h" | "7d" | "30d" | "90d"
@@ -69,7 +69,7 @@ export default function DeveloperAnalytics() {
   const [range, setRange] = useState<RangeKey>("30d")
   const [source, setSource] = useState<SourceKey>("all")
   const [busy, setBusy] = useState(false)
-  const [tab, setTab] = useState<"overview" | "links" | "events" | "usage">("overview")
+  const [tab, setTab] = useState<"overview" | "links" | "events" | "usage" | "insights">("overview")
   const auth = getAuth(app)
   const isAdmin = Boolean(user && !user.isAnonymous && user.emailVerified && user.email?.toLowerCase() === DEVELOPER_EMAIL)
   const needsSignIn = authReady && (!user || user.isAnonymous)
@@ -366,6 +366,215 @@ export default function DeveloperAnalytics() {
     return buckets
   }, [usageEvents, range])
 
+
+  const deepInsights = useMemo(() => {
+    const dayMs = 24 * 60 * 60 * 1000
+    const now = Date.now()
+    const actionEvents = new Set<UsageEventName>([
+      "attendance_mark", "attendance_clear", "scan_checkin",
+      "subject_create", "subject_update", "subject_delete",
+      "task_create", "task_update", "task_complete", "task_reopen", "task_delete",
+    ])
+    const datedScope = usageScope
+      .map((event) => ({ event, at: timestampMs(event.createdAt) }))
+      .filter((item) => item.at > 0 && item.at <= now)
+
+    const users = new Map<string, {
+      actions: number
+      events: number
+      sessions: Set<string>
+      days: Set<string>
+      screens: Set<UsageScreen>
+    }>()
+    const sessions = new Map<string, {
+      times: number[]
+      hasOpen: boolean
+      hasScreen: boolean
+      hasAction: boolean
+    }>()
+    const screenSequences = new Map<string, Array<{ at: number; screen: UsageScreen }>>()
+    const timesByUser = new Map<string, number[]>()
+    const actionTimesByUser = new Map<string, number[]>()
+
+    for (const item of datedScope) {
+      const e = item.event
+      const sessionKey = e.actorUid + "::" + e.sessionId
+      const row = users.get(e.actorUid) || {
+        actions: 0, events: 0, sessions: new Set<string>(), days: new Set<string>(), screens: new Set<UsageScreen>(),
+      }
+      row.events += 1
+      row.sessions.add(sessionKey)
+      row.days.add(new Date(item.at).toISOString().slice(0, 10))
+      if (e.event === "screen_view" || e.event === "settings_open") row.screens.add(e.screen)
+      if (actionEvents.has(e.event)) row.actions += 1
+      users.set(e.actorUid, row)
+
+      const session = sessions.get(sessionKey) || { times: [] as number[], hasOpen: false, hasScreen: false, hasAction: false }
+      session.times.push(item.at)
+      if (e.event === "app_open") session.hasOpen = true
+      if (e.event === "screen_view" || e.event === "settings_open") {
+        session.hasScreen = true
+        const sequence = screenSequences.get(sessionKey) || []
+        sequence.push({ at: item.at, screen: e.screen })
+        screenSequences.set(sessionKey, sequence)
+      }
+      if (actionEvents.has(e.event)) session.hasAction = true
+      sessions.set(sessionKey, session)
+    }
+
+    for (const e of usageEvents) {
+      const at = timestampMs(e.createdAt)
+      if (!at || at > now) continue
+      const times = timesByUser.get(e.actorUid) || []
+      times.push(at)
+      timesByUser.set(e.actorUid, times)
+      if (actionEvents.has(e.event)) {
+        const actions = actionTimesByUser.get(e.actorUid) || []
+        actions.push(at)
+        actionTimesByUser.set(e.actorUid, actions)
+      }
+    }
+    for (const times of timesByUser.values()) times.sort((a, b) => a - b)
+    for (const times of actionTimesByUser.values()) times.sort((a, b) => a - b)
+
+    const currentActionCount = datedScope.filter((item) => actionEvents.has(item.event.event)).length
+    const actionCounts = [...users.values()].map((u) => u.actions).sort((a, b) => a - b)
+    const medianActionsPerUser = actionCounts.length
+      ? actionCounts[Math.floor(actionCounts.length / 2)]
+      : 0
+    const sessionRows = [...sessions.values()]
+    const startedSessions = sessionRows.filter((session) => session.hasOpen).length
+    const browsedSessions = sessionRows.filter((session) => session.hasOpen && session.hasScreen).length
+    const activatedSessions = sessionRows.filter((session) => session.hasOpen && session.hasScreen && session.hasAction).length
+    const durations = sessionRows
+      .filter((session) => session.times.length >= 2)
+      .map((session) => Math.max(...session.times) - Math.min(...session.times))
+      .filter((duration) => duration >= 0 && duration <= 24 * 60 * 60 * 1000)
+      .sort((a, b) => a - b)
+    const medianSessionMs = durations.length ? durations[Math.floor(durations.length / 2)] : null
+
+    const segments = [
+      { label: "Browsing only", hint: "0 feature actions", matches: (n: number) => n === 0 },
+      { label: "Light", hint: "1–2 feature actions", matches: (n: number) => n >= 1 && n <= 2 },
+      { label: "Regular", hint: "3–9 feature actions", matches: (n: number) => n >= 3 && n <= 9 },
+      { label: "Power", hint: "10+ feature actions", matches: (n: number) => n >= 10 },
+    ].map((segment) => ({
+      label: segment.label,
+      hint: segment.hint,
+      users: actionCounts.filter(segment.matches).length,
+    }))
+
+    const transitionCounts = new Map<string, number>()
+    for (const sequence of screenSequences.values()) {
+      sequence.sort((a, b) => a.at - b.at)
+      for (let i = 1; i < sequence.length; i++) {
+        const previous = sequence[i - 1]
+        const next = sequence[i]
+        if (!previous || !next || previous.screen === next.screen) continue
+        const label = usageScreenName(previous.screen) + " → " + usageScreenName(next.screen)
+        transitionCounts.set(label, (transitionCounts.get(label) || 0) + 1)
+      }
+    }
+    const topTransitions = [...transitionCounts.entries()].sort((a, b) => b[1] - a[1]).slice(0, 8)
+
+    const firstSeen = new Map<string, number>()
+    for (const [uid, times] of timesByUser.entries()) {
+      if (times.length) firstSeen.set(uid, times[0]!)
+    }
+    const retentionFor = (uids: string[], days: number) => {
+      const eligible = uids.filter((uid) => {
+        const first = firstSeen.get(uid)
+        return first !== undefined && now >= first + (days + 1) * dayMs
+      })
+      const returned = eligible.filter((uid) => {
+        const first = firstSeen.get(uid)!
+        return (timesByUser.get(uid) || []).some((at) => at >= first + days * dayMs && at < first + (days + 1) * dayMs)
+      }).length
+      return { eligible: eligible.length, returned, rate: eligible.length ? Math.round(returned / eligible.length * 100) : null }
+    }
+    const startOfWeek = (at: number) => {
+      const d = new Date(at)
+      const midnight = Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate())
+      return midnight - ((d.getUTCDay() + 6) % 7) * dayMs
+    }
+    const currentWeek = startOfWeek(now)
+    const cohorts = Array.from({ length: 8 }, (_, i) => currentWeek - (7 - i) * 7 * dayMs).map((start) => {
+      const end = start + 7 * dayMs
+      const uids = [...firstSeen.entries()]
+        .filter(([, first]) => first >= start && first < end)
+        .map(([uid]) => uid)
+      const endLabel = new Date(end - 1).toLocaleDateString(undefined, { month: "short", day: "numeric" })
+      const startLabel = new Date(start).toLocaleDateString(undefined, { month: "short", day: "numeric" })
+      return {
+        start,
+        label: startLabel + "–" + endLabel,
+        users: uids.length,
+        d1: retentionFor(uids, 1),
+        d7: retentionFor(uids, 7),
+        d30: retentionFor(uids, 30),
+      }
+    }).filter((cohort) => cohort.users > 0)
+
+    const matureActivationUsers = [...firstSeen.entries()].filter(([, first]) => now >= first + 7 * dayMs)
+    const activatedUsers = matureActivationUsers.filter(([uid, first]) =>
+      (actionTimesByUser.get(uid) || []).some((at) => at >= first && at < first + 7 * dayMs),
+    )
+    const activationTimes = matureActivationUsers
+      .map(([uid, first]) => {
+        const firstAction = (actionTimesByUser.get(uid) || []).find((at) => at >= first && at < first + 7 * dayMs)
+        return firstAction === undefined ? null : firstAction - first
+      })
+      .filter((duration): duration is number => duration !== null && duration >= 0)
+      .sort((a, b) => a - b)
+
+    const duration = RANGE_MS[range]
+    const comparisonAvailable = duration < RANGE_MS["90d"]
+    const previousStart = now - 2 * duration
+    const previousEnd = now - duration
+    const prior = usageEvents
+      .map((event) => ({ event, at: timestampMs(event.createdAt) }))
+      .filter((item) => item.at >= previousStart && item.at < previousEnd && item.at > 0)
+    const priorUsers = new Set(prior.map((item) => item.event.actorUid))
+    const priorSessions = new Set(prior.map((item) => item.event.actorUid + "::" + item.event.sessionId))
+    const priorActions = prior.filter((item) => actionEvents.has(item.event.event)).length
+    const change = (current: number, previous: number) => previous > 0 ? Math.round((current - previous) / previous * 100) : null
+
+    return {
+      activeUsers: users.size,
+      currentEvents: datedScope.length,
+      currentActionCount,
+      sessions: sessions.size,
+      avgActionsPerUser: users.size ? Math.round(currentActionCount / users.size * 10) / 10 : 0,
+      medianActionsPerUser,
+      avgSessionsPerUser: users.size ? Math.round([...users.values()].reduce((sum, user) => sum + user.sessions.size, 0) / users.size * 10) / 10 : 0,
+      avgEventsPerSession: sessions.size ? Math.round(datedScope.length / sessions.size * 10) / 10 : 0,
+      medianSessionMs,
+      startedSessions,
+      browsedSessions,
+      activatedSessions,
+      browseRate: startedSessions ? Math.round(browsedSessions / startedSessions * 100) : null,
+      sessionActivationRate: browsedSessions ? Math.round(activatedSessions / browsedSessions * 100) : null,
+      segments,
+      topTransitions,
+      cohorts,
+      activationEligible: matureActivationUsers.length,
+      activationCount: activatedUsers.length,
+      activationRate: matureActivationUsers.length ? Math.round(activatedUsers.length / matureActivationUsers.length * 100) : null,
+      medianTimeToActivateMs: activationTimes.length ? activationTimes[Math.floor(activationTimes.length / 2)]! : null,
+      comparisonAvailable,
+      previousUsers: priorUsers.size,
+      previousSessions: priorSessions.size,
+      previousActions: priorActions,
+      userChange: change(users.size, priorUsers.size),
+      sessionChange: change(sessions.size, priorSessions.size),
+      actionChange: change(currentActionCount, priorActions),
+      maxSegment: Math.max(1, ...segments.map((segment) => segment.users)),
+      maxTransition: Math.max(1, ...topTransitions.map(([, count]) => count)),
+      maxCohortUsers: Math.max(1, ...cohorts.map((cohort) => cohort.users)),
+    }
+  }, [usageEvents, usageScope, range])
+
+
   const maxUsageUsers = Math.max(1, ...usageTrend.map((b) => b.users.size))
   const maxScreenCount = Math.max(1, ...usageMetrics.screenPopularity.map(([, count]) => count))
   const maxUsageActionCount = Math.max(1, ...usageMetrics.actions.map(([, count]) => count))
@@ -477,7 +686,7 @@ export default function DeveloperAnalytics() {
 
           {loading ? <section className="rounded-2xl bg-card p-8 text-center text-sm text-mute">Loading analytics from Firestore…</section> : <>
             <nav className="flex flex-wrap gap-2" aria-label="Analytics views">
-              {([["overview", "Overview"], ["usage", "App usage"], ["links", "Link performance"], ["events", "Event explorer"]] as const).map(([key, label]) => <button key={key} onClick={() => setTab(key)} className={`rounded-xl px-4 py-2 text-sm font-semibold ${tab === key ? "bg-ink text-paper" : "bg-secondary"}`} aria-pressed={tab === key}>{label}</button>)}
+              {([["overview", "Overview"], ["usage", "App usage"], ["insights", "Retention & engagement"], ["links", "Link performance"], ["events", "Event explorer"]] as const).map(([key, label]) => <button key={key} onClick={() => setTab(key)} className={`rounded-xl px-4 py-2 text-sm font-semibold ${tab === key ? "bg-ink text-paper" : "bg-secondary"}`} aria-pressed={tab === key}>{label}</button>)}
             </nav>
 
             {tab === "overview" && <>
@@ -641,6 +850,115 @@ export default function DeveloperAnalytics() {
                 <p><b className="text-ink">Interpretation:</b> active users are distinct account IDs with at least one recorded opted-in event in the named period. A single person may have more than one account ID across browsers or sign-in changes. Metrics can undercount because the dashboard loads at most 3,000 recent usage events and has no pre-opt-in history.</p>
                 <p><b className="text-ink">Retention:</b> usage events older than 90 days are removed when analytics loads. Exported CSVs include pseudonymous account and session IDs; store and delete exports responsibly.</p>
               </section>
+            </>}
+
+            {tab === "insights" && <>
+              {usageError ? <section className="rounded-2xl bg-card p-6 space-y-2">
+                <h2 className="text-lg font-bold">Advanced analytics cannot be loaded</h2>
+                <p className="text-sm text-mute">Usage insights need readable product-usage events. Check the published Firestore rules and refresh.</p>
+                <p role="alert" className="text-xs text-bad break-words">{usageError}</p>
+              </section> : usageEvents.length === 0 ? <section className="rounded-2xl bg-card p-6 space-y-2">
+                <h2 className="text-lg font-bold">Waiting for opted-in usage data</h2>
+                <p className="text-sm text-mute">These views are calculated from existing, optional, high-level usage events; they do not add new tracking or reconstruct pre-consent activity.</p>
+              </section> : <>
+                <section className="rounded-2xl bg-secondary p-4 text-xs text-mute leading-relaxed">
+                  <p><b className="text-ink">How to read this page:</b> retention uses first-observed activity in the currently loaded sample and is not a guaranteed lifetime cohort. D1, D7 and D30 mean activity in the 24–48 hour, 7–8 day and 30–31 day windows after first observed activity. The data loader keeps at most 3,000 recent events and removes events older than 90 days, so sparse or small cohorts should be interpreted cautiously.</p>
+                </section>
+
+                <section className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3">
+                  {[
+                    ["Active accounts", deepInsights.activeUsers, RANGE_LABEL[range]],
+                    ["Feature actions", deepInsights.currentActionCount, "In selected window"],
+                    ["Sessions", deepInsights.sessions, "Account + random tab ID"],
+                    ["Actions / account", deepInsights.avgActionsPerUser, "Mean in selected window"],
+                    ["Sessions / account", deepInsights.avgSessionsPerUser, "Mean in selected window"],
+                    ["Median actions", deepInsights.medianActionsPerUser, "Per active account"],
+                  ].map(([label, value, hint]) => <article key={String(label)} className="rounded-2xl bg-card p-4 min-w-0">
+                    <p className="text-xs text-mute">{label}</p><p className="text-2xl font-bold mt-1 tabular-nums">{value}</p><p className="text-[11px] text-mute mt-1">{hint}</p>
+                  </article>)}
+                </section>
+
+                <section className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+                  <article className="rounded-2xl bg-card p-4 space-y-4">
+                    <div><h2 className="font-bold">Session activation funnel</h2><p className="text-xs text-mute mt-1">Same-session progression from opening the app to browsing a screen and performing a feature action.</p></div>
+                    {[
+                      { label: "Started app sessions", count: deepInsights.startedSessions, rate: null as number | null },
+                      { label: "Opened a screen", count: deepInsights.browsedSessions, rate: deepInsights.browseRate },
+                      { label: "Performed an action", count: deepInsights.activatedSessions, rate: deepInsights.sessionActivationRate },
+                    ].map((stage) => <div key={stage.label} className="space-y-1.5">
+                      <div className="flex justify-between gap-3 items-baseline"><span className="text-sm font-semibold">{stage.label}</span><span className="text-sm tabular-nums font-bold">{stage.count}{stage.rate === null ? "" : " · " + stage.rate + "%"}</span></div>
+                      <div className="h-3 rounded-full bg-secondary overflow-hidden"><div className="h-full rounded-full bg-ink" style={{ width: (deepInsights.startedSessions ? Math.min(100, stage.count / deepInsights.startedSessions * 100) : 0) + "%" }} /></div>
+                    </div>)}
+                    <div className="border-t border-ink/[0.06] pt-3 grid grid-cols-2 gap-3">
+                      <div><p className="text-xs text-mute">Events / session</p><p className="text-xl font-bold tabular-nums">{deepInsights.avgEventsPerSession}</p></div>
+                      <div><p className="text-xs text-mute">Median observed session span</p><p className="text-xl font-bold">{deepInsights.medianSessionMs === null ? "—" : compactDuration(deepInsights.medianSessionMs)}</p></div>
+                    </div>
+                  </article>
+
+                  <article className="rounded-2xl bg-card p-4 space-y-3">
+                    <div><h2 className="font-bold">Engagement segments</h2><p className="text-xs text-mute mt-1">Accounts grouped by feature-action volume in the selected period; “browsing only” means no feature action was recorded.</p></div>
+                    {deepInsights.segments.map((segment) => <div key={segment.label} className="space-y-1.5">
+                      <div className="flex justify-between gap-3 text-sm"><span><b>{segment.label}</b> <span className="text-xs text-mute">({segment.hint})</span></span><span className="tabular-nums">{segment.users} · {percent(segment.users, deepInsights.activeUsers)}</span></div>
+                      <div className="h-2.5 rounded-full bg-secondary overflow-hidden"><div className="h-full rounded-full bg-ink" style={{ width: (segment.users / deepInsights.maxSegment * 100) + "%" }} /></div>
+                    </div>)}
+                    <p className="text-[11px] text-mute">Segments describe observed usage volume, not user quality or attendance performance.</p>
+                  </article>
+                </section>
+
+                <section className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+                  <article className="rounded-2xl bg-card p-4 space-y-3">
+                    <div><h2 className="font-bold">Retention by first-observed week</h2><p className="text-xs text-mute mt-1">Only users with a fully elapsed measurement window contribute to each denominator.</p></div>
+                    {deepInsights.cohorts.length === 0 ? <p className="py-4 text-sm text-mute">No first-observed cohorts in the loaded usage sample.</p> : <div className="overflow-x-auto">
+                      <table className="w-full min-w-[650px] text-left text-sm">
+                        <thead><tr className="border-b border-ink/10 text-xs text-mute"><th className="py-2 pr-3">First seen</th><th className="py-2 pr-3">Accounts</th><th className="py-2 pr-3">D1 retained</th><th className="py-2 pr-3">D7 retained</th><th className="py-2">D30 retained</th></tr></thead>
+                        <tbody>{deepInsights.cohorts.map((cohort) => <tr key={cohort.start} className="border-b border-ink/[0.06] last:border-0">
+                          <td className="py-2 pr-3 whitespace-nowrap">{cohort.label}</td>
+                          <td className="py-2 pr-3 tabular-nums">{cohort.users}</td>
+                          <td className="py-2 pr-3 tabular-nums">{cohort.d1.eligible ? cohort.d1.rate + "% (" + cohort.d1.returned + "/" + cohort.d1.eligible + ")" : "—"}</td>
+                          <td className="py-2 pr-3 tabular-nums">{cohort.d7.eligible ? cohort.d7.rate + "% (" + cohort.d7.returned + "/" + cohort.d7.eligible + ")" : "—"}</td>
+                          <td className="py-2 tabular-nums">{cohort.d30.eligible ? cohort.d30.rate + "% (" + cohort.d30.returned + "/" + cohort.d30.eligible + ")" : "—"}</td>
+                        </tr>)}</tbody>
+                      </table>
+                    </div>}
+                    <p className="text-[11px] text-mute">A dash means the cohort is too recent for that window, or no accounts are eligible.</p>
+                  </article>
+
+                  <article className="rounded-2xl bg-card p-4 space-y-4">
+                    <div><h2 className="font-bold">First-week activation</h2><p className="text-xs text-mute mt-1">Accounts that recorded at least one feature action within 7 days of first-observed activity.</p></div>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="rounded-xl bg-secondary p-3"><p className="text-xs text-mute">Eligible accounts</p><p className="text-2xl font-bold tabular-nums">{deepInsights.activationEligible}</p></div>
+                      <div className="rounded-xl bg-secondary p-3"><p className="text-xs text-mute">Activated</p><p className="text-2xl font-bold tabular-nums">{deepInsights.activationCount}</p></div>
+                    </div>
+                    <div className="flex justify-between gap-3 items-baseline"><span className="text-sm font-semibold">Activation rate</span><span className="text-xl font-bold tabular-nums">{deepInsights.activationRate === null ? "—" : deepInsights.activationRate + "%"}</span></div>
+                    <div className="h-3 rounded-full bg-secondary overflow-hidden"><div className="h-full rounded-full bg-ink" style={{ width: (deepInsights.activationRate === null ? 0 : deepInsights.activationRate) + "%" }} /></div>
+                    <div className="border-t border-ink/[0.06] pt-3"><p className="text-xs text-mute">Median time to first feature action</p><p className="text-xl font-bold mt-1">{deepInsights.medianTimeToActivateMs === null ? "—" : compactDuration(deepInsights.medianTimeToActivateMs)}</p></div>
+                  </article>
+                </section>
+
+                <section className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+                  <article className="rounded-2xl bg-card p-4 space-y-3">
+                    <div><h2 className="font-bold">Most common screen transitions</h2><p className="text-xs text-mute mt-1">Consecutive recorded screen changes within the same tab session.</p></div>
+                    {deepInsights.topTransitions.length === 0 ? <p className="py-4 text-sm text-mute">Not enough screen transitions have been recorded yet.</p> : deepInsights.topTransitions.map(([label, count]) => <div key={label} className="space-y-1.5">
+                      <div className="flex justify-between gap-3 text-sm"><span>{label}</span><b className="tabular-nums">{count}</b></div>
+                      <div className="h-2 rounded-full bg-secondary overflow-hidden"><div className="h-full rounded-full bg-ink" style={{ width: (count / deepInsights.maxTransition * 100) + "%" }} /></div>
+                    </div>)}
+                  </article>
+
+                  <article className="rounded-2xl bg-card p-4 space-y-4">
+                    <div><h2 className="font-bold">Previous-period comparison</h2><p className="text-xs text-mute mt-1">Current selected window compared with the immediately preceding window of equal length.</p></div>
+                    {!deepInsights.comparisonAvailable ? <p className="text-sm text-mute">Unavailable for the 90-day range because analytics retention is limited to 90 days.</p> : <>
+                      {[
+                        { label: "Active accounts", current: deepInsights.activeUsers, previous: deepInsights.previousUsers, change: deepInsights.userChange },
+                        { label: "Feature actions", current: deepInsights.currentActionCount, previous: deepInsights.previousActions, change: deepInsights.actionChange },
+                        { label: "Sessions", current: deepInsights.sessions, previous: deepInsights.previousSessions, change: deepInsights.sessionChange },
+                      ].map((metric) => <div key={metric.label} className="flex items-center justify-between gap-3 border-b border-ink/[0.06] pb-3 last:border-0">
+                        <div><p className="text-sm font-semibold">{metric.label}</p><p className="text-xs text-mute">Previous window: {metric.previous}</p></div>
+                        <div className="text-right"><p className="text-lg font-bold tabular-nums">{metric.current}</p><p className="text-xs text-mute">{metric.change === null ? "No non-zero baseline" : (metric.change > 0 ? "+" : "") + metric.change + "% vs previous"}</p></div>
+                      </div>)}
+                    </>}
+                  </article>
+                </section>
+              </>}
             </>}
 
             {tab === "links" && <>
