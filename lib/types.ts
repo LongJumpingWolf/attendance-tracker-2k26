@@ -132,9 +132,11 @@ export interface Ping {
   date: string
   items: PingItem[]
   /** asking -> answered (by the mate) -> processed (the asker's device applied the answer, exactly once) */
-  status: "asking" | "answered" | "processed" | "cancelled"
+  status: "asking" | "answered" | "processed" | "dismissed" | "cancelled"
   /** When the mate answered. A Firestore timestamp from the server (null while pending), a number elsewhere. */
   respondedAt?: unknown
+  /** When the asker explicitly chose not to apply this answer to attendance. */
+  dismissedAt?: unknown
   /** When the server created it (its own clock). Direct in-app Pings live 3 days from this. */
   createdAt?: unknown
   /** Explicit deadline for one-time share-link Pings (24 hours). */
