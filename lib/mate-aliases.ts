@@ -24,7 +24,7 @@ export function writeMateAlias(ownerUid: string, mateUid: string, alias: string)
   try {
     const raw = localStorage.getItem(storageKey(ownerUid))
     const parsed: unknown = raw ? JSON.parse(raw) : {}
-    const data = parsed && typeof parsed === "object" && !Array.isArray(parsed)
+    const data: Record<string, unknown> = parsed && typeof parsed === "object" && !Array.isArray(parsed)
       ? { ...(parsed as Record<string, unknown>) }
       : {}
     data[mateUid] = clean
