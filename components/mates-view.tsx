@@ -427,6 +427,7 @@ export default function MatesView({ mates, social, subjects, scheduleOverrides =
   const [aliasEditingId, setAliasEditingId] = useState<string | null>(null)
   const [aliasDraft, setAliasDraft] = useState("")
   const [connectingCode, setConnectingCode] = useState(false)
+  const [requestAliases, setRequestAliases] = useState<Record<string, string>>({})
   // Removing a mate wipes their favour history (and ends a connection), so it needs a second tap
   const [removing, setRemoving] = useState<Mate | null>(null)
   // The mate you are about to ping
@@ -455,6 +456,12 @@ export default function MatesView({ mates, social, subjects, scheduleOverrides =
   // Use it to send a real connection request instead of forcing the user to re-copy the code.
   // The recipient still has to accept; this never grants an unconnected account Ping permissions.
   const requestMateConnection = async (mate: Mate) => {
+    if (!mate.alias?.trim()) {
+      setAliasEditingId(mate.id)
+      setAliasDraft("")
+      onToast("Add a personal alias for this Mate before connecting.")
+      return
+    }
     if (!mate.uid) {
       onToast("Connect using your friend's unique account code or link.")
       onOpenAdd()
@@ -602,25 +609,50 @@ export default function MatesView({ mates, social, subjects, scheduleOverrides =
           <SectionHeader>Requests</SectionHeader>
           <ul className={`${card} overflow-hidden divide-y divide-ink/[0.08]`}>
             {incoming.map((r, i) => (
-              <li key={r.id} className="flex items-center gap-3.5 px-4 py-3.5">
-                <Avatar name={r.fromName} i={i} />
+              <li key={r.id} className="flex flex-wrap items-center gap-3 px-4 py-3.5">
+                <Avatar name={r.fromName} i={i} size={42} />
                 <div className="min-w-0 flex-1">
-                  <p className="text-[17px] font-semibold truncate leading-snug">{r.fromName}</p>
-                  <p className="text-[13px] text-mute leading-snug">wants to be your proxy-mate</p>
+                  <p className="text-[16px] font-semibold truncate leading-snug">{r.fromName}</p>
+                  <p className="text-[12px] text-mute leading-snug">wants to be your proxy-mate</p>
                 </div>
                 <button
-                  onClick={() => social.respond(r.id, "declined")}
+                  onClick={() => void social.respond(r.id, "declined").then(() => onToast("Request declined."))}
                   aria-label={`Decline ${r.fromName}`}
-                  className="w-10 h-10 rounded-full bg-bad/15 text-bad grid place-items-center"
+                  className="h-10 rounded-full bg-bad/15 px-4 text-[13px] font-semibold text-bad"
                 >
-                  <X weight="bold" className="w-5 h-5" />
+                  Decline
                 </button>
+                <div className="w-full basis-full">
+                  <label className="mb-1 block text-[12px] font-semibold text-mute" htmlFor={`request-alias-${r.id}`}>Your alias for this mate (required)</label>
+                  <input
+                    id={`request-alias-${r.id}`}
+                    required
+                    maxLength={48}
+                    value={requestAliases[r.id] ?? ""}
+                    onChange={(e) => setRequestAliases((prev) => ({ ...prev, [r.id]: e.target.value }))}
+                    placeholder={`e.g. ${r.fromName} from college`}
+                    className={inputClass}
+                  />
+                </div>
                 <button
-                  onClick={() => social.respond(r.id, "accepted").then(() => onToast(`Connected with ${r.fromName}`))}
+                  disabled={!(requestAliases[r.id] ?? "").trim()}
+                  onClick={async () => {
+                    const alias = (requestAliases[r.id] ?? "").trim().replace(/\s+/g, " ").slice(0, 48)
+                    if (!alias || !social.uid) return
+                    try {
+                      await social.respond(r.id, "accepted")
+                      writeMateAlias(social.uid, r.from, alias)
+                      await onSaveAlias({ id: r.from, uid: r.from, name: r.fromName, covered: 0, repaid: 0 }, alias)
+                      setRequestAliases((prev) => { const next = { ...prev }; delete next[r.id]; return next })
+                      onToast(`Connected with ${alias}`)
+                    } catch {
+                      onToast("Couldn't accept this request. Try again.")
+                    }
+                  }}
                   aria-label={`Accept ${r.fromName}`}
-                  className="w-10 h-10 rounded-full bg-good text-paper grid place-items-center"
+                  className="min-h-11 w-full rounded-xl bg-good px-4 text-[14px] font-bold text-paper disabled:opacity-40"
                 >
-                  <Check weight="bold" className="w-5 h-5" />
+                  <Check weight="bold" className="mr-1 inline h-4 w-4" /> Accept connection
                 </button>
               </li>
             ))}
