@@ -156,7 +156,7 @@ export default function SharePingPage({ pingId }: { pingId: string }) {
                   </li>
                 ))}
               </ul>
-              <div className="rounded-2xl bg-secondary text-ink p-3.5 mt-4 text-[13px] leading-relaxed">Your response may update the sender&apos;s attendance record for the listed classes.</div>
+              <div className="rounded-2xl bg-secondary text-ink p-3.5 mt-4 text-[13px] leading-relaxed">The sender will review your answers and must approve them before attendance changes.</div>
               {error && <p role="alert" className="mt-3 text-[13px] text-bad">{error}</p>}
               <button disabled={!complete || sending} onClick={submit} className="w-full h-13 min-h-13 rounded-2xl bg-ink text-paper text-[16px] font-bold mt-5 disabled:opacity-40">{sending ? "Saving response…" : "Send my answer"}</button>
               <p className="text-[11px] text-mute leading-relaxed text-center mt-3">No account or Mates connection is required. This page only submits your Yes/No answers for this Ping.</p>
