@@ -132,13 +132,13 @@ export type FocusResult = { ok: true; event: PingEvent } | { ok: false; reason: 
 export function resolveFocus(pings: Ping[], me: string | null, id: string, presented: Presented): FocusResult {
   const p = pings.find((x) => x.id === id)
   if (!me || !p || !involves(p, me)) return { ok: false, reason: "missing" } // the same answer whether it exists or not
+  if (p.status === "dismissed") return { ok: false, reason: "seen" }
   if (p.to === me) {
     if (p.status !== "asking" || presented.incoming[id]) return { ok: false, reason: "answered" }
     if (isExpired(p)) return { ok: false, reason: "expired" }
     return { ok: true, event: { kind: "incoming", ping: p } }
   }
   if (p.from === me) {
-    if (p.status === "dismissed") return { ok: false, reason: "seen" }
     if (!isAnswered(p)) return { ok: false, reason: "waiting" }
     if (presented.result[id]) return { ok: false, reason: "seen" }
     return { ok: true, event: { kind: "result", ping: p } }
