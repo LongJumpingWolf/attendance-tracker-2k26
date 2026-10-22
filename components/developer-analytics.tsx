@@ -64,6 +64,7 @@ export default function DeveloperAnalytics() {
   const [usageEvents, setUsageEvents] = useState<ProductUsageEvent[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState("")
+  const [usageError, setUsageError] = useState("")
   const [filter, setFilter] = useState("")
   const [range, setRange] = useState<RangeKey>("30d")
   const [source, setSource] = useState<SourceKey>("all")
@@ -77,17 +78,25 @@ export default function DeveloperAnalytics() {
     if (!isAdmin) {
       setEvents([])
       setUsageEvents([])
+      setUsageError("")
       setLoading(false)
       return
     }
     setLoading(true)
     setError("")
+    setUsageError("")
     try {
-      const [linkEvents, productUsageEvents] = await Promise.all([getDeveloperProductLinkEvents(), getDeveloperProductUsageEvents()])
-      setEvents(linkEvents)
-      setUsageEvents(productUsageEvents)
+      const [linkResult, usageResult] = await Promise.allSettled([getDeveloperProductLinkEvents(), getDeveloperProductUsageEvents()])
+      if (linkResult.status === "rejected") throw linkResult.reason
+      setEvents(linkResult.value)
+      if (usageResult.status === "fulfilled") {
+        setUsageEvents(usageResult.value)
+      } else {
+        setUsageEvents([])
+        setUsageError(usageResult.reason instanceof Error ? usageResult.reason.message : "Usage analytics could not be read. Publish the latest Firestore rules, then refresh.")
+      }
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Could not load analytics. Check that Firestore rules were published to the correct Firebase project.")
+      setError(e instanceof Error ? e.message : "Could not load link analytics. Check that Firestore rules were published to the correct Firebase project.")
     } finally {
       setLoading(false)
     }
@@ -507,7 +516,11 @@ export default function DeveloperAnalytics() {
             </>}
 
             {tab === "usage" && <>
-              {usageScope.length === 0 ? <section className="rounded-2xl bg-card p-6 space-y-2">
+              {usageError ? <section className="rounded-2xl bg-card p-6 space-y-2">
+                <h2 className="text-lg font-bold">App-usage analytics cannot be loaded</h2>
+                <p className="text-sm text-mute leading-relaxed">The link analytics dashboard can still work, but app-usage reads need the latest Firestore security rules. Open the <a className="underline" href="https://raw.githubusercontent.com/LongJumpingWolf/attendance-tracker-2k26/main/firestore.rules" target="_blank" rel="noreferrer">current rules file</a>, replace the full Firestore Rules editor contents, publish only after Firebase accepts the rules without errors, then refresh this dashboard.</p>
+                <p role="alert" className="text-xs text-bad break-words">{usageError}</p>
+              </section> : usageScope.length === 0 ? <section className="rounded-2xl bg-card p-6 space-y-2">
                 <h2 className="text-lg font-bold">No app-usage events yet</h2>
                 <p className="text-sm text-mute leading-relaxed">These metrics begin only after individual users opt in through the privacy notice. There is no backfill of earlier app activity. Turn on the optional setting in the app under Settings → Tips, privacy &amp; terms, then use the app normally.</p>
               </section> : <>
