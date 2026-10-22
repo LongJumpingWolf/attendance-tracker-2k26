@@ -29,7 +29,7 @@ type AnalyticsRow = {
 type TrendBucket = { label: string; start: number; end: number; created: number; opened: number; completed: number; events: number }
 const RANGE_MS: Record<RangeKey, number> = { "24h": 24 * 60 * 60 * 1000, "7d": 7 * 24 * 60 * 60 * 1000, "30d": 30 * 24 * 60 * 60 * 1000, "90d": 90 * 24 * 60 * 60 * 1000 }
 const RANGE_LABEL: Record<RangeKey, string> = { "24h": "Last 24 hours", "7d": "Last 7 days", "30d": "Last 30 days", "90d": "Last 90 days" }
-const csvQ = (v: unknown) => \`"\${String(v ?? "").replace(/"/g, '""')}"\`
+const csvQ = (v: unknown) => `"${String(v ?? "").replace(/"/g, '""')}"`
 const timestampMs = (v: ProductLinkEvent["createdAt"]): number => {
   if (v && typeof v === "object" && "toDate" in v && typeof v.toDate === "function") return v.toDate().getTime()
   if (v instanceof Date) return v.getTime()
@@ -38,16 +38,16 @@ const timestampMs = (v: ProductLinkEvent["createdAt"]): number => {
 const dateText = (ms: number) => ms ? new Date(ms).toLocaleString() : "—"
 const dateShort = (ms: number) => new Date(ms).toLocaleDateString(undefined, { month: "short", day: "numeric" })
 const timeShort = (ms: number) => new Date(ms).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" })
-const percent = (n: number, d: number) => d > 0 ? \`\${Math.round((n / d) * 100)}%\` : "—"
+const percent = (n: number, d: number) => d > 0 ? `${Math.round((n / d) * 100)}%` : "—"
 const compactDuration = (ms: number) => {
   if (!Number.isFinite(ms) || ms < 0) return "—"
   const minutes = Math.round(ms / 60000)
-  if (minutes < 60) return \`\${minutes} min\`
+  if (minutes < 60) return `${minutes} min`
   const hours = Math.floor(minutes / 60)
   const remainingMinutes = minutes % 60
-  if (hours < 48) return remainingMinutes ? \`\${hours}h \${remainingMinutes}m\` : \`\${hours}h\`
+  if (hours < 48) return remainingMinutes ? `${hours}h ${remainingMinutes}m` : `${hours}h`
   const days = Math.floor(hours / 24)
-  return \`\${days}d \${hours % 24}h\`
+  return `${days}d ${hours % 24}h`
 }
 const sourceName = (source: ProductLinkSource) => source === "mate-invite" ? "Mate invite" : "WhatsApp Ping"
 const eventName = (kind: ProductLinkEvent["kind"]) => ({ created: "Created", opened: "Opened", used: "Invite used", answered: "Ping answered" })[kind]
@@ -124,7 +124,7 @@ export default function DeveloperAnalytics() {
   const rows = useMemo(() => {
     const map = new Map<string, AnalyticsRow>()
     for (const e of scope) {
-      const key = \`\${e.source}:\${e.linkId}\`
+      const key = `${e.source}:${e.linkId}`
       let row = map.get(key)
       if (!row) {
         row = { key, source: e.source, linkId: e.linkId, ownerUid: e.ownerUid, fromName: e.fromName || "Unknown", recipientName: e.recipientName || "", createdAtMs: 0, openedAtMs: 0, completedAtMs: 0, opens: 0, created: false, used: false, answered: false }
@@ -282,7 +282,7 @@ export default function DeveloperAnalytics() {
         <section className="rounded-2xl bg-card p-4 flex flex-wrap items-center justify-between gap-3">
           <div>
             <p className="font-semibold text-sm">{statusLabel}</p>
-            <p className="text-xs text-mute mt-1">{user ? \`Current Firebase session: \${user.email || (user.isAnonymous ? "anonymous account" : "no email")}\` : "Firebase has not restored a signed-in account."}</p>
+            <p className="text-xs text-mute mt-1">{user ? `Current Firebase session: ${user.email || (user.isAnonymous ? "anonymous account" : "no email")}` : "Firebase has not restored a signed-in account."}</p>
             <p className="text-xs text-mute mt-1">Developer account required: {DEVELOPER_EMAIL}</p>
           </div>
           {isAdmin && <span className="rounded-full bg-good/15 text-good px-3 py-1 text-xs font-semibold">Authorized</span>}
@@ -331,9 +331,9 @@ export default function DeveloperAnalytics() {
               ["Events", metrics.eventCount, "Recorded actions"],
               ["Links created", metrics.created, "Distinct links in range"],
               ["Open events", metrics.opens, "May repeat by session"],
-              ["Opened links", metrics.openedLinks, \`\${metrics.overallOpenRate} of created links\`],
-              ["Completed links", metrics.used + metrics.answered, \`\${metrics.overallCompletionRate} completion rate\`],
-              ["Unique sharers", metrics.sharers, \`\${metrics.repeatSharers} repeat sharers\`],
+              ["Opened links", metrics.openedLinks, `${metrics.overallOpenRate} of created links`],
+              ["Completed links", metrics.used + metrics.answered, `${metrics.overallCompletionRate} completion rate`],
+              ["Unique sharers", metrics.sharers, `${metrics.repeatSharers} repeat sharers`],
             ].map(([label, value, hint]) => <article key={String(label)} className="rounded-2xl bg-card p-4 min-w-0">
               <p className="text-xs text-mute">{label}</p><p className="text-2xl sm:text-3xl font-bold mt-1 tabular-nums">{value}</p><p className="text-[11px] text-mute mt-1">{hint}</p>
             </article>)}
@@ -341,7 +341,7 @@ export default function DeveloperAnalytics() {
 
           {loading ? <section className="rounded-2xl bg-card p-8 text-center text-sm text-mute">Loading analytics from Firestore…</section> : <>
             <nav className="flex flex-wrap gap-2" aria-label="Analytics views">
-              {([["overview", "Overview"], ["links", "Link performance"], ["events", "Event explorer"]] as const).map(([key, label]) => <button key={key} onClick={() => setTab(key)} className={\`rounded-xl px-4 py-2 text-sm font-semibold \${tab === key ? "bg-ink text-paper" : "bg-secondary"}\`} aria-pressed={tab === key}>{label}</button>)}
+              {([["overview", "Overview"], ["links", "Link performance"], ["events", "Event explorer"]] as const).map(([key, label]) => <button key={key} onClick={() => setTab(key)} className={`rounded-xl px-4 py-2 text-sm font-semibold ${tab === key ? "bg-ink text-paper" : "bg-secondary"}`} aria-pressed={tab === key}>{label}</button>)}
             </nav>
 
             {tab === "overview" && <>
@@ -349,16 +349,16 @@ export default function DeveloperAnalytics() {
                 <article className="rounded-2xl bg-card p-4 xl:col-span-2">
                   <div className="flex items-start justify-between gap-3"><div><h2 className="font-bold">Activity trend</h2><p className="text-xs text-mute mt-1">Created links, opens and completed links across the selected period.</p></div><span className="text-xs text-mute">{trend.length} time buckets</span></div>
                   <div className="flex flex-wrap gap-4 text-xs text-mute mt-4">
-                    <span className="inline-flex items-center gap-2"><i className="w-2.5 h-2.5 rounded-sm bg-ink"/ >Created</span>
-                    <span className="inline-flex items-center gap-2"><i className="w-2.5 h-2.5 rounded-sm bg-info"/ >Opened</span>
-                    <span className="inline-flex items-center gap-2"><i className="w-2.5 h-2.5 rounded-sm bg-good"/ >Completed</span>
+                    <span className="inline-flex items-center gap-2"><i className="w-2.5 h-2.5 rounded-sm bg-ink" />Created</span>
+                    <span className="inline-flex items-center gap-2"><i className="w-2.5 h-2.5 rounded-sm bg-info" />Opened</span>
+                    <span className="inline-flex items-center gap-2"><i className="w-2.5 h-2.5 rounded-sm bg-good" />Completed</span>
                   </div>
-                  <div className="grid gap-2 mt-3" style={{ gridTemplateColumns: \`repeat(\${trend.length}, minmax(0, 1fr))\` }}>
+                  <div className="grid gap-2 mt-3" style={{ gridTemplateColumns: `repeat(${trend.length}, minmax(0, 1fr))` }}>
                     {trend.map((b) => <div key={b.start} className="min-w-0">
-                      <div className="h-36 rounded-lg bg-secondary/60 flex items-end justify-center gap-0.5 px-0.5 pt-2" title={\`\${b.label}: \${b.created} created, \${b.opened} opened, \${b.completed} completed; \${b.events} events total\`}>
-                        <div className="w-1/4 min-w-[2px] rounded-t bg-ink" style={{ height: \`\${Math.max(2, b.created / maxTrend * 100)}%\` }} />
-                        <div className="w-1/4 min-w-[2px] rounded-t bg-info" style={{ height: \`\${Math.max(2, b.opened / maxTrend * 100)}%\` }} />
-                        <div className="w-1/4 min-w-[2px] rounded-t bg-good" style={{ height: \`\${Math.max(2, b.completed / maxTrend * 100)}%\` }} />
+                      <div className="h-36 rounded-lg bg-secondary/60 flex items-end justify-center gap-0.5 px-0.5 pt-2" title={`${b.label}: ${b.created} created, ${b.opened} opened, ${b.completed} completed; ${b.events} events total`}>
+                        <div className="w-1/4 min-w-[2px] rounded-t bg-ink" style={{ height: `${Math.max(2, b.created / maxTrend * 100)}%` }} />
+                        <div className="w-1/4 min-w-[2px] rounded-t bg-info" style={{ height: `${Math.max(2, b.opened / maxTrend * 100)}%` }} />
+                        <div className="w-1/4 min-w-[2px] rounded-t bg-good" style={{ height: `${Math.max(2, b.completed / maxTrend * 100)}%` }} />
                       </div>
                       <p className="text-[9px] sm:text-[10px] text-mute truncate text-center mt-1">{b.label}</p>
                     </div>)}
@@ -378,8 +378,8 @@ export default function DeveloperAnalytics() {
                 <article className="rounded-2xl bg-card p-4 space-y-3">
                   <h2 className="font-bold">Engagement quality</h2>
                   <MetricLine label="Overall open rate" value={metrics.overallOpenRate} hint="Created links with at least one recorded open" />
-                  {source !== "share-ping" && <><MetricLine label="Invite open rate" value={metrics.inviteOpenRate} hint={\`\${metrics.invites} mate invites created\`} /><MetricLine label="Invite use rate" value={metrics.inviteUseRate} hint={\`\${metrics.used} recorded invite uses\`} /></>}
-                  {source !== "mate-invite" && <><MetricLine label="Ping open rate" value={metrics.pingOpenRate} hint={\`\${metrics.pings} Pings created\`} /><MetricLine label="Ping answer rate" value={metrics.pingAnswerRate} hint={\`\${metrics.answered} recorded answers\`} /></>}
+                  {source !== "share-ping" && <><MetricLine label="Invite open rate" value={metrics.inviteOpenRate} hint={`${metrics.invites} mate invites created`} /><MetricLine label="Invite use rate" value={metrics.inviteUseRate} hint={`${metrics.used} recorded invite uses`} /></>}
+                  {source !== "mate-invite" && <><MetricLine label="Ping open rate" value={metrics.pingOpenRate} hint={`${metrics.pings} Pings created`} /><MetricLine label="Ping answer rate" value={metrics.pingAnswerRate} hint={`${metrics.answered} recorded answers`} /></>}
                   <MetricLine label="Avg. opens per opened link" value={metrics.avgOpens.toFixed(1)} hint="Open counts are approximate and session-deduplicated" />
                 </article>
 
@@ -387,7 +387,7 @@ export default function DeveloperAnalytics() {
                   <h2 className="font-bold">Event mix</h2>
                   {kindCounts.map(([kind, count]) => <div key={kind} className="space-y-1.5">
                     <div className="flex justify-between gap-2 text-sm"><span>{eventName(kind)}</span><b className="tabular-nums">{count}</b></div>
-                    <div className="h-2 rounded-full bg-secondary overflow-hidden"><div className="h-full rounded-full bg-ink" style={{ width: \`\${count / maxKind * 100}%\` }} /></div>
+                    <div className="h-2 rounded-full bg-secondary overflow-hidden"><div className="h-full rounded-full bg-ink" style={{ width: `${count / maxKind * 100}%` }} /></div>
                   </div>)}
                   <p className="text-[11px] text-mute">Completed means an invite was used or a Ping received an answer. Counts represent recorded events, not all page views.</p>
                 </article>
@@ -463,7 +463,7 @@ function Funnel({ title, total, opened, completed, completionLabel }: { title: s
     <div className="flex justify-between gap-2"><p className="text-sm font-semibold">{title}</p><span className="text-xs text-mute">{total} created</span></div>
     {stages.map((stage) => <div key={stage.label} className="space-y-1">
       <div className="flex justify-between text-xs gap-2"><span>{stage.label}</span><span className="tabular-nums">{stage.value} · {percent(stage.value, total)}</span></div>
-      <div className="h-2 rounded-full bg-secondary overflow-hidden"><div className="h-full rounded-full bg-ink" style={{ width: \`\${Math.min(100, stage.value / safeTotal * 100)}%\` }}/></div>
+      <div className="h-2 rounded-full bg-secondary overflow-hidden"><div className="h-full rounded-full bg-ink" style={{ width: `${Math.min(100, stage.value / safeTotal * 100)}%` }}/></div>
     </div>)}
   </div>
 }
