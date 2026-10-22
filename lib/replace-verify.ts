@@ -10,7 +10,7 @@ import { same } from "./merge"
 /** Everything "Start fresh" removes from this device (the theme stays) */
 export const RESET_LOCAL_KEYS = [
   "subjects", "tasks", "tags", "mates", "holidays", "scheduleOverrides", "notificationSchedule", "pingSeenIds", "appliedPings", "pingPresented", "pingSendKeys",
-  "wrappedSeenWeek", "demo-pings", "mock-pings", "subjectsView", "onboardingDone",
+  "wrappedSeenWeek", "demo-pings", "mock-pings", "subjectsView", "onboardingDone", "attendance-usage-analytics-consent",
 ] as const
 export const RESET_DB_KEYS = ["subjects", "tasks", "tags", "mates", "holidays", "scheduleOverrides", "syncBase", "syncBaseV2", "syncUncertain"] as const
 /** the part of the above that holds the person's data (after a reset these may be stored as an empty list or be gone) */
