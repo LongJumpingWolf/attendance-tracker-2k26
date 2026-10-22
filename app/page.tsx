@@ -1188,6 +1188,12 @@ export default function Home() {
         onClose={() => { setIsSettingsOpen(false); setSettingsStartPanel("home") }}
         startPanel={settingsStartPanel}
         onResetConsent={() => { try { localStorage.removeItem(CONSENT_VERSION) } catch {}; setConsentAccepted(false); setConsentReady(true); setIsSettingsOpen(false) }}
+        usageAnalyticsEnabled={usageAnalyticsEnabled}
+        onUsageAnalyticsChange={(enabled) => {
+          try { localStorage.setItem(USAGE_ANALYTICS_KEY, enabled ? "1" : "0") } catch {}
+          setUsageAnalyticsEnabled(enabled)
+          showToast(enabled ? "Optional app-usage analytics enabled" : "Optional app-usage analytics disabled")
+        }}
         onShowSyncNudge={() => { setShowSyncNudge(true); setIsSettingsOpen(false) }}
         onOpenFeedback={() => { setIsSettingsOpen(false); setShowFeedback(true) }}
         onPreviewFeedbackAnimation={(kind) => { setFeedbackReplyText(kind === "bug" ? "Preview only: this is the bug-report reply animation." : "Preview only: this is the thank-you animation for ratings and suggestions."); setFeedbackCelebration(kind) }}
