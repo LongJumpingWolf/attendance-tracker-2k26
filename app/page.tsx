@@ -71,6 +71,7 @@ import { buildTestSubjects, isTestSubject } from "@/lib/scan-test"
 import WrappedStory from "@/components/wrapped-story"
 import UndoToast, { type ToastState } from "@/components/undo-toast"
 import TermsGate, { CONSENT_VERSION } from "@/components/terms-gate"
+import { recordProductUsageEvent, USAGE_ANALYTICS_KEY } from "@/lib/usage-analytics"
 import FeedbackSheet from "@/components/feedback-sheet"
 import FeedbackNudge from "@/components/feedback-nudge"
 import FeedbackCelebration from "@/components/feedback-celebration"
@@ -112,6 +113,7 @@ export default function Home() {
   const [settingsStartPanel, setSettingsStartPanel] = useState<"home" | "sync" | "tips-terms">("home")
   const [consentReady, setConsentReady] = useState(false)
   const [consentAccepted, setConsentAccepted] = useState(false)
+  const [usageAnalyticsEnabled, setUsageAnalyticsEnabled] = useState(false)
   const [showSyncNudge, setShowSyncNudge] = useState(false)
   const [isOnline, setIsOnline] = useState<boolean | null>(null)
   const [isImportOpen, setIsImportOpen] = useState(false)
@@ -177,10 +179,31 @@ export default function Home() {
   }, [])
 
   useEffect(() => {
-    try { setConsentAccepted(localStorage.getItem(CONSENT_VERSION) === "1") }
-    catch { setConsentAccepted(false) }
+    try {
+      setConsentAccepted(localStorage.getItem(CONSENT_VERSION) === "1")
+      setUsageAnalyticsEnabled(localStorage.getItem(USAGE_ANALYTICS_KEY) === "1")
+    } catch {
+      setConsentAccepted(false)
+      setUsageAnalyticsEnabled(false)
+    }
     setConsentReady(true)
   }, [])
+
+  // The separate usage-analytics choice is opt-in. This never logs subject names, task titles, values, or dates.
+  useEffect(() => {
+    if (!loaded || !consentReady || !consentAccepted || !usageAnalyticsEnabled || demoActive) return
+    void recordProductUsageEvent("app_open", currentPage)
+  }, [loaded, consentReady, consentAccepted, usageAnalyticsEnabled, demoActive, currentPage])
+
+  useEffect(() => {
+    if (!loaded || !consentReady || !consentAccepted || !usageAnalyticsEnabled || demoActive) return
+    void recordProductUsageEvent("screen_view", currentPage)
+  }, [loaded, consentReady, consentAccepted, usageAnalyticsEnabled, demoActive, currentPage])
+
+  useEffect(() => {
+    if (!isSettingsOpen || !loaded || !consentReady || !consentAccepted || !usageAnalyticsEnabled || demoActive) return
+    void recordProductUsageEvent("settings_open", "settings")
+  }, [isSettingsOpen, loaded, consentReady, consentAccepted, usageAnalyticsEnabled, demoActive])
 
   useEffect(() => {
     const update = () => setIsOnline(navigator.onLine)
@@ -431,6 +454,7 @@ export default function Home() {
     const s = latestSubjects.current.find((x) => x.id === id)
     if (!s) return
     if (markFor(s, date, meta?.t ?? "") === status) return // already in that state: nothing to count, nothing to announce
+    if (!demoActiveRef.current) void recordProductUsageEvent(status === null ? "attendance_clear" : "attendance_mark", currentPage)
     const { next, undo } = markWithUndo(s, date, status, meta)
     latestSubjects.current = latestSubjects.current.map((x) => (x.id === id ? next : x))
     patchSubject(id, (x) => markWithUndo(x, date, status, meta).next)
@@ -448,6 +472,7 @@ export default function Home() {
     if (!before) return
     scanBefore.current = { id: before.id, date: localDate(), t: target.slot.start, prev: entryFor(before, localDate(), target.slot.start) }
     scanMarks.current.push({ id: before.id, date: localDate(), t: target.slot.start, k: target.slot.kind })
+    if (!demoActiveRef.current) void recordProductUsageEvent("scan_checkin", "scanner")
     patchSubject(before.id, (x) => withSet(x, localDate(), "P", { t: target.slot.start, k: target.slot.kind }))
     setScan({ result, marked: target })
   }
@@ -628,18 +653,23 @@ export default function Home() {
   }
 
   const handleAddSubject = (values: SubjectValues) => {
+    if (!demoActiveRef.current) void recordProductUsageEvent("subject_create", "subjects")
     setSubjects([...subjects, { id: newId(), ...values }])
     mergeTags(values.tags)
     setIsAddOpen(false)
   }
 
   const handleEditSubject = (values: SubjectValues) => {
-    if (editingSubjectId) patchSubject(editingSubjectId, (s) => ({ ...s, ...values }))
+    if (editingSubjectId) {
+      if (!demoActiveRef.current) void recordProductUsageEvent("subject_update", "subjects")
+      patchSubject(editingSubjectId, (s) => ({ ...s, ...values }))
+    }
     mergeTags(values.tags)
     setEditingSubjectId(null)
   }
 
   const handleDeleteSubject = (subject: Subject) => {
+    if (!demoActiveRef.current) void recordProductUsageEvent("subject_delete", "subjects")
     setSubjects((prev) => prev.filter((s) => s.id !== subject.id))
     setEditingSubjectId(null)
     setDetailId(null)
@@ -706,6 +736,7 @@ export default function Home() {
 
   const saveDeadline = (values: DeadlineValues) => {
     const editing = deadlineEditor?.task
+    if (!demoActiveRef.current) void recordProductUsageEvent(editing ? "task_update" : "task_create", "calendar")
     if (editing) {
       // `subjectId` may have been cleared, so it is set explicitly rather than merged
       setTasks((prev) => prev.map((t) => (t.id === editing.id ? { ...t, ...values, subjectId: values.subjectId } : t)))
@@ -718,6 +749,7 @@ export default function Home() {
   }
 
   const deleteDeadline = (task: Task) => {
+    if (!demoActiveRef.current) void recordProductUsageEvent("task_delete", "calendar")
     setTasks((prev) => prev.filter((t) => t.id !== task.id))
     setDeadlineEditor(null)
     setConfirmDeadline(null)
@@ -728,6 +760,7 @@ export default function Home() {
   const toggleDeadlineDone = (task: Task) => {
     setConfirmDeadline(null)
     const done = !task.done
+    if (!demoActiveRef.current) void recordProductUsageEvent(done ? "task_complete" : "task_reopen", "calendar")
     setTasks((prev) => prev.map((t) => (t.id === task.id ? { ...t, done } : t)))
     showToast(done ? `Done · ${task.title}` : `Back on your list · ${task.title}`, () =>
       setTasks((prev) => prev.map((t) => (t.id === task.id ? { ...t, done: !done } : t))),
@@ -1129,7 +1162,17 @@ export default function Home() {
       <FeedbackSheet open={showFeedback} onClose={() => setShowFeedback(false)} onSubmitted={() => { try { localStorage.setItem("attendance-feedback-submitted", "1") } catch {}; setShowFeedbackNudge(false); setFeedbackCelebration(null); setFeedbackReplyText(""); showToast("Feedback sent — thank you") }} />
       <FeedbackReplyWatcher onReply={(reply, kind) => { setFeedbackReplyText(reply); setFeedbackCelebration(kind === "bug" ? "bug" : "thanks") }} />
       <FeedbackCelebration open={feedbackCelebration !== null} kind={feedbackCelebration ?? "thanks"} message={feedbackReplyText || undefined} onClose={() => { setFeedbackCelebration(null); setFeedbackReplyText("") }} />
-      <TermsGate open={loaded && onboardingResolved && consentReady && !consentAccepted && !isOnboardingOpen} onAgree={() => { try { localStorage.setItem(CONSENT_VERSION, "1") } catch {}; setConsentAccepted(true) }} />
+      <TermsGate
+        open={loaded && onboardingResolved && consentReady && !consentAccepted && !isOnboardingOpen}
+        onAgree={(usageEnabled) => {
+          try {
+            localStorage.setItem(CONSENT_VERSION, "1")
+            localStorage.setItem(USAGE_ANALYTICS_KEY, usageEnabled ? "1" : "0")
+          } catch {}
+          setUsageAnalyticsEnabled(usageEnabled)
+          setConsentAccepted(true)
+        }}
+      />
 
       <BottomNav
         currentPage={currentPage}
