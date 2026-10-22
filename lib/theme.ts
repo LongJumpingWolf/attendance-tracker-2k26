@@ -7,7 +7,7 @@ const COLORS = { light: "#f2f2f7", dark: "#000000" }
 export function readTheme(): ThemePref {
   try {
     const t = localStorage.getItem(THEME_KEY)
-    return t === "dark" ? "dark" : "light"
+    return t === "dark" ? "dark" : t === "system" ? "system" : "light"
   } catch {
     return "light"
   }
