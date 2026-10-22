@@ -409,7 +409,7 @@ function PingHistory({ sent, received, online, onClear }: { sent: Ping[]; receiv
               <span className="min-w-0 flex-1 text-[14px] leading-snug">{r.text}</span>
               <span className="text-[12px] text-mute whitespace-nowrap mt-0.5">{whenLabel(r.date)}</span>
               {r.sentByMe && (
-                <button onClick={() => onClear(r.id)} disabled={!online} title={!online ? "Requires an internet connection" : "Remove from history"} aria-label="Remove from history" className="text-mute hover:text-bad mt-0.5 disabled:opacity-35 disabled:cursor-not-allowed>
+                <button onClick={() => onClear(r.id)} disabled={!online} title={!online ? "Requires an internet connection" : "Remove from history"} aria-label="Remove from history" className="text-mute hover:text-bad mt-0.5 disabled:opacity-35 disabled:cursor-not-allowed">
                   <X weight="bold" className="w-3.5 h-3.5" />
                 </button>
               )}
