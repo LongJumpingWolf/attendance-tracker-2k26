@@ -85,6 +85,10 @@ export interface Mate {
   covered: number
   repaid: number
   uid?: string
+  /** This user's chosen display alias. Never inferred from an account ID. */
+  alias?: string
+  /** When true, answers from this connected mate are safely integrated without a per-Ping approval. */
+  autoIntegrateResponses?: boolean
   /** Dates (YYYY-MM-DD) each favour happened, so the monthly wrap-up can count them */
   coveredLog?: string[]
   repaidLog?: string[]
