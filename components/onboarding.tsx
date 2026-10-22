@@ -1,14 +1,12 @@
 "use client"
 
-import { useEffect, useState } from "react"
-import { BellRinging, CalendarPlus, Check, PencilSimple, UsersThree } from "@phosphor-icons/react"
-import Sheet, { inputClass, primaryButton, tintButton, fieldLabel } from "./sheet"
-import { entriesFromTimetable, loadSchedule, saveSchedule } from "@/lib/reminders"
+import { useEffect, useRef, useState } from "react"
+import { ArrowLeft, ArrowRight, CalendarPlus, CheckCircle, PencilSimple, Sparkle } from "@phosphor-icons/react"
 import type { Subject } from "@/lib/types"
 
 interface Props {
   open: boolean
-  /** Called when the tour ends, whether finished or skipped */
+  /** Called after the setup guide is completed or skipped */
   onClose: () => void
   subjects: Subject[]
   currentName: string
@@ -19,173 +17,161 @@ interface Props {
   notificationPermission: NotificationPermission | null
   onEnableNotifications: () => Promise<void>
   onOpenMates: () => void
-  onAgreeTerms: () => void
   onToast: (message: string) => void
 }
 
-const STEPS = ["Welcome", "Your classes", "Reminders", "Your mates"]
-
-function Choice({ icon, title, hint, onClick, done }: { icon: React.ReactNode; title: string; hint: string; onClick: () => void; done?: boolean }) {
+function Choice({ icon, title, hint, onClick }: { icon: React.ReactNode; title: string; hint: string; onClick: () => void }) {
   return (
-    <button type="button" onClick={onClick} className="w-full flex items-center gap-3.5 rounded-2xl bg-secondary p-4 text-left active:scale-[0.99] transition">
-      <span className={`w-11 h-11 rounded-xl grid place-items-center flex-shrink-0 ${done ? "bg-good/15 text-good" : "bg-card text-ink"}`}>{done ? <Check weight="bold" className="w-5 h-5" /> : icon}</span>
-      <span className="min-w-0">
-        <span className="block text-[16px] font-semibold leading-snug">{title}</span>
-        <span className="block text-[13px] text-mute leading-snug">{hint}</span>
+    <button type="button" onClick={onClick} className="w-full flex items-center gap-3.5 rounded-2xl border border-ink/10 bg-card p-4 text-left transition-colors hover:bg-secondary active:scale-[0.99]">
+      <span className="w-11 h-11 rounded-xl grid place-items-center flex-shrink-0 bg-secondary text-ink">{icon}</span>
+      <span className="min-w-0 flex-1">
+        <span className="block text-[15px] font-semibold leading-snug">{title}</span>
+        <span className="block text-[12.5px] text-mute leading-snug mt-0.5">{hint}</span>
       </span>
+      <ArrowRight size={17} className="text-mute flex-shrink-0" />
     </button>
   )
 }
 
+/**
+ * A compact, full-screen first-run setup instead of a live-DOM product tour.
+ * The consent gate is handled separately before this guide is shown.
+ */
 export default function Onboarding(p: Props) {
   const [step, setStep] = useState(0)
   const [name, setName] = useState("")
-  const [remindersMade, setRemindersMade] = useState(0)
-  const [busy, setBusy] = useState(false)
+  const touchStartX = useRef<number | null>(null)
 
   useEffect(() => {
     if (p.open) {
       setStep(0)
       setName(p.currentName === "You" ? "" : p.currentName)
-      setRemindersMade(0)
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [p.open, p.currentName])
+
+  useEffect(() => {
+    if (!p.open) return
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "ArrowRight") setStep(1)
+      if (event.key === "ArrowLeft") setStep(0)
+    }
+    window.addEventListener("keydown", onKey)
+    return () => window.removeEventListener("keydown", onKey)
   }, [p.open])
 
-  const hasTimetable = p.subjects.some((s) => s.slots?.length)
-  const notifOn = p.notificationPermission === "granted"
+  if (!p.open) return null
 
-  const next = () => {
-    if (step === 0) {
-      if (name.trim()) p.onSetName(name.trim())
-      // The welcome/setup step explains that continuing accepts the app's notice.
-      p.onAgreeTerms()
-    }
-    setStep((s) => Math.min(STEPS.length - 1, s + 1))
+  const saveName = () => {
+    const cleaned = name.trim().replace(/\s+/g, " ").slice(0, 40)
+    if (cleaned) p.onSetName(cleaned)
   }
 
-  const enable = async () => {
-    setBusy(true)
-    try {
-      await p.onEnableNotifications()
-    } finally {
-      setBusy(false)
-    }
+  const choose = (action: () => void) => {
+    saveName()
+    p.onClose()
+    action()
   }
 
-  const makeReminders = () => {
-    const existing = loadSchedule()
-    const made = entriesFromTimetable(p.subjects, existing)
-    if (made.length === 0) return p.onToast("Add your class times first")
-    saveSchedule([...existing, ...made])
-    setRemindersMade(made.length)
+  const skip = () => {
+    saveName()
+    p.onClose()
   }
 
   return (
-    <Sheet open={p.open} onClose={p.onClose} title={STEPS[step]} onBack={step > 0 ? () => setStep(step - 1) : undefined}>
-      <div className="flex gap-1.5 mb-5" aria-hidden>
-        {STEPS.map((s, i) => (
-          <span key={s} className={`h-1 flex-1 rounded-full transition-colors ${i <= step ? "bg-ink" : "bg-ink/15"}`} />
-        ))}
-      </div>
-
-      {step === 0 && (
-        <div>
-          <h3 className="text-[clamp(22px,6.4vw,28px)] font-bold tracking-tight leading-tight">Know exactly where you stand.</h3>
-          <p className="text-[15px] text-mute mt-2 leading-snug">Track attendance per subject, see how many classes you can skip, and let your mates cover for you when you can&rsquo;t make it. It takes a minute to set up.</p>
-          <label className="block mt-6">
-            <span className={fieldLabel}>What should your friends call you?</span>
-            <input
-              autoFocus
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && next()}
-              placeholder="Your name"
-              maxLength={40}
-              className={inputClass}
-            />
-          </label>
-          <p className="text-[13px] text-mute mt-2 leading-snug">Only shown to mates you connect with. You can skip this and add it later.</p>
-          <button type="button" onClick={next} className={`${primaryButton} mt-6`}>
-            Let&rsquo;s go
-          </button>
-          <p className="text-[12px] text-mute leading-snug mt-2 text-center">
-            By continuing, you agree to the Terms &amp; Conditions and Privacy Notice. You can review them anytime in Settings.
-          </p>
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="first-run-title"
+      className="fixed inset-0 z-[90] bg-background text-foreground flex flex-col"
+      onTouchStart={(event) => { touchStartX.current = event.changedTouches[0]?.clientX ?? null }}
+      onTouchEnd={(event) => {
+        const start = touchStartX.current
+        touchStartX.current = null
+        const end = event.changedTouches[0]?.clientX
+        if (start === null || end === undefined || Math.abs(end - start) < 55) return
+        setStep(end < start ? 1 : 0)
+      }}
+    >
+      <header className="w-full max-w-2xl mx-auto px-5 sm:px-8 pt-[calc(env(safe-area-inset-top)+14px)] pb-4 flex items-center justify-between gap-4">
+        <div className="min-w-0">
+          <p className="text-[11px] uppercase tracking-[0.16em] font-bold text-mute">College Tracker</p>
+          <p className="text-[13px] text-mute mt-0.5">A quick start · {step + 1} of 2</p>
         </div>
-      )}
+        <button type="button" onClick={skip} className="h-9 px-3 rounded-full text-[12px] font-medium text-mute hover:text-ink hover:bg-secondary">
+          Skip setup
+        </button>
+      </header>
 
-      {step === 1 && (
-        <div>
-          <p className="text-[15px] text-mute leading-snug mb-4">Add your subjects and when they meet. That puts each class on your Today screen at the right time.</p>
-          <div className="space-y-2.5">
-            <Choice icon={<CalendarPlus weight="duotone" className="w-6 h-6" />} title="Import from a timetable photo" hint="ChatGPT reads it, you paste the result" onClick={p.onImportTimetable} />
-            <Choice icon={<PencilSimple weight="duotone" className="w-6 h-6" />} title="Add a subject myself" hint="Name, minimum attendance and class times" onClick={p.onAddSubject} />
+      <main className="flex-1 min-h-0 overflow-y-auto overscroll-contain px-5 py-4 sm:py-8 flex items-center justify-center">
+        <div className="w-full max-w-lg mx-auto">
+          <div className="flex gap-1.5 mb-6" aria-hidden="true">
+            {[0,1].map(i => <span key={i} className={`h-1.5 flex-1 rounded-full ${i <= step ? "bg-ink" : "bg-ink/15"}`} />)}
           </div>
-          {p.subjects.length > 0 && (
-            <p className="mt-4 flex items-center gap-2 text-[14px] font-medium text-good">
-              <Check weight="bold" className="w-4 h-4" /> {p.subjects.length} {p.subjects.length === 1 ? "subject" : "subjects"} added
-            </p>
+
+          {step === 0 ? (
+            <section className="space-y-6">
+              <div className="rounded-[28px] bg-ink text-paper p-5 sm:p-7 min-h-[180px] flex flex-col justify-between">
+                <span className="w-11 h-11 rounded-2xl bg-white/15 grid place-items-center"><Sparkle size={23} weight="duotone" /></span>
+                <div className="mt-8">
+                  <p className="text-[11px] uppercase tracking-[0.17em] font-bold text-white/60">One calm place for college</p>
+                  <h1 id="first-run-title" className="font-display text-[clamp(30px,8vw,42px)] leading-[1.02] tracking-tight mt-2">Know where you stand.</h1>
+                  <p className="text-[14px] text-white/75 leading-relaxed mt-3">Attendance, classes and deadlines—without digging through menus.</p>
+                </div>
+              </div>
+
+              <div>
+                <label htmlFor="first-run-name" className="block text-[14px] font-semibold mb-2">What should we call you?</label>
+                <input
+                  id="first-run-name"
+                  value={name}
+                  onChange={(event) => setName(event.target.value)}
+                  onKeyDown={(event) => { if (event.key === "Enter") setStep(1) }}
+                  placeholder="Your name"
+                  maxLength={40}
+                  autoComplete="nickname"
+                  className="w-full h-12 rounded-xl bg-card border border-ink/15 px-4 text-[15px] outline-none focus:ring-2 focus:ring-ink/20"
+                />
+                <p className="text-[12px] text-mute leading-relaxed mt-2">Used on your profile and when friends connect with you. You can change it later in Account.</p>
+              </div>
+
+              <button type="button" onClick={() => { saveName(); setStep(1) }} className="w-full h-12 rounded-xl bg-ink text-paper text-[15px] font-semibold inline-flex items-center justify-center gap-2">
+                Continue <ArrowRight size={18} />
+              </button>
+              <p className="text-[11px] text-mute text-center">Swipe left to continue. You can skip setup at any time.</p>
+            </section>
+          ) : (
+            <section className="space-y-5">
+              <div>
+                <p className="text-[11px] uppercase tracking-[0.16em] font-bold text-mute">START WITH YOUR TIMETABLE</p>
+                <h2 className="font-display text-[clamp(27px,7vw,36px)] leading-[1.05] tracking-tight mt-2">How would you like to add your classes?</h2>
+                <p className="text-[14px] leading-relaxed text-mute mt-3">Choose one to get started. You can add or edit subjects later, and your first-visit guides will explain the other tabs when you open them.</p>
+              </div>
+
+              <div className="space-y-3">
+                <Choice
+                  icon={<CalendarPlus size={23} weight="duotone" />}
+                  title="Import timetable from a photo"
+                  hint="Use the timetable helper, review the extracted details, then apply them."
+                  onClick={() => choose(p.onImportTimetable)}
+                />
+                <Choice
+                  icon={<PencilSimple size={23} weight="duotone" />}
+                  title="Add subjects manually"
+                  hint="Enter a subject, attendance requirement, and class days and times."
+                  onClick={() => choose(p.onAddSubject)}
+                />
+              </div>
+
+              {p.subjects.length > 0 && <p className="text-[13px] text-good font-semibold inline-flex items-center gap-2"><CheckCircle size={17} /> {p.subjects.length} subjects already added</p>}
+
+              <div className="pt-2 flex items-center justify-between gap-3">
+                <button type="button" onClick={() => setStep(0)} className="h-10 px-3 rounded-xl text-[13px] font-semibold text-ink hover:bg-secondary inline-flex items-center gap-1.5"><ArrowLeft size={16} /> Back</button>
+                <button type="button" onClick={skip} className="h-10 px-3 rounded-xl text-[12px] font-medium text-mute hover:bg-secondary">I’ll set this up later</button>
+              </div>
+            </section>
           )}
-          <button type="button" onClick={next} className={`${p.subjects.length ? primaryButton : tintButton + " w-full h-[52px] text-[17px]"} mt-5`}>
-            {p.subjects.length ? "Continue" : "Skip for now"}
-          </button>
         </div>
-      )}
-
-      {step === 2 && (
-        <div>
-          <p className="text-[15px] text-mute leading-snug mb-4">Get a nudge before class so you never forget to mark it.</p>
-          <div className="space-y-2.5">
-            {p.notificationSupported && (
-              <Choice
-                icon={<BellRinging weight="duotone" className="w-6 h-6" />}
-                title={notifOn ? "Notifications are on" : busy ? "Asking…" : "Turn on notifications"}
-                hint={p.notificationPermission === "denied" ? "Blocked in your browser. You can allow them in its settings." : "Your browser will ask for permission"}
-                done={notifOn}
-                onClick={notifOn || p.notificationPermission === "denied" ? () => {} : enable}
-              />
-            )}
-            <Choice
-              icon={<CalendarPlus weight="duotone" className="w-6 h-6" />}
-              title={remindersMade ? `${remindersMade} reminders added` : "Remind me before each class"}
-              hint={hasTimetable ? "10 minutes before every class on your timetable" : "Needs class times: add them in the last step or later"}
-              done={remindersMade > 0}
-              onClick={remindersMade ? () => {} : makeReminders}
-            />
-          </div>
-          <button type="button" onClick={next} className={`${primaryButton} mt-6`}>
-            Continue
-          </button>
-        </div>
-      )}
-
-      {step === 3 && (
-        <div>
-          <span className="w-14 h-14 rounded-2xl bg-secondary grid place-items-center text-ink">
-            <UsersThree weight="duotone" className="w-8 h-8" />
-          </span>
-          <h3 className="text-[22px] font-bold tracking-tight leading-tight mt-4">Proxy-mates have your back.</h3>
-          <p className="text-[15px] text-mute mt-2 leading-snug">
-            Connect with friends by QR code or link. When you miss a class, ping a mate: if they marked you present, one tap confirms it and it lands in your record. The Mates tab keeps track of who you owe.
-          </p>
-          <div className="grid gap-2 mt-6">
-            <button
-              type="button"
-              onClick={() => {
-                p.onClose()
-                p.onOpenMates()
-              }}
-              className={primaryButton}
-            >
-              Connect a mate
-            </button>
-            <button type="button" onClick={p.onClose} className={`${tintButton} w-full h-[52px] text-[17px]`}>
-              I&rsquo;ll do it later
-            </button>
-          </div>
-        </div>
-      )}
-    </Sheet>
+      </main>
+    </div>
   )
 }

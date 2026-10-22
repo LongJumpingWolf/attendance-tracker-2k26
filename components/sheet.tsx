@@ -1,7 +1,7 @@
 "use client"
 
 import type React from "react"
-import { useEffect, useRef } from "react"
+import { useEffect, useRef, useState } from "react"
 import { X, CaretLeft } from "@phosphor-icons/react"
 import { useScrollLock } from "@/lib/use-scroll-lock"
 
@@ -38,17 +38,54 @@ const openSheets: symbol[] = []
 
 /** Bottom sheet on phones, centred dialog on larger screens. */
 export default function Sheet({ open, onClose, title, children, wide, onBack, headerActions, priority = "normal" }: SheetProps) {
-  const dragStartY = useRef<number | null>(null)
+  const dragStart = useRef<{ y: number; at: number } | null>(null)
+  const dismissTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const [dragOffset, setDragOffset] = useState(0)
+  const [isDragging, setIsDragging] = useState(false)
+  const [isDismissing, setIsDismissing] = useState(false)
+
+  useEffect(() => () => {
+    if (dismissTimer.current) clearTimeout(dismissTimer.current)
+  }, [])
 
   const startHandleDrag = (event: React.PointerEvent<HTMLDivElement>) => {
     if (event.pointerType === "mouse" && event.button !== 0) return
-    dragStartY.current = event.clientY
+    if (dismissTimer.current) clearTimeout(dismissTimer.current)
+    dismissTimer.current = null
+    dragStart.current = { y: event.clientY, at: performance.now() }
+    setIsDismissing(false)
+    setIsDragging(true)
+    setDragOffset(0)
     event.currentTarget.setPointerCapture(event.pointerId)
   }
-  const endHandleDrag = (event: React.PointerEvent<HTMLDivElement>) => {
-    const start = dragStartY.current
-    dragStartY.current = null
-    if (start !== null && event.clientY - start > 64) onClose()
+
+  const moveHandleDrag = (event: React.PointerEvent<HTMLDivElement>) => {
+    const start = dragStart.current
+    if (!start) return
+    // A sheet only follows a downward pull; upward movement remains normal scrolling.
+    setDragOffset(Math.max(0, event.clientY - start.y))
+  }
+
+  const finishHandleDrag = (event: React.PointerEvent<HTMLDivElement>) => {
+    const start = dragStart.current
+    dragStart.current = null
+    setIsDragging(false)
+    const delta = start ? Math.max(0, event.clientY - start.y) : 0
+    const elapsed = start ? Math.max(1, performance.now() - start.at) : 1000
+    const fastEnough = delta > 36 && delta / elapsed > 0.55
+    if (delta > 120 || fastEnough) {
+      setIsDismissing(true)
+      setDragOffset(typeof window === "undefined" ? 900 : window.innerHeight)
+      dismissTimer.current = setTimeout(() => {
+        dismissTimer.current = null
+        setIsDismissing(false)
+        setDragOffset(0)
+        onClose()
+      }, 200)
+    } else {
+      // A short pull returns to its resting position with a soft spring-like settle.
+      setDragOffset(0)
+    }
     if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId)
   }
 
@@ -71,19 +108,24 @@ export default function Sheet({ open, onClose, title, children, wide, onBack, he
   if (!open) return null
 
   return (
-    <div className={`fixed inset-0 ${priority === "high" ? "z-[80]" : "z-50"} flex items-end sm:items-center justify-center bg-black/40 sm:p-4`}>
+    <div
+      className={`fixed inset-0 ${priority === "high" ? "z-[80]" : "z-50"} flex items-end sm:items-center justify-center sm:p-4`}
+      style={{ backgroundColor: `rgba(0,0,0,${Math.max(0, 0.4 * (1 - dragOffset / (typeof window === "undefined" ? 900 : Math.max(1, window.innerHeight))))})` }}
+    >
       <div
         role="dialog"
         aria-modal="true"
         aria-label={title}
-        className={`animate-sheet w-full ${wide ? "sm:max-w-4xl" : "sm:max-w-md"} bg-card rounded-t-[28px] sm:rounded-[28px] max-h-[92dvh] overflow-y-auto overscroll-contain`}
+        className={`animate-sheet w-full ${wide ? "sm:max-w-4xl" : "sm:max-w-md"} bg-card rounded-t-[28px] sm:rounded-[28px] max-h-[92dvh] overflow-y-auto overscroll-contain will-change-transform`}
+        style={{ transform: dragOffset > 0 ? `translate3d(0, ${dragOffset}px, 0)` : "translate3d(0, 0, 0)", transition: isDragging ? "none" : isDismissing ? "transform 180ms ease-in" : "transform 220ms cubic-bezier(0.22, 1, 0.36, 1)" }}
         onClick={(e) => e.stopPropagation()}
       >
         <div
-          className="sm:hidden -mt-0.5 h-9 w-full flex items-center justify-center touch-none select-none cursor-grab active:cursor-grabbing"
+          className="sm:hidden -mt-0.5 h-12 w-full flex items-center justify-center touch-none select-none cursor-grab active:cursor-grabbing"
           onPointerDown={startHandleDrag}
-          onPointerUp={endHandleDrag}
-          onPointerCancel={() => { dragStartY.current = null }}
+          onPointerMove={moveHandleDrag}
+          onPointerUp={finishHandleDrag}
+          onPointerCancel={(event) => { dragStart.current = null; setIsDragging(false); setDragOffset(0); if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId) }}
           aria-hidden="true"
         >
           <span className="h-1 w-10 rounded-full bg-ink/25" />
