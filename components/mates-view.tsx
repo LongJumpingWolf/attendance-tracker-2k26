@@ -454,6 +454,10 @@ export default function MatesView({ mates, social, subjects, scheduleOverrides =
   // Use it to send a real connection request instead of forcing the user to re-copy the code.
   // The recipient still has to accept; this never grants an unconnected account Ping permissions.
   const requestMateConnection = async (mate: Mate) => {
+    if (!online) {
+      onToast("You are offline. Connection requests are paused until you reconnect.")
+      return
+    }
     if (!mate.uid) {
       onToast("Connect using your friend's unique account code or link.")
       onOpenAdd()
@@ -474,6 +478,10 @@ export default function MatesView({ mates, social, subjects, scheduleOverrides =
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault()
+    if (!online) {
+      onToast("You are offline. No connection request was sent.")
+      return
+    }
     const raw = mateCode.trim()
     if (!raw || connectingCode) return
     let addUid = raw
@@ -755,7 +763,9 @@ export default function MatesView({ mates, social, subjects, scheduleOverrides =
                   onRemove(removing.id)
                   setRemoving(null)
                 }}
-                className="h-[52px] rounded-2xl bg-bad text-paper text-[17px] font-semibold transition hover:opacity-90"
+                disabled={!online}
+                title={!online ? "Requires an internet connection" : "Remove mate"}
+                className="h-[52px] rounded-2xl bg-bad text-paper text-[17px] font-semibold transition hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed"
               >
                 Remove
               </button>
@@ -802,7 +812,7 @@ export default function MatesView({ mates, social, subjects, scheduleOverrides =
             <input autoFocus value={mateCode} onChange={(e) => setMateCode(e.target.value)} placeholder="Paste code or friend link" className={inputClass} autoCapitalize="none" autoCorrect="off" spellCheck={false} />
           </Field>
           <p className="text-[13px] text-mute leading-snug">Names are not unique, so connect using the person&apos;s full account code, permanent QR/link, or one-time invite link. They must accept the request before appearing as a connected Mate.</p>
-          <button type="submit" disabled={!mateCode.trim() || connectingCode} className={`${primaryButton} disabled:opacity-50`}>
+          <button type="submit" disabled={!online || !mateCode.trim() || connectingCode} className={`${primaryButton} disabled:opacity-50`}>
             {connectingCode ? "Sending request…" : "Send connection request"}
           </button>
         </form>

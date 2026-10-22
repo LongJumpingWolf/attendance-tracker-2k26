@@ -430,7 +430,7 @@ export default function Home() {
   // Do not consume connection links until the same Google-backed account used for sync is active.
   // Keep the pending link intact behind the Mates sign-in gate so the invitation can be completed after sign-in.
   useEffect(() => {
-    if (!consentReady || !consentAccepted || !pendingLink || !sync.account) return
+    if (!consentReady || !consentAccepted || !pendingLink || !sync.account || isOnline !== true) return
     if (!social.configured) {
       setToast({ id: Date.now(), message: "Friend connections aren't set up in this app yet." })
       setPendingLink(null)
@@ -443,7 +443,7 @@ export default function Home() {
     run
       .then((r) => setToast({ id: Date.now(), message: r.message }))
       .catch(() => setToast({ id: Date.now(), message: "Couldn't send the request. Try again." }))
-  }, [pendingLink, sync.account, social.configured, social.status, social.name, social.anonymous, social.uid])
+  }, [pendingLink, sync.account, social.configured, social.status, social.name, social.anonymous, social.uid, isOnline])
 
   // Remind established users once they've had the app for two days. Existing installations without a timestamp
   // are treated as established; cloud sync is promoted only when a sync backend is configured.
@@ -866,7 +866,7 @@ export default function Home() {
       ? { label: "Add subject", run: () => setIsAddOpen(true) }
       : currentPage === "calendar"
         ? { label: "Add deadline", run: () => openDeadline(null, localDate()) }
-        : currentPage === "mates" && !!sync.account
+        : currentPage === "mates" && !!sync.account && isOnline === true
           ? { label: "Add mate", run: () => setIsMateOpen(true) }
           : null
 
