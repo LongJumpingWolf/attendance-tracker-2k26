@@ -256,7 +256,7 @@ export default function SettingsSheet(p: SettingsSheetProps) {
   return (
     <Sheet open={p.isOpen} onClose={close} title={TITLES[panel]} onBack={back}
       headerActions={<div className="flex items-center gap-1.5">
-        <button type="button" onClick={then(p.demoActive ? p.onExitDemo : p.onTryDemo)} aria-label={p.demoActive ? "Exit demo" : "Start demo"} title={p.demoActive ? "Exit demo" : "Try a demo"} className="h-8 px-3 rounded-full bg-secondary text-[12px] font-semibold text-mute hover:text-ink inline-flex items-center gap-1.5"><Sparkle weight="duotone" className="w-3.5 h-3.5"/>{p.demoActive ? "Exit demo" : "Demo"}</button>
+        <button type="button" onClick={then(p.demoActive ? p.onExitDemo : p.onTryDemo)} aria-label={p.demoActive ? "Exit demo" : "Open App guide"} title={p.demoActive ? "Exit demo" : "App guide"} className="h-8 px-3 rounded-full bg-secondary text-[12px] font-semibold text-mute hover:text-ink inline-flex items-center gap-1.5"><Sparkle weight="duotone" className="w-3.5 h-3.5"/>{p.demoActive ? "Exit demo" : "App guide"}</button>
         <button type="button" onClick={() => setPanel("tips-terms")} aria-label="Tips, privacy and terms" title="Tips, privacy and terms" className="w-8 h-8 grid place-items-center rounded-full bg-secondary text-mute hover:text-ink"><Info weight="bold" className="w-4 h-4"/></button>
       </div>}>
 
@@ -363,7 +363,7 @@ export default function SettingsSheet(p: SettingsSheetProps) {
 
           <section className="space-y-2 pt-1">
             <button onClick={() => setPanel("tips-terms")} className="block text-[13px] text-mute px-1">Tips, privacy and terms</button>
-            <button onClick={then(p.onShowWelcome)} className="block text-[13px] text-mute px-1">Show the welcome tour</button>
+            <button onClick={then(p.onShowWelcome)} className="block text-[13px] text-mute px-1">Resume setup</button>
             {DEV_TOOLS && (
               <button onClick={() => setShowDev(!showDev)} aria-expanded={showDev} className="block text-[13px] text-mute px-1">
                 {showDev ? "Hide" : "Show"} developer tools

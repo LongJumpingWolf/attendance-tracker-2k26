@@ -18,6 +18,8 @@ interface Props {
   onEnableNotifications: () => Promise<void>
   onOpenMates: () => void
   onToast: (message: string) => void
+  showGoogleSyncPrompt: boolean
+  onOpenAccount: () => void
 }
 
 function Choice({ icon, title, hint, onClick }: { icon: React.ReactNode; title: string; hint: string; onClick: () => void }) {
@@ -44,10 +46,21 @@ export default function Onboarding(p: Props) {
 
   useEffect(() => {
     if (p.open) {
-      setStep(0)
-      setName(p.currentName === "You" ? "" : p.currentName)
+      let savedName = ""
+      let savedStep = 0
+      try {
+        savedName = localStorage.getItem("attendance-onboarding-name-draft") || ""
+        savedStep = Number(localStorage.getItem("attendance-onboarding-step-draft") || 0) === 1 ? 1 : 0
+      } catch { /* fall back to the profile name */ }
+      setStep(savedStep)
+      setName(savedName || (p.currentName === "You" ? "" : p.currentName))
     }
   }, [p.open, p.currentName])
+
+  useEffect(() => {
+    if (!p.open) return
+    try { localStorage.setItem("attendance-onboarding-step-draft", String(step)) } catch {}
+  }, [p.open, step])
 
   useEffect(() => {
     if (!p.open) return
@@ -63,7 +76,10 @@ export default function Onboarding(p: Props) {
 
   const saveName = () => {
     const cleaned = name.trim().replace(/\s+/g, " ").slice(0, 40)
-    if (cleaned) p.onSetName(cleaned)
+    if (cleaned) {
+      try { localStorage.setItem("attendance-onboarding-name-draft", cleaned) } catch {}
+      p.onSetName(cleaned)
+    }
   }
 
   const choose = (action: () => void) => {
@@ -124,7 +140,10 @@ export default function Onboarding(p: Props) {
                 <input
                   id="first-run-name"
                   value={name}
-                  onChange={(event) => setName(event.target.value)}
+                  onChange={(event) => {
+                    setName(event.target.value)
+                    try { localStorage.setItem("attendance-onboarding-name-draft", event.target.value) } catch {}
+                  }}
                   onKeyDown={(event) => { if (event.key === "Enter") setStep(1) }}
                   placeholder="Your name"
                   maxLength={40}
@@ -161,6 +180,14 @@ export default function Onboarding(p: Props) {
                   onClick={() => choose(p.onAddSubject)}
                 />
               </div>
+
+              {p.showGoogleSyncPrompt && (
+                <section className="rounded-2xl border border-ink/10 bg-secondary/65 p-4">
+                  <p className="text-[14px] font-semibold">Keep your progress across devices</p>
+                  <p className="text-[12.5px] text-mute leading-relaxed mt-1">Sign in with Google to sync your subjects and attendance. Nothing will sign in automatically.</p>
+                  <button type="button" onClick={() => { saveName(); p.onOpenAccount() }} className="mt-3 h-10 px-3.5 rounded-xl bg-ink text-paper text-[13px] font-semibold">Set up Google sync</button>
+                </section>
+              )}
 
               {p.subjects.length > 0 && <p className="text-[13px] text-good font-semibold inline-flex items-center gap-2"><CheckCircle size={17} /> {p.subjects.length} subjects already added</p>}
 

@@ -10,6 +10,7 @@ import {
   Check,
   CheckCircle,
   Clock,
+  ListBullets,
   ShieldCheck,
   ShareNetwork,
   Sparkle,
@@ -195,6 +196,7 @@ function Preview({ visual }: { visual: Visual }) {
 
 export default function DemoTour({ open, onEnd }: { open: boolean; onEnd: () => void }) {
   const [index, setIndex] = useState(0)
+  const [chaptersOpen, setChaptersOpen] = useState(false)
   const touchStartX = useRef<number | null>(null)
   const step = STEPS[index]
   const last = index === STEPS.length - 1
@@ -220,17 +222,36 @@ export default function DemoTour({ open, onEnd }: { open: boolean; onEnd: () => 
   const next = () => last ? onEnd() : setIndex((i) => Math.min(STEPS.length - 1, i + 1))
 
   return (
-    <div role="dialog" aria-modal="true" aria-label="College Tracker product tour" className="fixed inset-0 z-[100] flex flex-col bg-background text-foreground">
+    <div role="dialog" aria-modal="true" aria-label="College Tracker App guide" className="fixed inset-0 z-[100] flex flex-col bg-background text-foreground">
       <header className="flex items-center justify-between gap-3 px-4 sm:px-6 pt-[calc(env(safe-area-inset-top)+14px)] pb-3 border-b border-ink/10 flex-shrink-0">
         <div className="min-w-0">
           <p className="text-[11px] uppercase tracking-[0.16em] font-bold text-mute">College Tracker</p>
-          <p className="text-[13px] text-mute mt-0.5">Product tour · {index + 1} of {STEPS.length}</p>
+          <p className="text-[13px] text-mute mt-0.5">App guide · {index + 1} of {STEPS.length}</p>
         </div>
-        <div className="flex items-center gap-2.5">
+        <div className="flex items-center gap-2">
+          <button type="button" onClick={() => setChaptersOpen(true)} className="h-9 px-3 rounded-xl border border-ink/10 bg-card text-[12px] font-semibold inline-flex items-center gap-1.5"><ListBullets size={16}/> Chapters</button>
           <div className="hidden sm:flex gap-1.5" aria-label="Tour progress">{STEPS.map((s,i)=><span key={i} className={`h-1.5 w-5 rounded-full ${i===index ? "bg-ink" : "bg-ink/15"}`}/>)}</div>
-          <button onClick={onEnd} aria-label="Exit product tour" className="w-10 h-10 rounded-full bg-secondary text-ink grid place-items-center"><X size={18}/></button>
+          <button onClick={onEnd} aria-label="Close App guide" className="w-10 h-10 rounded-full bg-secondary text-ink grid place-items-center"><X size={18}/></button>
         </div>
       </header>
+      {chaptersOpen && (
+        <div className="fixed inset-0 z-[110] bg-black/40 flex items-center justify-center p-4" role="dialog" aria-modal="true" aria-label="App guide chapters">
+          <section className="w-full max-w-md max-h-[82dvh] rounded-[24px] bg-background text-foreground shadow-2xl overflow-hidden flex flex-col">
+            <header className="px-4 py-3 border-b border-ink/10 flex items-center justify-between gap-3">
+              <div><h2 className="font-bold text-[16px]">App guide chapters</h2><p className="text-[12px] text-mute mt-0.5">Jump straight to a feature.</p></div>
+              <button type="button" onClick={() => setChaptersOpen(false)} aria-label="Close chapters" className="w-9 h-9 rounded-full bg-secondary grid place-items-center"><X size={17}/></button>
+            </header>
+            <div className="p-3 overflow-y-auto space-y-1.5">
+              {STEPS.map((chapter, chapterIndex) => (
+                <button key={chapter.eyebrow} type="button" onClick={() => { setIndex(chapterIndex); setChaptersOpen(false) }} className={chapterIndex === index ? "w-full rounded-xl p-3 text-left flex items-start gap-3 bg-secondary" : "w-full rounded-xl p-3 text-left flex items-start gap-3 hover:bg-secondary/70"}>
+                  <span className="w-7 h-7 rounded-lg bg-card border border-ink/10 grid place-items-center text-[11px] font-bold flex-shrink-0">{chapterIndex + 1}</span>
+                  <span className="min-w-0"><span className="block text-[10px] text-mute font-bold tracking-widest">{chapter.eyebrow.split(" · ")[0]}</span><span className="block text-[13px] font-semibold mt-0.5">{chapter.title}</span></span>
+                </button>
+              ))}
+            </div>
+          </section>
+        </div>
+      )}
 
       <main
         className="relative flex-1 min-h-0 overflow-y-auto touch-pan-y"
