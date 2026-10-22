@@ -1,6 +1,6 @@
 "use client"
 
-import { useRef, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import { CaretDown, CaretLeft, CaretRight, Check, Plus, X, CalendarPlus, Trash } from "@phosphor-icons/react"
 import type { Holiday, ScheduleOverride, Subject, Task } from "@/lib/types"
 import { DEFAULT_HOLIDAYS, holidaysForDate, isHolidayOnDate } from "@/lib/holidays"
@@ -25,6 +25,8 @@ interface CalendarViewProps {
   onDeleteHoliday?: (id: string) => void
   onClassActions?: (target: ClassActionTarget) => void
   onSleep?: (subject: Subject) => void
+  initialDate?: string | null
+  onInitialDateConsumed?: () => void
 }
 
 /** Monday first, like the rest of the newer screens */
@@ -36,10 +38,20 @@ const relative = (date: string) => {
 }
 
 /** A month grid with a dot for every deadline, the day you pick, and everything due and scheduled that day */
-export default function CalendarView({ tasks, subjects, onAdd, onEdit, onToggleDone, onSet, holidays = [], scheduleOverrides = [], onAddHoliday, onDeleteHoliday, onClassActions, onSleep }: CalendarViewProps) {
+export default function CalendarView({ tasks, subjects, onAdd, onEdit, onToggleDone, onSet, holidays = [], scheduleOverrides = [], onAddHoliday, onDeleteHoliday, onClassActions, onSleep, initialDate, onInitialDateConsumed }: CalendarViewProps) {
   const today = localDate()
   const [offset, setOffset] = useState(0)
   const [selected, setSelected] = useState(today)
+  useEffect(() => {
+    if (!initialDate) return
+    const picked = new Date(`${initialDate}T12:00:00`)
+    const now = new Date()
+    if (!Number.isNaN(picked.getTime())) {
+      setSelected(initialDate)
+      setOffset((picked.getFullYear() - now.getFullYear()) * 12 + picked.getMonth() - now.getMonth())
+    }
+    onInitialDateConsumed?.()
+  }, [initialDate, onInitialDateConsumed])
   const [showDone, setShowDone] = useState(false)
   const [showHolidayForm, setShowHolidayForm] = useState(false)
   const [holidayName, setHolidayName] = useState("")
