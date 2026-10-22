@@ -11,6 +11,7 @@ import SyncPanel from "./settings-sync"
 export default function MatesAccessGate({ sync, social, onToast }: { sync: CloudSync; social: SocialApi; onToast: (message: string) => void }) {
   const [email, setEmail] = useState("")
   const [busy, setBusy] = useState(false)
+  const [redirectBusy, setRedirectBusy] = useState(false)
   const [error, setError] = useState("")
 
   if (sync.switchPlan) {
@@ -27,6 +28,15 @@ export default function MatesAccessGate({ sync, social, onToast }: { sync: Cloud
       if (problem) setError(problem)
     } catch (e) { setError(e instanceof Error ? e.message : "Sign-in could not start. Please try again.") }
     finally { setBusy(false) }
+  }
+
+  const submitRedirect = async () => {
+    setRedirectBusy(true); setError("")
+    try {
+      const problem = await sync.signInRedirect()
+      if (problem) setError(problem)
+    } catch (e) { setError(e instanceof Error ? e.message : "Full-page sign-in could not start. Please try again.") }
+    finally { setRedirectBusy(false) }
   }
 
   return <div className="mx-auto w-full max-w-xl space-y-3">
@@ -53,7 +63,13 @@ export default function MatesAccessGate({ sync, social, onToast }: { sync: Cloud
         </button>
         {social.configured && (social.status === "error" || social.status === "idle" || social.status === "off") && <button type="button" onClick={social.enable} className={`${tintButton} w-full`}>Try connection again</button>}
         {error && <p className="text-[13px] text-bad leading-snug" role="alert">{error}</p>}
-        <p className="text-center text-[12px] text-mute leading-snug">If sign-in opens a blank window, open this page directly in Chrome or Safari and try again.</p>
+        {/(closed before|cancelled|popup|window closed|didn.t work)/i.test(error) && sync.kind !== "dev" && (
+          <button type="button" disabled={redirectBusy || busy} onClick={() => void submitRedirect()} className={`${tintButton} w-full flex items-center justify-center gap-2 disabled:opacity-55`}>
+            {redirectBusy ? <SpinnerGap className="h-4 w-4 animate-spin" /> : <GoogleLogo weight="bold" className="h-4 w-4" />}
+            {redirectBusy ? "Opening Google sign-in…" : "Try full-page Google sign-in"}
+          </button>
+        )}
+        <p className="text-center text-[12px] text-mute leading-snug">If Safari closes the Google sign-in window before returning, use the full-page sign-in option. A pending friend link is kept while you sign in.</p>
       </div>}
     </section>
 

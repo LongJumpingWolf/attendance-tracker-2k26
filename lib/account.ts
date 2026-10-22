@@ -105,7 +105,7 @@ export async function confirmSwitch(plan: SwitchPlan): Promise<string | null> {
  * and Pings stay). If Google already has an account from another device, this returns what switching would leave
  * behind so the person can agree first; with nothing to leave behind it just switches.
  */
-export async function signInWithGoogle(): Promise<SignInResult> {
+export async function signInWithGoogle(forceRedirect = false): Promise<SignInResult> {
   const auth = getAuth(app)
   const provider = new GoogleAuthProvider()
   const anon = auth.currentUser?.isAnonymous ? auth.currentUser : null
@@ -113,29 +113,51 @@ export async function signInWithGoogle(): Promise<SignInResult> {
     if (anon) return redirect ? linkWithRedirect(anon, provider) : linkWithPopup(anon, provider)
     return redirect ? signInWithRedirect(auth, provider) : signInWithPopup(auth, provider)
   }
+  const handleExistingCredential = async (e: unknown): Promise<SignInResult | null> => {
+    const credential = GoogleAuthProvider.credentialFromError(e as never)
+    if (!credential) throw e
+    const plan = await planSwitch(db, auth.currentUser?.uid ?? anon?.uid ?? "", credential)
+    if (plan.carry.length > 0) return { kind: "confirm", plan: { credential, carry: plan.carry } }
+    await switchToExisting(auth, db, credential, [], displayName())
+    return null
+  }
+
   try {
-    try {
-      await attempt(false)
-    } catch (e) {
-      const code = (e as { code?: string }).code
-      if (code === "auth/popup-blocked" || code === "auth/operation-not-supported-in-this-environment") await attempt(true)
-      else if (code === "auth/credential-already-in-use") {
-        const credential = GoogleAuthProvider.credentialFromError(e as never)
-        if (!credential) throw e
-        const plan = await planSwitch(db, anon?.uid ?? "", credential)
-        if (plan.carry.length > 0) return { kind: "confirm", plan: { credential, carry: plan.carry } }
-        await switchToExisting(auth, db, credential, [], displayName()) // nothing here would be left behind
-      } else throw e
+    if (forceRedirect) {
+      try {
+        await attempt(true)
+      } catch (e) {
+        const code = (e as { code?: string }).code
+        if (code === "auth/credential-already-in-use") {
+          const result = await handleExistingCredential(e)
+          if (result) return result
+        } else throw e
+      }
+    } else {
+      try {
+        await attempt(false)
+      } catch (e) {
+        const code = (e as { code?: string }).code
+        if (code === "auth/popup-blocked" || code === "auth/operation-not-supported-in-this-environment") {
+          await attempt(true)
+        } else if (code === "auth/credential-already-in-use") {
+          const result = await handleExistingCredential(e)
+          if (result) return result
+        } else throw e
+      }
     }
     return { kind: "ok" }
   } catch (e) {
     const code = (e as { code?: string }).code ?? ""
     const error = (message: string): SignInResult => ({ kind: "error", message })
-    if (code === "auth/popup-closed-by-user" || code === "auth/cancelled-popup-request") return error("Sign-in was cancelled.")
+    if (code === "auth/popup-closed-by-user" || code === "auth/cancelled-popup-request") {
+      return error("The Google sign-in window closed before the app received a result. Try full-page sign-in below.")
+    }
     if (code === "auth/unauthorized-domain")
       return error("This address isn’t allowed to sign in yet. Add it under Authentication > Settings > Authorized domains in the Firebase console.")
-    if (code === "auth/operation-not-allowed") return error("Google sign-in isn’t switched on in the Firebase console yet (Authentication > Sign-in method).")
-    return error("Google sign-in didn’t work here. If this is a scanner app’s built-in browser, open the link in Safari or Chrome.")
+    if (code === "auth/operation-not-allowed")
+      return error("Google sign-in isn’t switched on in the Firebase console yet (Authentication > Sign-in method).")
+    return error("Google sign-in didn’t work here. Try full-page sign-in below; if that also fails, reopen the original friend link and try again.")
   }
 }
 

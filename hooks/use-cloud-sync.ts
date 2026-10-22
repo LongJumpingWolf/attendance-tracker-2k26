@@ -686,6 +686,15 @@ export function useCloudSync(opts: {
     return r.kind === "error" ? r.message : null
   }
 
+  /** Explicit full-page Google flow when a browser closes popup sign-in prematurely. */
+  const signInRedirect = async (): Promise<string | null> => {
+    if (cloudKind() === "dev") return "Full-page Google sign-in is available only with real Google Authentication."
+    if (cloudKind() === "none") return "Google sign-in is not configured for this deployment."
+    const r = await signInWithGoogle(true)
+    if (r.kind === "confirm") setSwitchPlan(r.plan)
+    return r.kind === "error" ? r.message : null
+  }
+
   /** The person agreed to switch to the Google account's own profile and reconnect the mates made here */
   const confirmSwitch = async (): Promise<string | null> => {
     if (!switchPlan) return null
@@ -810,7 +819,7 @@ export function useCloudSync(opts: {
   )
 
   return {
-    kind: cloudKind(), account, ready, status, pending, realtime, lastAt, switchPlan, confirmSwitch, cancelSwitch, signIn, signOut, syncNow,
+    kind: cloudKind(), account, ready, status, pending, realtime, lastAt, switchPlan, confirmSwitch, cancelSwitch, signIn, signInRedirect, signOut, syncNow,
     reconcile: paused ? null : prompt, chooseReconcile, declineReconcile, reopenReconcile,
   }
 }

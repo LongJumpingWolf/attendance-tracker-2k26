@@ -225,13 +225,31 @@ export default function Home() {
   }, [scheduleOverrides, loaded, demoActive])
 
   // ---------- friend connections ----------
-  // Opening someone's QR code or link lands here as ?add=<id> or ?invite=<token>
+  // Preserve a pending friend link through full-page Google sign-in redirects (useful in Safari).
+  // This token is session-scoped and is cleared when the connection attempt starts.
   useEffect(() => {
+    try {
+      const raw = sessionStorage.getItem("attendance-pending-mate-link")
+      if (raw) {
+        const saved = JSON.parse(raw) as { kind?: unknown; value?: unknown }
+        if ((saved.kind === "add" || saved.kind === "invite") && typeof saved.value === "string" && saved.value.length > 0 && saved.value.length <= 2048) {
+          setPendingLink({ kind: saved.kind, value: saved.value })
+          setCurrentPage("mates")
+        } else {
+          sessionStorage.removeItem("attendance-pending-mate-link")
+        }
+      }
+    } catch {
+      // Storage may be unavailable in private browsing; the current-page flow still works.
+    }
+
     const p = new URLSearchParams(window.location.search)
     const add = p.get("add")
     const inv = p.get("invite")
     if (add || inv) {
-      setPendingLink({ kind: add ? "add" : "invite", value: (add || inv) as string })
+      const link: { kind: "add" | "invite"; value: string } = { kind: add ? "add" : "invite", value: (add || inv) as string }
+      setPendingLink(link)
+      try { sessionStorage.setItem("attendance-pending-mate-link", JSON.stringify(link)) } catch {}
       window.history.replaceState(null, "", window.location.pathname)
       setCurrentPage("mates")
     }
@@ -439,6 +457,7 @@ export default function Home() {
     if (social.status !== "ready" || !social.name || social.anonymous) return
     const link = pendingLink
     setPendingLink(null)
+    try { sessionStorage.removeItem("attendance-pending-mate-link") } catch {}
     const run = link.kind === "add" ? social.connectViaUid(link.value) : social.connectViaInvite(link.value)
     run
       .then((r) => setToast({ id: Date.now(), message: r.message }))
