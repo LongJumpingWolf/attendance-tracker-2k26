@@ -711,6 +711,7 @@ export default function Home() {
       isCleared: resetIsComplete,
     })
     if (!r.ok) showToast(r.message) // never reset what could not be kept
+    if (r.ok) setUsageAnalyticsEnabled(false) // a full reset also withdraws the optional local analytics choice
     return r.ok
   }
 
