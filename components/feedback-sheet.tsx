@@ -26,8 +26,8 @@ function detectBrowser() {
   return "Other / not sure"
 }
 
-export default function FeedbackSheet({ open, onClose, onSubmitted }: { open: boolean; onClose: () => void; onSubmitted: () => void }) {
-  const [kind, setKind] = useState<FeedbackKind>("bug")
+export default function FeedbackSheet({ open, onClose, onSubmitted, initialKind }: { open: boolean; onClose: () => void; onSubmitted: () => void; initialKind?: FeedbackKind }) {
+  const [kind, setKind] = useState<FeedbackKind>(initialKind ?? "bug")
   const [rating, setRating] = useState<number | null>(null)
   const [message, setMessage] = useState("")
   const [imageData, setImageData] = useState<string | undefined>()
@@ -41,7 +41,7 @@ export default function FeedbackSheet({ open, onClose, onSubmitted }: { open: bo
   })
   const fileRef = useRef<HTMLInputElement>(null)
 
-  const reset = () => { setKind("bug"); setRating(null); setMessage(""); setImageData(undefined); setImageName(""); setError(""); setCompressing(false) }
+  const reset = () => { setKind(initialKind ?? "bug"); setRating(null); setMessage(""); setImageData(undefined); setImageName(""); setError(""); setCompressing(false) }
   const close = () => { if (!busy && !compressing) { reset(); onClose() } }
   const pickImage = async (file?: File) => {
     if (!file) return
@@ -55,21 +55,21 @@ export default function FeedbackSheet({ open, onClose, onSubmitted }: { open: bo
   }
   const setDiagnostic = (key: keyof BugDiagnostics, value: string) => setDiagnostics(prev => ({ ...prev, [key]: value }))
   const selectClass = "w-full min-w-0 rounded-xl bg-card border border-border px-3 py-2.5 text-[14px] text-ink outline-none focus:ring-1 focus:ring-ink/40"
-  return <Sheet open={open} onClose={close} title="Help improve College Tracker" priority="high">
+  return <Sheet open={open} onClose={close} title={kind === "rating" ? "Rate College Tracker" : kind === "bug" ? "Report a bug" : "Request a feature"} priority="high">
     <div className="space-y-4">
-      <p className="text-[13px] text-mute leading-snug">Your feedback goes to the developer. Please avoid including passwords or sensitive personal information.</p>
-      <div className="grid grid-cols-3 gap-2">
+      <p className="text-[13px] text-mute leading-snug">{kind === "rating" ? "How is the app working for you? Your rating helps guide improvements." : kind === "bug" ? "Describe what you were trying to do and what went wrong. Please avoid passwords or sensitive personal information." : "Tell the developer what would make College Tracker more useful to you."}</p>
+      {!initialKind && <div className="grid grid-cols-3 gap-2">
         {([ ["bug", Bug, "Report a bug"], ["rating", Star, "Rate app"], ["suggestion", Lightbulb, "Suggestion"] ] as const).map(([id, Icon, label]) => <button key={id} type="button" onClick={() => setKind(id)} className={`min-h-[72px] rounded-2xl p-2 flex flex-col items-center justify-center gap-1 text-[12px] font-semibold ${kind === id ? "bg-ink text-paper" : "bg-secondary text-ink"}`}><Icon size={22} weight="duotone" />{label}</button>)}
-      </div>
-      <div>
-        <p className="text-[12px] font-medium uppercase tracking-wider text-mute mb-2">Your rating (optional)</p>
+      </div>}
+      {kind === "rating" && <div>
+        <p className="text-[12px] font-medium uppercase tracking-wider text-mute mb-2">Your rating</p>
         <div className="flex gap-2" role="radiogroup" aria-label="App rating">
           {[1,2,3,4,5].map(n => <button type="button" key={n} aria-label={`${n} star${n===1?"":"s"}`} aria-pressed={rating===n} onClick={() => setRating(n)} className={`w-10 h-10 rounded-xl grid place-items-center ${rating !== null && n <= rating ? "bg-amber-300 text-black" : "bg-secondary text-mute"}`}><Star size={22} weight={rating !== null && n <= rating ? "fill" : "regular"} /></button>)}
         </div>
-      </div>
+      </div>}
       <div>
-        <label className="block text-[13px] font-medium text-mute mb-1.5" htmlFor="feedback-message">{kind === "bug" ? "What went wrong?" : kind === "suggestion" ? "What would you like to see?" : "Note for the developer (optional)"}</label>
-        <textarea id="feedback-message" value={message} onChange={e => setMessage(e.target.value.slice(0,2000))} rows={4} maxLength={2000} placeholder={kind === "bug" ? "What were you trying to do, what did you expect, and what happened?" : "Share a note…"} className="w-full rounded-xl bg-secondary p-3 text-[15px] leading-snug outline-none focus:ring-1 focus:ring-ink/40 resize-y" />
+        <label className="block text-[13px] font-medium text-mute mb-1.5" htmlFor="feedback-message">{kind === "bug" ? "What went wrong?" : kind === "suggestion" ? "What would you like to see?" : "Add a note (optional)"}</label>
+        <textarea id="feedback-message" value={message} onChange={e => setMessage(e.target.value.slice(0,2000))} rows={4} maxLength={2000} placeholder={kind === "bug" ? "What were you trying to do, what did you expect, and what happened?" : kind === "suggestion" ? "Describe the feature or change you have in mind…" : "Add a short note (optional)…"} className="w-full rounded-xl bg-secondary p-3 text-[15px] leading-snug outline-none focus:ring-1 focus:ring-ink/40 resize-y" />
         <p className="text-right text-[11px] text-mute mt-1">{message.length}/2000</p>
       </div>
       {kind === "bug" && <section className="rounded-2xl bg-secondary p-3 space-y-3" aria-label="Bug details">
@@ -88,7 +88,7 @@ export default function FeedbackSheet({ open, onClose, onSubmitted }: { open: bo
         <p className="text-[12px] text-mute leading-snug">Any image size can be selected; it is resized and compressed on your device before sending.</p>
       </section>}
       {error && <p role="alert" className="text-[13px] text-bad">{error}</p>}
-      <button disabled={busy || compressing || (!message.trim() && rating === null)} className={`${primaryButton} inline-flex items-center justify-center gap-2 disabled:opacity-50`} onClick={async () => {
+      <button disabled={busy || compressing || (kind === "rating" ? rating === null : !message.trim())} className={`${primaryButton} inline-flex items-center justify-center gap-2 disabled:opacity-50`} onClick={async () => {
         setBusy(true); setError("")
         try { await submitFeedback({ kind, rating, message, imageData, ...(kind === "bug" ? { diagnostics } : {}) }); reset(); onSubmitted(); onClose() }
         catch (e) {
@@ -98,7 +98,7 @@ export default function FeedbackSheet({ open, onClose, onSubmitted }: { open: bo
             : message)
         }
         finally { setBusy(false) }
-      }}>{busy ? <><SpinnerGap size={18} className="animate-spin"/> Sending feedback…</> : "Send feedback"}</button>
+      }}>{busy ? <><SpinnerGap size={18} className="animate-spin"/> Sending…</> : kind === "rating" ? "Send rating" : kind === "bug" ? "Send bug report" : "Send suggestion"}</button>
       <button type="button" disabled={busy || compressing} onClick={close} className={`${tintButton} w-full`}>Cancel</button>
     </div>
   </Sheet>
