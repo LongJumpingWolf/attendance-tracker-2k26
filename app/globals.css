@@ -610,14 +610,15 @@ button:active:not(:disabled) {
    its position, so it can never drift out of sync with what's actually on screen at any window size or scroll
    position. Sits at normal stacking order — no z-index needed — since nothing else dims or covers it. */
 .demo-tour-spot {
-  border-radius: 20px;
-  box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.95), 0 0 28px rgba(255, 255, 255, 0.3);
-  filter: brightness(1.14);
-  transition: filter 0.2s, box-shadow 0.2s;
+  position: relative;
+  z-index: 76;
+  outline: 3px solid rgba(255, 255, 255, 0.98);
+  outline-offset: 3px;
+  box-shadow: 0 0 0 9999px rgba(14, 18, 28, 0.30);
+  filter: none;
+  transition: none;
 }
 .dark .demo-tour-spot {
-  box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.85), 0 0 28px rgba(255, 255, 255, 0.2);
-}
-@media (prefers-reduced-motion: reduce) {
-  .demo-tour-spot { transition: none; }
+  outline-color: rgba(255, 255, 255, 0.98);
+  box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.42);
 }
