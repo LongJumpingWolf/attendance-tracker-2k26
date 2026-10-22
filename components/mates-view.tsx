@@ -732,7 +732,7 @@ export default function MatesView({ mates, social, subjects, scheduleOverrides =
                       <span className="min-w-0 flex-1 truncate">{st.text}</span>
                       {st.cancel && (
                         <button
-                          onClick={() => social.cancelPing(st.id).then(() => onToast(`Cancelled your ping to ${m.name}`))}
+                          onClick={() => social.cancelPing(st.id).then(() => onToast(`Cancelled your ping to ${visibleMateName(m)}`))}
                           className="text-mute font-semibold flex-shrink-0"
                         >
                           Cancel
@@ -864,11 +864,11 @@ export default function MatesView({ mates, social, subjects, scheduleOverrides =
         Send an in-app Ping to an accepted connection, or create a one-time WhatsApp response link for anyone else. An in-app Yes marks the selected class present and records a favour. A response-link Yes can update the selected attendance record; favour tracking is available only for connected Mates.
       </p>
 
-      <Sheet open={removing !== null} onClose={() => setRemoving(null)} title={removing ? `Remove ${removing.name}?` : "Remove mate"}>
+      <Sheet open={removing !== null} onClose={() => setRemoving(null)} title={removing ? `Remove ${visibleMateName(removing)}?` : "Remove mate"}>
         {removing && (
           <>
             <p className="text-[15px] text-mute leading-snug mb-5">
-              This deletes your favour history with {removing.name} (covered you {removing.covered}× · repaid {removing.repaid}×)
+              This deletes your favour history with {visibleMateName(removing)} (covered you {removing.covered}× · repaid {removing.repaid}×)
               {removing.uid ? " and ends your connection with them" : ""}. You&rsquo;ll be able to undo it for a few seconds.
             </p>
             <div className="grid grid-cols-2 gap-2">
