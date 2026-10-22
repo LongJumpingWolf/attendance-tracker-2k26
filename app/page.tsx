@@ -280,19 +280,20 @@ export default function Home() {
     const saved = { subjects: (await dbGet<Subject[]>("subjects")) ?? [], mates: (await dbGet<Mate[]>("mates")) ?? [] }
     return resultIsSaved(saved, r, p)
   }
+  const isAutoIntegratable = (ping: Ping) =>
+    !ping.shareLink &&
+    !social.anonymous &&
+    !!social.uid &&
+    social.requests.some((request) =>
+      request.status === "accepted" &&
+      request.participants.includes(social.uid as string) &&
+      request.participants.includes(ping.to),
+    ) &&
+    mates.some((mate) => (mate.uid ?? mate.id) === ping.to && mate.autoIntegrateResponses === true)
+
   const processPingNow = usePingProcessing({
-    // Automatic integration is opt-in per connected mate. One-time WhatsApp links always require approval.
-    pings: social.sent.filter((ping) =>
-      !ping.shareLink &&
-      !social.anonymous &&
-      !!social.uid &&
-      social.requests.some((request) =>
-        request.status === "accepted" &&
-        request.participants.includes(social.uid as string) &&
-        request.participants.includes(ping.to),
-      ) &&
-      mates.some((mate) => (mate.uid ?? mate.id) === ping.to && mate.autoIntegrateResponses === true),
-    ),
+    // Automatic integration is opt-in per currently connected mate. One-time WhatsApp links always require approval.
+    pings: social.sent.filter(isAutoIntegratable),
     enabled: loaded && consentReady && consentAccepted && !demoActive,
     deps: { lease: social.leasePing, apply: applyDurably, finalize: social.finalizePing },
   })
@@ -1258,7 +1259,7 @@ export default function Home() {
           onApproveIntegration={approvePingIntegration}
           onDeclineIntegration={declinePingIntegration}
           displayName={pingEvents.event.kind === "result" ? latestMates.current.find((mate) => (mate.uid ?? mate.id) === pingEvents.event?.ping.to)?.alias : undefined}
-          autoIntegrate={pingEvents.event.kind === "result" && !!latestMates.current.find((mate) => (mate.uid ?? mate.id) === pingEvents.event?.ping.to)?.autoIntegrateResponses}
+          autoIntegrate={pingEvents.event?.kind === "result" ? isAutoIntegratable(pingEvents.event.ping) : false}
           alertsOffer={pingEvents.alertsOffer}
           onEnableAlerts={pingEvents.enableAlerts}
         />
