@@ -569,7 +569,12 @@ export default function MatesView({ mates, social, subjects, scheduleOverrides =
             ) : null}
           </div>
         </div>
-        <p className="text-[12px] text-mute leading-relaxed mt-3">A Yes response can update the selected attendance records; in-app Pings also update the connected Mate&apos;s favour count.</p>
+        <div className="mt-3 flex items-center gap-1.5 text-[12px] text-mute">
+          <span>Attendance changes only after you approve a reply.</span>
+          <InfoTip label="How Ping responses affect attendance">
+            Each Yes marks the selected class present only when you approve integration. You can enable automatic integration separately for a specific connected Mate. A one-time WhatsApp reply never counts as a favour.
+          </InfoTip>
+        </div>
         {showWrappedInPingSection && (
           <div className="mt-4 rounded-2xl border border-ink/[0.07] bg-secondary/70 p-3.5 flex items-center gap-3">
             <span className="w-10 h-10 rounded-xl bg-card grid place-items-center text-[20px] flex-shrink-0" aria-hidden>✦</span>
@@ -765,6 +770,7 @@ export default function MatesView({ mates, social, subjects, scheduleOverrides =
                     <input
                       type="checkbox"
                       checked={!!m.autoIntegrateResponses}
+                      disabled={!m.uid || !isConnected(m)}
                       onChange={async (e) => {
                         try {
                           await onSaveIntegrationPreference(m, e.target.checked)
@@ -829,15 +835,19 @@ export default function MatesView({ mates, social, subjects, scheduleOverrides =
         <section>
           <SectionHeader>Waiting for a reply</SectionHeader>
           <ul className={`${card} overflow-hidden divide-y divide-ink/[0.08]`}>
-            {outgoing.map((r, i) => (
+            {outgoing.map((r, i) => {
+            const targetMate = mates.find((mate) => (mate.uid ?? mate.id) === r.to)
+            const targetName = targetMate ? visibleMateName(targetMate) : r.toName
+            return (
               <li key={r.id} className="flex items-center gap-3.5 px-4 py-3">
-                <Avatar name={r.toName} i={i + 1} size={40} />
-                <p className="flex-1 min-w-0 text-[15px] font-medium truncate">{r.toName}</p>
+                <Avatar name={targetName} i={i + 1} size={40} />
+                <p className="flex-1 min-w-0 text-[15px] font-medium truncate">{targetName}</p>
                 <button onClick={() => social.cancel(r.id)} className="text-[13px] font-semibold text-mute">
                   Cancel
                 </button>
               </li>
-            ))}
+            )
+          })}
           </ul>
         </section>
       )}
