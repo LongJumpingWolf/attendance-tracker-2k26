@@ -664,10 +664,10 @@ export default function MatesView({ mates, social, subjects, scheduleOverrides =
                   <span className="grid place-items-center w-7 h-7 rounded-full bg-ink/10 text-[12px] font-bold text-ink">
                     #{i + 1}
                   </span>
-                  <Avatar name={m.name} i={i} />
+                  <Avatar name={visibleMateName(m)} i={i} />
                   <div className="min-w-0 flex-1">
                     <p className="text-[17px] font-semibold truncate leading-snug">
-                      {m.name}
+                      {visibleMateName(m)}
                       {isConnected(m) && <span className="ml-2 align-middle text-[10px] font-bold tracking-wide text-mute bg-ink/10 rounded px-1.5 py-0.5">CONNECTED</span>}
                       {m.uid && !isConnected(m) && <span className="ml-2 align-middle text-[10px] font-bold tracking-wide text-mute bg-ink/10 rounded px-1.5 py-0.5" title="Not connected under the account you are signed in with">NOT CONNECTED</span>}
                     </p>
@@ -703,7 +703,7 @@ export default function MatesView({ mates, social, subjects, scheduleOverrides =
                   )
                 })()}
                 <div className="flex flex-wrap items-center gap-1.5 mt-3.5">
-                  <button onClick={() => setPinging(m)} title={canSendInAppPing({ configured: social.configured, ready: social.status === "ready", anonymous: social.anonymous, connected: isConnected(m) }) ? "Send an in-app Ping or a WhatsApp link" : "Create a 24-hour WhatsApp Ping link; Google sign-in and an accepted connection enable in-app Pings"} className={chip}>
+                  <button onClick={() => setPinging({ ...m, name: visibleMateName(m) })} title={canSendInAppPing({ configured: social.configured, ready: social.status === "ready", anonymous: social.anonymous, connected: isConnected(m) }) ? "Send an in-app Ping or a WhatsApp link" : "Create a 24-hour WhatsApp Ping link; Google sign-in and an accepted connection enable in-app Pings"} className={chip}>
                     {canSendInAppPing({ configured: social.configured, ready: social.status === "ready", anonymous: social.anonymous, connected: isConnected(m) }) ? "In-app Ping" : "WhatsApp Ping"}
                   </button>
                   {m.uid && !isConnected(m) && social.configured && (
@@ -721,6 +721,66 @@ export default function MatesView({ mates, social, subjects, scheduleOverrides =
                     Remove
                   </button>
                 </div>
+                <div className="mt-3 flex flex-wrap items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => { setAliasEditingId(aliasEditingId === m.id ? null : m.id); setAliasDraft(m.alias?.trim() || "") }}
+                    className={chip}
+                  >
+                    {m.alias?.trim() ? "Edit alias" : "Set alias"}
+                  </button>
+                  <label className="flex min-h-10 flex-1 items-center gap-2 rounded-full bg-secondary px-3 py-1.5 text-[12px] font-semibold">
+                    <input
+                      type="checkbox"
+                      checked={!!m.autoIntegrateResponses}
+                      onChange={async (e) => {
+                        try {
+                          await onSaveIntegrationPreference(m, e.target.checked)
+                          onToast(e.target.checked ? `Future replies from ${visibleMateName(m)} will integrate automatically.` : "Approval will be required for future replies again.")
+                        } catch {
+                          onToast("Couldn't save the preference. Please try again.")
+                        }
+                      }}
+                      className="h-4 w-4 flex-shrink-0 accent-current"
+                    />
+                    <span className="min-w-0">Auto-integrate replies</span>
+                    <InfoTip label={`About automatic integration for ${visibleMateName(m)}`}>
+                      When enabled, future replies from this Mate can update your attendance without a separate approval. Leave it off to review every answer first. One-time WhatsApp links always ask.
+                    </InfoTip>
+                  </label>
+                </div>
+                {aliasEditingId === m.id && (
+                  <form
+                    className="mt-3 flex flex-col gap-2 rounded-2xl bg-secondary p-3 sm:flex-row"
+                    onSubmit={async (e) => {
+                      e.preventDefault()
+                      const clean = aliasDraft.trim().replace(/\s+/g, " ").slice(0, 48)
+                      if (!clean) return
+                      try {
+                        await onSaveAlias(m, clean)
+                        setAliasEditingId(null)
+                        setAliasDraft("")
+                        onToast("Mate alias saved.")
+                      } catch {
+                        onToast("Couldn't save the alias. Please try again.")
+                      }
+                    }}
+                  >
+                    <input
+                      required
+                      maxLength={48}
+                      value={aliasDraft}
+                      onChange={(e) => setAliasDraft(e.target.value)}
+                      aria-label={`Alias for ${visibleMateName(m)}`}
+                      placeholder="Name only you see"
+                      className={`${inputClass} min-w-0 flex-1`}
+                    />
+                    <div className="flex gap-2 sm:flex-shrink-0">
+                      <button type="button" onClick={() => { setAliasEditingId(null); setAliasDraft("") }} className="h-10 flex-1 rounded-xl bg-card px-3 text-[13px] font-semibold sm:flex-none">Cancel</button>
+                      <button type="submit" disabled={!aliasDraft.trim()} className="h-10 flex-1 rounded-xl bg-ink px-3 text-[13px] font-semibold text-paper disabled:opacity-45 sm:flex-none">Save alias</button>
+                    </div>
+                  </form>
+                )}
                 {m.uid && !isConnected(m) && (
                   <p className="text-[12px] text-mute mt-2">In-app Ping unlocks after this account accepts your connection request. Google sign-in is also required.</p>
                 )}
@@ -790,9 +850,9 @@ export default function MatesView({ mates, social, subjects, scheduleOverrides =
         <ul className="space-y-2">
           {connectedMates.map((mate) => (
             <li key={mate.id}>
-              <button type="button" onClick={() => { setDirectChooserOpen(false); setPinging(mate) }} className="w-full flex items-center gap-3 rounded-2xl bg-secondary px-3.5 py-3 text-left">
-                <Avatar name={mate.name} size={40} />
-                <span className="min-w-0 flex-1"><span className="block font-semibold truncate">{mate.name}</span><span className="block text-[12px] text-mute">Connected account</span></span>
+              <button type="button" onClick={() => { setDirectChooserOpen(false); setPinging({ ...mate, name: visibleMateName(mate) }) }} className="w-full flex items-center gap-3 rounded-2xl bg-secondary px-3.5 py-3 text-left">
+                <Avatar name={visibleMateName(mate)} size={40} />
+                <span className="min-w-0 flex-1"><span className="block font-semibold truncate">{visibleMateName(mate)}</span><span className="block text-[12px] text-mute">Connected account</span></span>
                 <ChatCircleDots className="w-5 h-5" />
               </button>
             </li>
