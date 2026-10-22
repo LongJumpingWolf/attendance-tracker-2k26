@@ -520,7 +520,7 @@ export default function MatesView({ mates, social, subjects, scheduleOverrides =
             <div className="mt-3 flex flex-col gap-2">
               <button onClick={() => setPinging({ id: "__general__", name: "", covered: 0, repaid: 0 })} disabled={!online} title={!online ? "Requires an internet connection" : "Create a one-time interactive Ping link"} className={`${primaryButton} flex items-center justify-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed`}><ShareNetwork className="w-4 h-4" />WhatsApp Ping · 24h</button>
               {canUseDirectPings && connectedMates.length > 0 && (
-                <button onClick={() => setDirectChooserOpen(true)} disabled={!online} title={!online ? "Requires an internet connection" : "Send an in-app Ping"} className="h-12 px-3 rounded-2xl bg-secondary text-[14px] font-semibold flex items-center justify-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed><ChatCircleDots className="w-4 h-4" />In-app Ping</button>
+                <button onClick={() => setDirectChooserOpen(true)} disabled={!online} title={!online ? "Requires an internet connection" : "Send an in-app Ping"} className="h-12 px-3 rounded-2xl bg-secondary text-[14px] font-semibold flex items-center justify-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed"><ChatCircleDots className="w-4 h-4" />In-app Ping</button>
               )}
               {social.configured && social.anonymous && (
                 <button type="button" disabled title="Sign in with Google to enable direct Pings" className="h-11 px-3 rounded-2xl bg-secondary/70 text-[13px] text-mute font-semibold flex items-center justify-center gap-2 disabled:opacity-70"><LockKey className="w-4 h-4" />In-app Ping · Google sign-in required</button>
