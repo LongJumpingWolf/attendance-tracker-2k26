@@ -595,7 +595,7 @@ function TodayContent({
 
         {/* Keep widgets immediately below the carousel, even before all classes are marked. */}
         <div className="mt-6">
-          <TodayWidgets subjects={subjects} tasks={tasks} now={now} scheduleOverrides={scheduleOverrides} />
+          <TodayWidgets subjects={subjects} tasks={tasks} now={now} scheduleOverrides={scheduleOverrides} onOpenTomorrow={onOpenTomorrow} demoActive={demoActive} />
         </div>
       </div>
 
