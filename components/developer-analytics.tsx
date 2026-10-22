@@ -293,6 +293,30 @@ export default function DeveloperAnalytics() {
       .filter(([event]) => !["app_open", "screen_view", "settings_open"].includes(event))
       .sort((a, b) => b[1] - a[1])
     const screenPopularity = [...screenCounts.entries()].sort((a, b) => b[1] - a[1])
+    const featureGroups = [
+      { label: "Attendance logging", matches: (e: ProductUsageEvent) => e.event === "attendance_mark" || e.event === "attendance_clear" },
+      { label: "QR / NFC check-in", matches: (e: ProductUsageEvent) => e.event === "scan_checkin" },
+      { label: "Subject management", matches: (e: ProductUsageEvent) => ["subject_create", "subject_update", "subject_delete"].includes(e.event) },
+      { label: "Tasks and deadlines", matches: (e: ProductUsageEvent) => ["task_create", "task_update", "task_complete", "task_reopen", "task_delete"].includes(e.event) },
+      { label: "Mates screen visits", matches: (e: ProductUsageEvent) => e.event === "screen_view" && e.screen === "mates" },
+      { label: "Settings visits", matches: (e: ProductUsageEvent) => e.event === "settings_open" },
+    ]
+    const featureAdoption = featureGroups.map((group) => {
+      const matching = usageScope.filter(group.matches)
+      return { label: group.label, users: new Set(matching.map((e) => e.actorUid)).size, events: matching.length }
+    })
+    const weekdays = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+    const weekStats = weekdays.map((label) => ({ label, events: 0, users: new Set<string>() }))
+    const hourStats = Array.from({ length: 24 }, (_, hour) => ({ hour, events: 0, users: new Set<string>() }))
+    for (const e of usageScope) {
+      const at = timestampMs(e.createdAt)
+      const date = new Date(at)
+      const weekdayIndex = (date.getDay() + 6) % 7
+      weekStats[weekdayIndex].events += 1
+      weekStats[weekdayIndex].users.add(e.actorUid)
+      hourStats[date.getHours()].events += 1
+      hourStats[date.getHours()].users.add(e.actorUid)
+    }
     return {
       dau: uniqueUsersIn(RANGE_MS["24h"]),
       wau: uniqueUsersIn(RANGE_MS["7d"]),
@@ -309,6 +333,9 @@ export default function DeveloperAnalytics() {
       actionCount: actions.reduce((n, [, count]) => n + count, 0),
       eventCounts,
       screenPopularity,
+      featureAdoption,
+      weekStats,
+      hourStats,
       actions,
     }
   }, [usageEvents, usageScope])
@@ -568,8 +595,39 @@ export default function DeveloperAnalytics() {
                     <p className="text-[11px] text-mute">Screen visits are recorded only after opt-in, and only when the screen changes (plus Settings opens).</p>
                   </article>
                 </section>
+                <section className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+                  <article className="rounded-2xl bg-card p-4 space-y-3">
+                    <div><h2 className="font-bold">Feature adoption by account</h2><p className="text-xs text-mute mt-1">Distinct opted-in account IDs using each feature in the selected period, alongside event counts.</p></div>
+                    {usageMetrics.featureAdoption.map((feature) => <div key={feature.label} className="grid grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-3 border-b border-ink/[0.06] pb-2 last:border-0">
+                      <div><p className="text-sm font-semibold">{feature.label}</p><p className="text-[11px] text-mute">{percent(feature.users, usageMetrics.activeUsers)} of active accounts</p></div>
+                      <div className="text-right"><p className="text-sm font-bold tabular-nums">{feature.users}</p><p className="text-[10px] text-mute">accounts</p></div>
+                      <div className="text-right"><p className="text-sm font-bold tabular-nums">{feature.events}</p><p className="text-[10px] text-mute">events</p></div>
+                    </div>)}
+                  </article>
+                  <article className="rounded-2xl bg-card p-4 space-y-4">
+                    <div><h2 className="font-bold">Usage by weekday</h2><p className="text-xs text-mute mt-1">Events and active account IDs by the dashboard viewer’s local timezone.</p></div>
+                    {(() => {
+                      const max = Math.max(1, ...usageMetrics.weekStats.map((d) => d.events))
+                      return <div className="space-y-2">{usageMetrics.weekStats.map((d) => <div key={d.label} className="grid grid-cols-[34px_minmax(0,1fr)_42px] items-center gap-2">
+                        <span className="text-xs text-mute">{d.label}</span>
+                        <div className="h-2.5 rounded-full bg-secondary overflow-hidden"><div className="h-full rounded-full bg-ink" style={{ width: `${d.events / max * 100}%` }} /></div>
+                        <span className="text-xs text-right tabular-nums">{d.events}</span>
+                      </div>)}</div>
+                    })()}
+                    <div className="pt-2 border-t border-ink/[0.06]"><h3 className="text-sm font-semibold">Hourly activity</h3><p className="text-[11px] text-mute mt-1">Use the bars to spot broad active periods; no individual actions or class times are shown.</p>
+                      {(() => {
+                        const max = Math.max(1, ...usageMetrics.hourStats.map((d) => d.events))
+                        return <div className="grid grid-cols-12 gap-1 mt-3">{usageMetrics.hourStats.map((d) => <div key={d.hour} title={`${String(d.hour).padStart(2, "0")}:00 — ${d.events} events from ${d.users.size} accounts`} className="min-w-0">
+                          <div className="h-16 rounded bg-secondary flex items-end overflow-hidden"><div className="w-full rounded-t bg-ink" style={{ height: `${d.events ? Math.max(3, d.events / max * 100) : 0}%` }} /></div>
+                          <p className="text-[8px] text-mute text-center mt-1">{d.hour % 3 === 0 ? String(d.hour).padStart(2, "0") : ""}</p>
+                        </div>)}</div>
+                      })()}
+                    </div>
+                  </article>
+                </section>
+
                 <section className="rounded-2xl bg-card p-4 space-y-3">
-                  <div className="flex flex-wrap justify-between gap-2"><div><h2 className="font-bold">Feature adoption and actions</h2><p className="text-xs text-mute mt-1">Which broad actions happen most often, without logging the subjects, class dates, task titles or attendance values.</p></div><button onClick={exportUsageEvents} className="rounded-xl bg-secondary px-3 py-2 text-sm font-semibold inline-flex items-center gap-2"><DownloadSimple size={16}/>Export usage CSV</button></div>
+                  <div className="flex flex-wrap justify-between gap-2"><div><h2 className="font-bold">Feature action volume</h2><p className="text-xs text-mute mt-1">Which broad actions happen most often, without logging the subjects, class dates, task titles or attendance values.</p></div><button onClick={exportUsageEvents} className="rounded-xl bg-secondary px-3 py-2 text-sm font-semibold inline-flex items-center gap-2"><DownloadSimple size={16}/>Export usage CSV</button></div>
                   {usageMetrics.actions.length === 0 ? <p className="text-sm text-mute py-4">No feature-action events in this period yet.</p> : <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-3">
                     {usageMetrics.actions.map(([event, count]) => <div key={event} className="space-y-1.5">
                       <div className="flex justify-between gap-2 text-sm"><span>{usageEventName(event)}</span><b className="tabular-nums">{count}</b></div>
