@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react"
 import { getAuth, updateProfile } from "firebase/auth"
-import { GoogleLogo, SpinnerGap, UserCircle, PencilSimple, Check, X } from "@phosphor-icons/react"
+import { GoogleLogo, SpinnerGap, UserCircle, PencilSimple } from "@phosphor-icons/react"
 import { app } from "@/lib/firebase"
 import type { CloudSync } from "@/hooks/use-cloud-sync"
 import { inputClass, primaryButton, tintButton } from "./sheet"
@@ -269,8 +269,17 @@ export default function SyncPanel({ sync, onToast }: { sync: CloudSync; onToast:
         </>
       ) : (
         <section>
-          <h3 className={label}>Use your data in any browser</h3>
+          <h3 className={label}>Your account</h3>
           <div className={card}>
+            <div className="flex items-center gap-3 mb-3">
+              <span className="w-14 h-14 rounded-full bg-card border border-ink/10 text-mute grid place-items-center overflow-hidden shrink-0">
+                <UserCircle weight="regular" className="w-10 h-10" />
+              </span>
+              <span className="min-w-0">
+                <span className="block text-[15px] font-semibold">Your College Tracker account</span>
+                <span className="block text-[12px] text-mute mt-0.5">Sign in with Google to sync across browsers.</span>
+              </span>
+            </div>
             <div className="rounded-xl bg-warn/10 p-3 mb-3">
               <p className="text-[13px] font-semibold">Not backed up until you sign in and sync</p>
               <p className="text-[12px] text-mute leading-snug mt-1">Your data is stored in this browser’s local database for now. Clearing site data, deleting/resetting the browser profile, private browsing, or losing the device can make that local copy unavailable. After signing in, wait for “Up to date” and keep a separate export for important records.</p>
