@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { ArrowsClockwise, BellRinging, Bell, CalendarPlus, CaretRight, CircleHalf, FloppyDisk, Sparkle, Tag, Trash, Info, Star, Bug, Lightbulb } from "@phosphor-icons/react"
+import { BellRinging, Bell, CalendarPlus, CaretRight, CircleHalf, FloppyDisk, Sparkle, Tag, Trash, Info, Star, Bug, Lightbulb, UserCircle } from "@phosphor-icons/react"
 import Sheet, { Segmented, tintButton } from "./sheet"
 import { RemindersList, ReminderEditor } from "./settings-reminders"
 import ScanPanel from "./settings-scan"
@@ -284,7 +284,7 @@ export default function SettingsSheet(p: SettingsSheetProps) {
             <h3 className={label}>Account & data</h3>
             <ul className={groupClass}>
               <Row
-                icon={<ArrowsClockwise weight="duotone" className={icon} />}
+                icon={<UserCircle weight="duotone" className={icon} />}
                 title="Account"
                 hint={p.sync.account ? p.sync.account.email : "Profile, sign-in, backups and reset"}
                 status={p.sync.account ? { text: p.sync.status === "offline" ? "Offline" : p.sync.status === "synced" ? "Up to date" : "Signed in", tone: p.sync.status === "offline" ? "bad" : p.sync.status === "synced" ? "good" : "mute" } : undefined}
