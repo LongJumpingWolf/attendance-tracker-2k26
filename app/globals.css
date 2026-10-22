@@ -375,55 +375,7 @@ button:active:not(:disabled) {
   }
 }
 
-/* Today widgets: the first-time invitation */
-@keyframes widget-ripple {
-  0% {
-    transform: scale(1);
-    opacity: 0.45;
-  }
-  100% {
-    transform: scale(2);
-    opacity: 0;
-  }
-}
-
-@keyframes widget-shine {
-  0%,
-  60% {
-    transform: translateX(-120%);
-  }
-  100% {
-    transform: translateX(120%);
-  }
-}
-
-@layer utilities {
-  .widget-plus::before,
-  .widget-plus::after {
-    content: "";
-    position: absolute;
-    inset: 0;
-    border-radius: 9999px;
-    border: 2px solid var(--color-ink);
-    opacity: 0;
-    animation: widget-ripple 2.6s ease-out infinite;
-  }
-  .widget-plus::after {
-    animation-delay: 1.3s;
-  }
-  .widget-cta {
-    position: relative;
-    overflow: hidden;
-  }
-  .widget-cta::after {
-    content: "";
-    position: absolute;
-    inset: 0;
-    background: linear-gradient(110deg, transparent 30%, color-mix(in srgb, var(--color-paper) 45%, transparent) 50%, transparent 70%);
-    transform: translateX(-120%);
-    animation: widget-shine 3.2s ease-in-out infinite;
-  }
-}
+/* The first-time widget invitation is intentionally static; no pulsing rings or shining buttons. */
 
 /* Ping sheet: radar rings, drawn check, waiting dot */
 @keyframes ping-ring {

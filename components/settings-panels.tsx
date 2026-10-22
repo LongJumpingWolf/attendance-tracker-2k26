@@ -10,8 +10,12 @@ import {
   UploadSimple,
   WarningCircle,
   Plus,
+  AppleLogo,
+  AndroidLogo,
+  Info,
 } from "@phosphor-icons/react"
 import { inputClass, primaryButton, tintButton } from "./sheet"
+import Sheet from "./sheet"
 import { sendLocalNotification } from "@/lib/notifications"
 import { parseBackupFile, type BackupData } from "@/lib/backup-import"
 import type { Subject } from "@/lib/types"
@@ -32,6 +36,7 @@ interface NotificationsProps {
 
 export function NotificationsPanel({ supported, permission, isSubscribed, onEnable, onToast }: NotificationsProps) {
   const [busy, setBusy] = useState(false)
+  const [helpOpen, setHelpOpen] = useState(false)
 
   const on = permission === "granted"
   const blocked = permission === "denied"
@@ -46,8 +51,8 @@ export function NotificationsPanel({ supported, permission, isSubscribed, onEnab
   }
 
   const test = async () => {
-    const shown = await sendLocalNotification("Class reminder", { body: "This is a test. If you can see this, this device displayed a notification." })
-    onToast(shown ? "Test notification displayed by the browser." : "No notification was displayed. Check permissions, service-worker setup, and Home Screen installation on iPhone.")
+    const shown = await sendLocalNotification("College Tracker test", { body: "Your device displayed a local test notification." })
+    onToast(shown ? "Test alert displayed on this device." : "No alert appeared. Check browser permission and try again. On iPhone or iPad, open the Home Screen app.")
   }
 
   return (
@@ -68,8 +73,8 @@ export function NotificationsPanel({ supported, permission, isSubscribed, onEnab
             ? "This browser or device can't show notifications. Installing the app to your home screen may help."
             : on
               ? isSubscribed
-                ? "This device has a push subscription. Class reminders are checked every 30 seconds only while this page is running, so closing the app stops those local reminders. Background Ping alerts still depend on a configured server sender."
-                : "Permission is granted, but this device has no confirmed push subscription. Class reminders run only while this page is open. Tap Finish notification setup to try registering this device."
+                ? "This device is registered for background alerts. Class reminders in this version are still checked only while this page is open. Friend Ping alerts also need background delivery to be configured."
+                : "Permission is on, but background alert setup has not been confirmed on this device. Class reminders can still run while the app is open. Tap Finish notification setup to try again."
               : blocked
                 ? "Notifications are blocked in the browser. Change this site's notification permission in Safari or device settings, then return here."
                 : "Enable notifications for local class-reminder nudges while this page is open. Enabling notifications alone does not create a timetable; add reminders under Settings → Reminders."}
@@ -84,8 +89,34 @@ export function NotificationsPanel({ supported, permission, isSubscribed, onEnab
             Send me a test
           </button>
         )}
-        {on && !isSubscribed && <p className={note}>On iPhone/iPad, web push requires adding the site to the Home Screen and opening it as a web app. If you already did that, retry setup above.</p>}
-        {on && <p className={note}>Background class reminders need a server push schedule. This version's timetable reminder timer only runs while the app is open.</p>}
+        {on && (
+          <div className="mt-4 space-y-3 text-left">
+            <div className="flex items-start gap-3">
+              <AppleLogo weight="regular" className="w-7 h-7 mt-0.5 flex-shrink-0 text-ink" aria-hidden="true" />
+              <p className="text-[12px] leading-relaxed text-mute"><b className="text-ink">iPhone and iPad</b><span className="block">Add College Tracker to your Home Screen and open it from that icon as an app, then retry setup. Support also depends on your device software version.</span></p>
+            </div>
+            <div className="flex items-start gap-3">
+              <AndroidLogo weight="regular" className="w-7 h-7 mt-0.5 flex-shrink-0 text-ink" aria-hidden="true" />
+              <p className="text-[12px] leading-relaxed text-mute"><b className="text-ink">Android</b><span className="block">Open the site in Chrome, choose Install app or Add to Home screen, and allow notifications when asked.</span></p>
+            </div>
+          </div>
+        )}
+        <button type="button" onClick={() => setHelpOpen(true)} className="mt-4 inline-flex items-center justify-center gap-2 rounded-xl border border-ink/15 bg-card px-3.5 h-10 text-[13px] font-semibold text-ink">
+          <Info size={16} /> How notifications work
+        </button>
+        <Sheet open={helpOpen} onClose={() => setHelpOpen(false)} title="How notifications work" priority="high">
+          <div className="space-y-4 text-[14px] leading-relaxed">
+            <section className="rounded-2xl bg-secondary p-4">
+              <h3 className="font-bold text-[15px]">Class reminders while the app is open</h3>
+              <p className="text-mute mt-1.5">This version checks your timetable while College Tracker is running. If you close the page, those local reminder checks stop.</p>
+            </section>
+            <section className="rounded-2xl bg-secondary p-4">
+              <h3 className="font-bold text-[15px]">Alerts after you close the app</h3>
+              <p className="text-mute mt-1.5">Your browser and device must support background notifications, this device must be registered, and the app's server delivery must be configured. Turning on permission alone does not guarantee background alerts.</p>
+            </section>
+            <p className="text-mute">Send me a test checks whether this device can display a local alert. A successful test does not prove that background delivery is ready.</p>
+          </div>
+        </Sheet>
       </div>
     </div>
   )

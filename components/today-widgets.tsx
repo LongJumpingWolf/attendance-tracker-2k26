@@ -302,12 +302,12 @@ export default function TodayWidgets(data: Data) {
       {list === null ? (
         <div className="relative h-[286px] rounded-[24px] border-2 border-dashed border-ink/20 bg-card/70 flex flex-col items-center justify-center text-center px-6">
           <span className="absolute top-4 right-4 rounded-full bg-ink px-2.5 py-1 text-[11px] font-extrabold tracking-widest text-paper">NEW</span>
-          <button onClick={() => setOpen(true)} aria-label="Choose widgets" className="widget-plus relative w-14 h-14 rounded-full bg-ink text-paper grid place-items-center">
+          <button onClick={() => setOpen(true)} aria-label="Choose widgets" className="relative w-14 h-14 rounded-full bg-ink text-paper grid place-items-center">
             <Plus weight="bold" className="w-7 h-7" />
           </button>
           <h3 className="font-display text-[23px] leading-tight mt-3">Make this space yours</h3>
           <p className="text-[14px] text-mute mt-1.5 max-w-[17rem] leading-snug">You&rsquo;re all caught up. Choose what you&rsquo;d like to see here when the day is done.</p>
-          <button onClick={() => setOpen(true)} className="widget-cta mt-3 h-10 px-5 rounded-full bg-ink text-paper text-[15px] font-bold">
+          <button onClick={() => setOpen(true)} className="mt-3 h-10 px-5 rounded-full bg-ink text-paper text-[15px] font-bold hover:bg-ink/90 transition-colors">
             Choose widgets
           </button>
           <div className="flex flex-wrap justify-center gap-1.5 mt-3.5">
@@ -388,8 +388,8 @@ export default function TodayWidgets(data: Data) {
                   aria-pressed={selected}
                   className={`w-full flex items-center gap-3 rounded-2xl bg-secondary p-2.5 mb-2.5 text-left border-2 transition ${selected ? "border-ink" : "border-transparent"}`}
                 >
-                  <span className="relative w-[118px] h-[115px] rounded-[14px] overflow-hidden bg-card flex-shrink-0" aria-hidden>
-                    <span className="block w-[340px] origin-top-left pointer-events-none" style={{ transform: "scale(0.347)" }}>
+                  <span className="relative w-[118px] h-[100px] rounded-[14px] overflow-hidden bg-secondary flex-shrink-0" aria-hidden>
+                    <span className="block w-[340px] origin-top-left pointer-events-none" style={{ transform: "scale(0.347)", transformOrigin: "top left" }}>
                       <Widget id={w.id} {...data} />
                     </span>
                   </span>

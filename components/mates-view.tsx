@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react"
 import QRCode from "qrcode"
-import { Check, X, Copy, ShareNetwork, CaretDown, Link as LinkIcon, ChatCircleDots, LockKey, SpinnerGap } from "@phosphor-icons/react"
+import { Check, X, Copy, ShareNetwork, CaretDown, Link as LinkIcon, ChatCircleDots, LockKey, SpinnerGap, Info } from "@phosphor-icons/react"
 import type { Mate, Ping, ScheduleOverride, Subject } from "@/lib/types"
 import { localDate } from "@/lib/attendance"
 import { shareableAppOrigin } from "@/lib/share-ping-link"
@@ -430,6 +430,7 @@ export default function MatesView({ mates, social, subjects, scheduleOverrides =
   const [removing, setRemoving] = useState<Mate | null>(null)
   // The mate you are about to ping
   const [pinging, setPinging] = useState<Mate | null>(null)
+  const [pingHelpOpen, setPingHelpOpen] = useState(false)
   const [directChooserOpen, setDirectChooserOpen] = useState(false)
   const [connectingMateId, setConnectingMateId] = useState<string | null>(null)
 
@@ -523,23 +524,24 @@ export default function MatesView({ mates, social, subjects, scheduleOverrides =
         <div className="flex items-start gap-3">
           <span className="w-11 h-11 rounded-2xl bg-good/15 text-good grid place-items-center flex-shrink-0"><ShareNetwork weight="bold" className="w-5 h-5" /></span>
           <div className="min-w-0 flex-1">
-            <h2 className="text-[17px] font-bold">Quick WhatsApp Ping</h2>
+            <div className="flex items-center justify-between gap-2">
+              <h2 className="text-[17px] font-bold">Quick WhatsApp Ping</h2>
+              <button type="button" onClick={() => setPingHelpOpen(true)} aria-label="How Pings work" title="How Pings work" className="w-8 h-8 rounded-full bg-secondary border border-ink/10 text-ink grid place-items-center flex-shrink-0">
+                <Info weight="bold" className="w-4 h-4" />
+              </button>
+            </div>
             <p className="text-[13px] text-mute leading-snug mt-1">Create a one-time Yes/No link for selected classes. It works without adding the recipient as a Mate and expires after 24 hours.</p>
             <div className="mt-3 flex flex-col gap-2">
               <button onClick={() => setPinging({ id: "__general__", name: "", covered: 0, repaid: 0 })} disabled={!online} title={!online ? "Requires an internet connection" : "Create a one-time interactive Ping link"} className={`${primaryButton} flex items-center justify-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed`}><ShareNetwork className="w-4 h-4" />WhatsApp Ping · 24h</button>
               {canUseDirectPings && connectedMates.length > 0 && (
                 <button onClick={() => setDirectChooserOpen(true)} disabled={!online} title={!online ? "Requires an internet connection" : "Send an in-app Ping"} className="h-12 px-3 rounded-2xl bg-secondary text-[14px] font-semibold flex items-center justify-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed"><ChatCircleDots className="w-4 h-4" />In-app Ping</button>
               )}
-              {social.configured && social.anonymous && (
-                <button type="button" disabled title="Sign in with Google to enable direct Pings" className="h-11 px-3 rounded-2xl bg-secondary/70 text-[13px] text-mute font-semibold flex items-center justify-center gap-2 disabled:opacity-70"><LockKey className="w-4 h-4" />In-app Ping · Google sign-in required</button>
-              )}
-              {canUseDirectPings && connectedMates.length === 0 && (
-                <button type="button" disabled title="Connect with a friend and wait for them to accept first" className="h-11 px-3 rounded-2xl bg-secondary/70 text-[13px] text-mute font-semibold flex items-center justify-center gap-2 disabled:opacity-70"><LockKey className="w-4 h-4" />In-app Ping · connect a friend first</button>
-              )}
+
+
             </div>
             {!online && <p className="text-[12px] text-mute mt-2">Reconnect to create interactive WhatsApp links or send in-app Pings.</p>}
-            {online && social.configured && social.anonymous && <p className="text-[12px] text-mute mt-2">This browser is using an anonymous account. Sign in with Google, then connect with a friend to enable direct in-app Pings. WhatsApp links remain available.</p>}
-            {canUseDirectPings && connectedMates.length === 0 && <p className="text-[12px] text-mute mt-2">Enter a friend&apos;s unique account code with the + button. Direct Pings become available after the connection is accepted by both accounts.</p>}
+
+
           </div>
         </div>
         <p className="text-[12px] text-mute leading-relaxed mt-3">A Yes response can update the selected attendance records; in-app Pings also update the connected Mate&apos;s favour count.</p>
@@ -555,6 +557,20 @@ export default function MatesView({ mates, social, subjects, scheduleOverrides =
           </div>
         )}
       </section>
+      <Sheet open={pingHelpOpen} onClose={() => setPingHelpOpen(false)} title="How Pings work" priority="high">
+        <div className="space-y-4 text-[14px] leading-relaxed">
+          <section className="rounded-2xl bg-secondary p-4">
+            <h3 className="font-bold text-[15px]">WhatsApp Ping · 24 hours</h3>
+            <p className="text-mute mt-1.5">Creates a temporary Yes/No link for the classes you select. You do not need to add the recipient as a Mate. Anyone with the link may answer, so only share it with the intended person.</p>
+          </section>
+          <section className="rounded-2xl bg-secondary p-4">
+            <h3 className="font-bold text-[15px]">In-app Ping</h3>
+            <p className="text-mute mt-1.5">Sends a request inside College Tracker. Both people need Google sign-in, and the Mate connection must be accepted by both accounts. Until then, the WhatsApp link still works.</p>
+          </section>
+          <p className="text-mute">A Yes response can update the attendance marks you selected. Treat the response as a coordination message, not independent proof of attendance.</p>
+        </div>
+      </Sheet>
+
       {/* Mates asking whether you marked them present */}
       {toAnswer.length > 0 && (
         <section>

@@ -1,7 +1,7 @@
 "use client"
 
 import type React from "react"
-import { useEffect } from "react"
+import { useEffect, useRef } from "react"
 import { X, CaretLeft } from "@phosphor-icons/react"
 import { useScrollLock } from "@/lib/use-scroll-lock"
 
@@ -18,7 +18,7 @@ export const inputClass =
 export const primaryButton =
   "w-full h-[52px] rounded-2xl bg-ink text-paper text-[17px] font-semibold hover:bg-ink/90 transition"
 export const tintButton =
-  "inline-flex items-center justify-center gap-2 h-11 px-4 rounded-xl bg-secondary text-[15px] font-semibold transition disabled:opacity-40"
+  "inline-flex items-center justify-center gap-2 h-11 px-4 rounded-xl bg-card border border-ink/15 text-ink text-[15px] font-semibold transition hover:bg-secondary disabled:opacity-45"
 
 interface SheetProps {
   open: boolean
@@ -38,6 +38,20 @@ const openSheets: symbol[] = []
 
 /** Bottom sheet on phones, centred dialog on larger screens. */
 export default function Sheet({ open, onClose, title, children, wide, onBack, headerActions, priority = "normal" }: SheetProps) {
+  const dragStartY = useRef<number | null>(null)
+
+  const startHandleDrag = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (event.pointerType === "mouse" && event.button !== 0) return
+    dragStartY.current = event.clientY
+    event.currentTarget.setPointerCapture(event.pointerId)
+  }
+  const endHandleDrag = (event: React.PointerEvent<HTMLDivElement>) => {
+    const start = dragStartY.current
+    dragStartY.current = null
+    if (start !== null && event.clientY - start > 64) onClose()
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId)
+  }
+
   // Escape closes only the sheet on top, not every sheet stacked beneath it
   useEffect(() => {
     if (!open) return
@@ -65,7 +79,15 @@ export default function Sheet({ open, onClose, title, children, wide, onBack, he
         className={`animate-sheet w-full ${wide ? "sm:max-w-4xl" : "sm:max-w-md"} bg-card rounded-t-[28px] sm:rounded-[28px] max-h-[92dvh] overflow-y-auto overscroll-contain`}
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="sm:hidden mx-auto mt-2 h-1 w-9 rounded-full bg-ink/20" />
+        <div
+          className="sm:hidden -mt-0.5 h-9 w-full flex items-center justify-center touch-none select-none cursor-grab active:cursor-grabbing"
+          onPointerDown={startHandleDrag}
+          onPointerUp={endHandleDrag}
+          onPointerCancel={() => { dragStartY.current = null }}
+          aria-hidden="true"
+        >
+          <span className="h-1 w-10 rounded-full bg-ink/25" />
+        </div>
         <div className="flex items-center justify-between px-5 pt-4 pb-3">
           <div className="flex items-center gap-2.5 min-w-0">
             {onBack && (

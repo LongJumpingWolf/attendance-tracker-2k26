@@ -1,263 +1,276 @@
 "use client"
 
 import { useEffect, useRef, useState } from "react"
-import { CaretLeft, X } from "@phosphor-icons/react"
+import {
+  ArrowLeft,
+  ArrowRight,
+  BellRinging,
+  CalendarBlank,
+  ChartLineUp,
+  Check,
+  CheckCircle,
+  Clock,
+  ShieldCheck,
+  ShareNetwork,
+  Sparkle,
+  Tag,
+  UserCircle,
+  UsersThree,
+  X,
+} from "@phosphor-icons/react"
 
-interface Step {
-  page: "today" | "subjects" | "calendar" | "mates"
-  /** data-tour value of the element to spotlight, or null for an intro/closing card with no target */
-  selector: string | null
+type Visual = "welcome" | "today" | "tomorrow" | "attendance" | "subjects" | "calendar" | "mates" | "account" | "notifications" | "finish"
+
+interface DemoStep {
+  eyebrow: string
   title: string
   body: string
+  note: string
+  visual: Visual
 }
 
-const STEPS: Step[] = [
+const STEPS: DemoStep[] = [
   {
-    page: "today",
-    selector: null,
-    title: "Welcome to your walkthrough",
-    body: "This is a safe sample term. Try the main parts of College Tracker without changing your real subjects, marks, deadlines or mates.",
+    eyebrow: "A QUICK TOUR · 1 OF 10",
+    title: "College life, a little more under control.",
+    body: "College Tracker brings your classes, attendance, deadlines and proxy-mate coordination into one calm space.",
+    note: "This is an illustrated product tour. Nothing on these cards edits your timetable or attendance.",
+    visual: "welcome",
   },
   {
-    page: "today",
-    selector: "today-carousel",
-    title: "Your day, at a glance",
-    body: "The timetable puts today's classes first. Mark each class from its card and see your attendance update immediately.",
+    eyebrow: "YOUR DAY · 2 OF 10",
+    title: "Know what needs your attention now.",
+    body: "Today's classes appear in time order. Mark a class Present or Absent, then check the attendance result without digging through menus.",
+    note: "Always verify your actual attendance against your college records.",
+    visual: "today",
   },
   {
-    page: "today",
-    selector: "tomorrow-lectures-widget",
-    title: "Plan for tomorrow",
-    body: "The compact lecture card previews four upcoming classes. Tap it to open Calendar on tomorrow, with the full schedule and any deadlines.",
+    eyebrow: "PLAN AHEAD · 3 OF 10",
+    title: "Tomorrow shouldn't be a surprise.",
+    body: "The Lectures tomorrow widget shows the first four scheduled lectures. If there are more, it displays a remaining count. Tap it in the app to open Calendar on tomorrow.",
+    note: "Cancelled classes are left out of the preview.",
+    visual: "tomorrow",
   },
   {
-    page: "today",
-    selector: "where-you-stand-widget",
-    title: "Spot subjects that need you",
-    body: "The attendance rings summarize each subject, showing your percentage and whether you have skips left or need to attend the next classes.",
+    eyebrow: "ATTENDANCE · 4 OF 10",
+    title: "Spot attendance risks at a glance.",
+    body: "A compact ring for each subject helps you see where you stand relative to its minimum requirement. New subjects remain clearly marked as not yet established.",
+    note: "The calculation depends on the marks and requirement you have entered.",
+    visual: "attendance",
   },
   {
-    page: "today",
-    selector: "deadline-widget",
-    title: "Deadlines without surprises",
-    body: "Keep the next exam or assignment in view. Add and complete deadlines from Calendar; the widget updates with your next due item.",
+    eyebrow: "SUBJECTS · 5 OF 10",
+    title: "Keep subjects tidy and editable.",
+    body: "Organise subjects with tags and timetable slots. Open a subject to review its history, plan attendance, edit its settings or delete it with confirmation.",
+    note: "A subject deletion affects that subject's saved attendance history; use the confirmation carefully.",
+    visual: "subjects",
   },
   {
-    page: "subjects",
-    selector: "subjects-list",
-    title: "All your subjects, organized",
-    body: "Browse attendance percentages, class days and tags. The list puts subjects that need attention near the top.",
+    eyebrow: "CALENDAR · 6 OF 10",
+    title: "Classes and deadlines, in one place.",
+    body: "Use Calendar to review a date, inspect scheduled classes, and add or update exam and assignment deadlines. Completed work can stay in your history.",
+    note: "Keep your exam dates aligned with official college notices.",
+    visual: "calendar",
   },
   {
-    page: "subjects",
-    selector: "subject-row",
-    title: "Open a subject's history",
-    body: "Choose any subject to inspect past marks, edit its timetable, plan attendance and download a monthly report. You can also delete a subject from its detail screen.",
+    eyebrow: "MATES · 7 OF 10",
+    title: "Make attendance coordination simpler.",
+    body: "Quick WhatsApp Ping creates a temporary Yes/No link for selected classes. In-app Pings are available after Google sign-in and an accepted Mate connection.",
+    note: "Only share a Ping link with the intended person: a response can update the attendance records you selected.",
+    visual: "mates",
   },
   {
-    page: "calendar",
-    selector: "calendar-day",
-    title: "Classes and deadlines together",
-    body: "Pick a date to see its scheduled classes, attendance and holidays. You can add a deadline or a holiday right from the selected day.",
+    eyebrow: "YOUR ACCOUNT · 8 OF 10",
+    title: "Your profile and data tools belong together.",
+    body: "Account brings together your Google sign-in, profile name, sync status, backup and restore, and reset controls. Your Google profile photo appears when available.",
+    note: "Confirm that sync says Up to date on another device, and keep a recent backup before resetting or clearing browser data.",
+    visual: "account",
   },
   {
-    page: "calendar",
-    selector: "calendar-deadlines",
-    title: "Keep work moving",
-    body: "Deadlines are grouped by urgency, so overdue work and items due this week are easy to find. Mark completed work to clear the list.",
+    eyebrow: "NOTIFICATIONS · 9 OF 10",
+    title: "Understand which alerts can reach you.",
+    body: "Allowing browser notifications lets this device display alerts. Class reminders in this version run while the app is open; background Ping alerts additionally depend on browser support and server setup.",
+    note: "Use Send me a test to check local display. One successful test does not guarantee background delivery.",
+    visual: "notifications",
   },
   {
-    page: "mates",
-    selector: "mates-favour-balance",
-    title: "Keep track of favours",
-    body: "Mates helps you coordinate attendance cover and see the favour balance between connected friends. Sign in when you're ready to use the real social features.",
-  },
-  {
-    page: "mates",
-    selector: "mates-leaderboard",
-    title: "See your connected mates",
-    body: "Your friends and their relevant activity live here. The demo uses sample people only; your own account and connections are not modified.",
-  },
-  {
-    page: "mates",
-    selector: "mates-quick-ping",
-    title: "Send a focused Ping",
-    body: "Quick Pings create a shareable Yes/No link for selected classes. Always share it with the intended person. Press Finish to exit the demo and restore your own data automatically.",
+    eyebrow: "YOU'RE READY · 10 OF 10",
+    title: "Now make College Tracker yours.",
+    body: "Add your real subjects, review your timetable, choose the widgets you want and save a backup before relying on the app day to day.",
+    note: "This tour never asks you to click through the live interface. Finish to return to your own data.",
+    visual: "finish",
   },
 ]
 
-/** Class toggled directly on the real target element — see the `.demo-tour-spot` rule in globals.css */
-const SPOT_CLASS = "demo-tour-spot"
-/** The fixed "Viewing demo data" bar (app/page.tsx), so its real on-screen height can be read rather than guessed */
-const TOPBAR_SELECTOR = "[data-tour-topbar]"
-const MARGIN = 16
-
-interface Props {
-  open: boolean
-  onGoto: (page: string) => void
-  onEnd: () => void
+function MiniCard({ children, className = "" }: { children: React.ReactNode; className?: string }) {
+  return <div className={`rounded-2xl bg-card border border-ink/[0.06] shadow-sm ${className}`}>{children}</div>
 }
 
-/**
- * A guided, forced walkthrough over the demo data: it drives the tabs itself and highlights one real part of the
- * screen per step, so the tour is a tour of the actual app, not a set of screenshots.
- *
- * Two things this has to get right, on any phone, at any point in a long scrolling page:
- *  1. The highlight is a class put directly on the real element (an outline plus a brightness lift), not a
- *     floating copy guessing its position — so it can never drift out of sync with what's actually on screen.
- *  2. The caption card at the bottom of the screen, and the "Viewing demo data" bar at the top, both cover real
- *     screen space throughout the tour. The page is deliberately left free to scroll (nothing here locks it), and
- *     each step scrolls the page itself so the highlighted element lands in whatever room is left between the two
- *     — never behind either of them — reading their real, current heights rather than assuming fixed numbers.
- */
-export default function DemoTour({ open, onGoto, onEnd }: Props) {
-  const [i, setI] = useState(0)
-  const target = useRef<HTMLElement | null>(null)
-  const frames = useRef<number[]>([])
-  const captionRef = useRef<HTMLDivElement>(null)
-  const [captionH, setCaptionH] = useState(0)
-
-  const unspot = () => {
-    target.current?.classList.remove(SPOT_CLASS)
-    target.current = null
+function Preview({ visual }: { visual: Visual }) {
+  if (visual === "welcome") {
+    return (
+      <div className="rounded-[28px] bg-ink p-5 text-paper min-h-[260px] flex flex-col justify-between">
+        <div className="flex items-center justify-between"><span className="w-10 h-10 rounded-2xl bg-white/15 grid place-items-center"><Sparkle size={21} weight="duotone" /></span><span className="text-[11px] uppercase tracking-[0.16em] text-white/60">Your college companion</span></div>
+        <div><p className="text-[12px] font-semibold uppercase tracking-widest text-white/65">Today, made clearer</p><h3 className="font-display text-[32px] leading-[1.06] mt-2">Less hunting.<br/>More knowing.</h3><p className="text-[13px] text-white/70 mt-3 leading-relaxed">Classes · Attendance · Deadlines · Mates</p></div>
+        <div className="flex gap-2"><span className="rounded-full bg-white/15 px-3 py-1.5 text-[12px]">Local-first</span><span className="rounded-full bg-white/15 px-3 py-1.5 text-[12px]">Your choice</span></div>
+      </div>
+    )
   }
+  if (visual === "today") {
+    return (
+      <div className="space-y-3">
+        <div className="flex items-center justify-between"><span className="text-[12px] uppercase tracking-widest text-mute font-bold">Today's classes</span><span className="text-[12px] text-mute">2 to mark</span></div>
+        <MiniCard className="p-4"><div className="flex items-center justify-between text-[12px] text-mute"><span>09:00–10:00</span><span className="rounded-full bg-info/10 text-info px-2 py-1 font-bold">UP NEXT</span></div><h3 className="text-[22px] font-bold mt-3">Pathology</h3><p className="text-[13px] text-mute mt-1">74% attendance · 75% required</p><div className="grid grid-cols-2 gap-2 mt-4"><span className="rounded-xl bg-good text-white text-center py-2.5 font-semibold text-[13px]">✓ Present</span><span className="rounded-xl bg-secondary text-bad text-center py-2.5 font-semibold text-[13px]">Absent</span></div></MiniCard>
+        <MiniCard className="flex items-center justify-between gap-3 p-3.5"><span><b className="block text-[14px]">Next up: Pharmacology</b><small className="text-mute">10:00–11:00</small></span><Clock size={20} className="text-mute"/></MiniCard>
+      </div>
+    )
+  }
+  if (visual === "tomorrow") {
+    return (
+      <div className="rounded-[26px] p-4 text-white min-h-[260px]" style={{background:"linear-gradient(145deg,#1e3a5f,#276c8e 58%,#479ca4)"}}>
+        <p className="text-[11px] font-extrabold tracking-widest text-white/75 uppercase">Tomorrow · 7 lectures</p><h3 className="font-display text-[25px] mt-1">Lectures scheduled</h3>
+        <div className="space-y-2 mt-4">{[["09:00","Pathology"],["10:00","Pharmacology"],["11:00","Microbiology"],["12:00","Community Medicine"]].map(([time,name])=><div key={time} className="flex items-center gap-3 rounded-xl bg-white/15 px-3 py-2.5"><span className="text-[12px] font-bold text-white/75 w-12">{time}</span><span className="text-[13px] font-semibold">{name}</span></div>)}</div>
+        <p className="text-[12px] font-semibold mt-3 text-white/90">+ 3 more · Tap to open Calendar</p>
+      </div>
+    )
+  }
+  if (visual === "attendance") {
+    return (
+      <div className="grid grid-cols-2 gap-3">
+        {[{name:"Pathology",pct:"74%",tone:"text-bad",note:"Attend next"},{name:"Pharmacology",pct:"82%",tone:"text-good",note:"On track"},{name:"ENT",pct:"—",tone:"text-mute",note:"New subject"},{name:"Microbiology",pct:"79%",tone:"text-warn",note:"1 skip left"}].map((item,i)=><MiniCard key={item.name} className="p-3.5"><div className="flex items-center gap-2.5"><div className="w-12 h-12 rounded-full border-[5px] border-secondary grid place-items-center"><span className={`text-[11px] font-bold ${item.tone}`}>{item.pct}</span></div><div className="min-w-0"><b className="block text-[13px] truncate">{item.name}</b><small className="text-[11px] text-mute">{item.note}</small></div></div></MiniCard>)}
+      </div>
+    )
+  }
+  if (visual === "subjects") {
+    return (
+      <MiniCard className="p-3.5">
+        <div className="flex items-center justify-between mb-2"><b className="text-[13px]">Your subjects</b><span className="rounded-full bg-ink text-paper px-2.5 py-1 text-[11px]">+ Add</span></div>
+        {[["Pathology","Theory"],["Pharmacology","Practical"],["Microbiology","Theory"]].map(([name,tag])=><div key={name} className="flex items-center justify-between gap-3 py-3 border-t border-ink/10"><span className="text-[14px] font-semibold">{name}</span><span className="rounded-full bg-secondary px-2.5 py-1 text-[11px] text-mute">{tag}</span></div>)}
+        <p className="text-[12px] text-mute mt-2 flex items-center gap-2"><Tag size={15}/> Edit, plan or delete from subject details</p>
+      </MiniCard>
+    )
+  }
+  if (visual === "calendar") {
+    return (
+      <MiniCard className="p-4">
+        <div className="flex items-center justify-between"><div><p className="text-[11px] text-mute uppercase tracking-widest font-bold">October 2026</p><h3 className="font-display text-[24px]">Thursday, 29</h3></div><CalendarBlank size={28}/></div>
+        <div className="grid grid-cols-7 gap-1 mt-4 text-center text-[11px]">{["M","T","W","T","F","S","S"].map((day,i)=><span key={`${day}-${i}`} className="text-mute">{day}</span>)}</div>
+        <div className="grid grid-cols-7 gap-1 mt-2 text-center">{Array.from({length:21},(_,i)=><span key={i} className={`h-8 rounded-lg grid place-items-center text-[12px] ${i===9 ? "bg-ink text-paper font-bold" : ""}`}>{i+1}</span>)}</div>
+        <div className="rounded-xl bg-secondary p-3 mt-4"><p className="text-[11px] uppercase tracking-widest text-mute font-bold">Upcoming deadline</p><p className="text-[14px] font-semibold mt-1">Pediatrics case record · Tomorrow</p></div>
+      </MiniCard>
+    )
+  }
+  if (visual === "mates") {
+    return (
+      <div className="space-y-3">
+        <MiniCard className="p-4"><div className="flex items-center gap-3"><span className="w-11 h-11 rounded-2xl bg-good/15 text-good grid place-items-center"><ShareNetwork size={20}/></span><div><b className="block text-[15px]">WhatsApp Ping · 24h</b><small className="text-mute">A private Yes/No link</small></div></div><div className="grid grid-cols-2 gap-2 mt-4"><span className="rounded-xl bg-good text-white py-2 text-center text-[13px] font-semibold">Yes</span><span className="rounded-xl bg-secondary text-ink py-2 text-center text-[13px] font-semibold">No</span></div></MiniCard>
+        <MiniCard className="p-4 text-[13px] leading-relaxed text-mute">In-app Pings unlock after Google sign-in and the other person accepts your Mate connection.</MiniCard>
+      </div>
+    )
+  }
+  if (visual === "account") {
+    return (
+      <MiniCard className="p-4">
+        <div className="flex items-center gap-3 border-b border-ink/10 pb-4"><span className="w-14 h-14 rounded-full bg-secondary grid place-items-center"><UserCircle size={38}/></span><span className="min-w-0"><b className="block text-[16px]">Your Google profile</b><small className="text-mute">Photo when available</small></span></div>
+        {[["Account","Up to date"],["Backup & restore","Export or recover"],["Reset all data","Start fresh"]].map(([label,hint])=><div key={label} className="flex items-center justify-between gap-3 py-3 border-b last:border-b-0 border-ink/10"><b className="text-[13px]">{label}</b><small className="text-mute">{hint}</small></div>)}
+      </MiniCard>
+    )
+  }
+  if (visual === "notifications") {
+    return (
+      <MiniCard className="p-4">
+        <div className="flex items-center gap-3"><span className="w-11 h-11 rounded-2xl bg-info/10 text-info grid place-items-center"><BellRinging size={22}/></span><span><b className="block text-[15px]">Notifications are on</b><small className="text-mute">Permission granted on this device</small></span></div>
+        <div className="mt-4 space-y-2"><div className="rounded-xl bg-secondary px-3 py-3"><b className="text-[13px]">While the app is open</b><p className="text-[12px] text-mute mt-1">Class reminders can run here.</p></div><div className="rounded-xl bg-secondary px-3 py-3"><b className="text-[13px]">After you close it</b><p className="text-[12px] text-mute mt-1">Background delivery needs extra browser and server setup.</p></div></div>
+      </MiniCard>
+    )
+  }
+  return (
+    <div className="rounded-[28px] bg-card border border-ink/10 p-5 min-h-[260px] flex flex-col justify-between">
+      <span className="w-14 h-14 rounded-full bg-good/15 text-good grid place-items-center"><CheckCircle size={30}/></span>
+      <div><h3 className="font-display text-[27px] leading-tight">Ready when you are.</h3><p className="text-[14px] text-mute mt-2">Start with your subjects. The rest can grow with your routine.</p></div>
+      <div className="rounded-2xl bg-secondary p-3 flex items-center gap-2.5 text-[13px] font-semibold"><ShieldCheck size={18}/> Your real data returns when you finish.</div>
+    </div>
+  )
+}
+
+export default function DemoTour({ open, onEnd }: { open: boolean; onEnd: () => void }) {
+  const [index, setIndex] = useState(0)
+  const touchStartX = useRef<number | null>(null)
+  const step = STEPS[index]
+  const last = index === STEPS.length - 1
 
   useEffect(() => {
-    if (open) setI(0)
-    else unspot()
+    if (open) setIndex(0)
   }, [open])
 
-  // The caption's height changes a little from step to step (some are one line longer than others); this tracks
-  // its real, current height rather than assuming one number
-  useEffect(() => {
-    if (!open || !captionRef.current) return
-    const el = captionRef.current
-    const ro = new ResizeObserver(() => setCaptionH(el.offsetHeight))
-    ro.observe(el)
-    setCaptionH(el.offsetHeight)
-    return () => ro.disconnect()
-  }, [open])
-
-  // While the tour is open, the page can always be scrolled far enough to clear the caption card — including for
-  // something that sits near the very bottom of a page, which would otherwise have nowhere left to scroll to.
-  // Measured as "everything from the caption's real top edge down to the true bottom of the screen", so it already
-  // includes whatever safe-area padding sits below the caption, rather than assuming a number for it.
   useEffect(() => {
     if (!open) return
-    const captionTop = captionRef.current?.getBoundingClientRect().top ?? window.innerHeight
-    const reserve = window.innerHeight - captionTop + MARGIN
-    const prev = document.body.style.paddingBottom
-    document.body.style.paddingBottom = `${reserve}px`
-    return () => {
-      document.body.style.paddingBottom = prev
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") onEnd()
+      if (event.key === "ArrowRight") setIndex((i) => Math.min(STEPS.length - 1, i + 1))
+      if (event.key === "ArrowLeft") setIndex((i) => Math.max(0, i - 1))
     }
-  }, [open, captionH])
-
-  const step = STEPS[i]
-
-  /** Scrolls the page so `el` sits centred in whatever room is left between the top bar and the caption card, or,
-   *  if it's taller than that, at least starts just clear of the top bar rather than ending up behind either */
-  const position = (el: HTMLElement) => {
-    // Read the top bar's and the caption's own real, current edges — both already account for their own CSS
-    // (padding, safe-area insets) correctly; reconstructing those edges from a height and a viewport size instead
-    // is exactly how this went wrong the first time, silently dropping the safe-area amount baked into their padding.
-    const topReserve = (document.querySelector<HTMLElement>(TOPBAR_SELECTOR)?.getBoundingClientRect().bottom ?? 0) + MARGIN
-    const bottomBoundary = (captionRef.current?.getBoundingClientRect().top ?? window.innerHeight) - MARGIN
-    const safeHeight = Math.max(120, bottomBoundary - topReserve)
-    const rect = el.getBoundingClientRect()
-    const desiredTop = rect.height <= safeHeight ? topReserve + (safeHeight - rect.height) / 2 : topReserve
-    const delta = rect.top - desiredTop
-    if (Math.abs(delta) > 1) window.scrollBy({ top: delta, left: 0, behavior: "auto" })
-  }
-
-  useEffect(() => {
-    if (!open) return
-    onGoto(step.page)
-    unspot()
-    frames.current.forEach(cancelAnimationFrame)
-    frames.current = []
-
-    // Two frames give the page-switch above time to render before anything is measured or scrolled
-    const a = requestAnimationFrame(() => {
-      const b = requestAnimationFrame(() => {
-        const el = step.selector ? document.querySelector<HTMLElement>(`[data-tour="${step.selector}"]`) : null
-        if (!el) return
-        el.classList.add(SPOT_CLASS)
-        target.current = el
-        position(el)
-      })
-      frames.current.push(b)
-    })
-    frames.current.push(a)
-
-    const onResize = () => target.current && position(target.current)
-    window.addEventListener("resize", onResize)
-    return () => {
-      frames.current.forEach(cancelAnimationFrame)
-      window.removeEventListener("resize", onResize)
-      unspot()
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, i])
-
-  // The caption growing or shrinking (a longer line wrapping, a font finishing loading) can shift how much room is
-  // left; re-settle the current target against its latest height rather than leaving it slightly off
-  useEffect(() => {
-    if (open && target.current) position(target.current)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [captionH])
-
-  useEffect(() => {
-    if (!open) return
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onEnd()
     window.addEventListener("keydown", onKey)
     return () => window.removeEventListener("keydown", onKey)
   }, [open, onEnd])
 
   if (!open) return null
-  const last = i === STEPS.length - 1
+
+  const previous = () => setIndex((i) => Math.max(0, i - 1))
+  const next = () => last ? onEnd() : setIndex((i) => Math.min(STEPS.length - 1, i + 1))
 
   return (
-    <div role="dialog" aria-modal="true" aria-label="Demo tour" className="fixed inset-0 z-[75]">
-      {/* Invisible — the real app is inert underneath (a tap here does nothing) — but a vertical drag is still let
-          through as an ordinary scroll, so the odd step whose content is genuinely taller than the room between the
-          top bar and the caption can still be read in full by scrolling, rather than being force-fitted or cut off */}
-      <div className="absolute inset-0 pointer-events-auto touch-pan-y" aria-hidden />
-
-      <div className="absolute inset-x-0 bottom-0 px-3 pb-[calc(env(safe-area-inset-bottom)+10px)]">
-        <div ref={captionRef} className="mx-auto max-w-sm rounded-2xl bg-paper p-4 shadow-xl shadow-black/20">
-          <div className="flex items-center justify-between">
-            <span className="num text-[12px] font-semibold text-mute">
-              {i + 1} / {STEPS.length}
-            </span>
-            <button onClick={onEnd} aria-label="End tour" className="w-8 h-8 -mr-1.5 grid place-items-center rounded-full text-mute">
-              <X weight="bold" className="w-4 h-4" />
-            </button>
-          </div>
-          <h2 className="font-display text-[19px] leading-[1.18] mt-1.5">{step.title}</h2>
-          <p className="text-[13px] text-mute mt-1 leading-snug">{step.body}</p>
-
-          <div className="flex items-center gap-2 mt-3">
-            {i > 0 && (
-              <button onClick={() => setI((n) => n - 1)} aria-label="Back" className="w-10 h-10 rounded-xl bg-card grid place-items-center flex-shrink-0">
-                <CaretLeft weight="bold" className="w-4 h-4" />
-              </button>
-            )}
-            <button
-              onClick={() => {
-                if (last) {
-                  onEnd()
-                } else {
-                  setI((n) => n + 1)
-                }
-              }}
-              className="flex-1 h-11 rounded-xl bg-ink text-paper text-[14px] font-semibold"
-            >
-              {last ? "Finish tour" : "Next"}
-            </button>
-          </div>
+    <div role="dialog" aria-modal="true" aria-label="College Tracker product tour" className="fixed inset-0 z-[100] flex flex-col bg-background text-foreground">
+      <header className="flex items-center justify-between gap-3 px-4 sm:px-6 pt-[calc(env(safe-area-inset-top)+14px)] pb-3 border-b border-ink/10 flex-shrink-0">
+        <div className="min-w-0">
+          <p className="text-[11px] uppercase tracking-[0.16em] font-bold text-mute">College Tracker</p>
+          <p className="text-[13px] text-mute mt-0.5">Product tour · {index + 1} of {STEPS.length}</p>
         </div>
-      </div>
+        <div className="flex items-center gap-2.5">
+          <div className="hidden sm:flex gap-1.5" aria-label="Tour progress">{STEPS.map((s,i)=><span key={i} className={`h-1.5 w-5 rounded-full ${i===index ? "bg-ink" : "bg-ink/15"}`}/>)}</div>
+          <button onClick={onEnd} aria-label="Exit product tour" className="w-10 h-10 rounded-full bg-secondary text-ink grid place-items-center"><X size={18}/></button>
+        </div>
+      </header>
+
+      <main
+        className="relative flex-1 min-h-0 overflow-y-auto touch-pan-y"
+        onTouchStart={(event) => { touchStartX.current = event.changedTouches[0]?.clientX ?? null }}
+        onTouchEnd={(event) => {
+          const start = touchStartX.current
+          touchStartX.current = null
+          const end = event.changedTouches[0]?.clientX
+          if (start === null || end === undefined) return
+          const dx = end - start
+          if (Math.abs(dx) < 48) return
+          if (dx < 0) setIndex((i) => Math.min(STEPS.length - 1, i + 1))
+          else setIndex((i) => Math.max(0, i - 1))
+        }}
+      >
+        <div className="mx-auto grid min-h-full w-full max-w-5xl grid-cols-1 md:grid-cols-[0.92fr_1.08fr] items-center gap-5 sm:gap-8 px-5 sm:px-12 py-5 sm:py-8">
+          <section className="space-y-4">
+            <span className="inline-flex items-center gap-2 rounded-full bg-secondary px-3 py-1.5 text-[11px] font-extrabold tracking-widest text-mute"><Sparkle size={14}/> {step.eyebrow}</span>
+            <h2 className="font-display text-[clamp(29px,5vw,46px)] leading-[1.04] tracking-tight">{step.title}</h2>
+            <p className="text-[15px] sm:text-[16px] leading-relaxed text-mute">{step.body}</p>
+            <div className="rounded-2xl border border-ink/10 bg-card/80 p-3.5 flex items-start gap-2.5"><span className="w-7 h-7 rounded-full bg-info/10 text-info grid place-items-center shrink-0"><ShieldCheck size={15}/></span><p className="text-[12px] leading-relaxed text-mute">{step.note}</p></div>
+            <p className="text-[12px] text-mute sm:hidden">Swipe left or right to explore.</p>
+          </section>
+          <section aria-label="Illustrated app preview" className="w-full max-w-[460px] mx-auto md:max-w-none">
+            <Preview visual={step.visual}/>
+          </section>
+        </div>
+        <div className="hidden sm:flex pointer-events-none absolute inset-y-0 left-2 right-2 items-center justify-between">
+          <button onClick={previous} disabled={index===0} aria-label="Previous card" className="pointer-events-auto w-10 h-10 rounded-full bg-card border border-ink/10 shadow-md text-ink grid place-items-center disabled:opacity-25"><ArrowLeft size={18}/></button>
+          <button onClick={next} aria-label={last ? "Finish tour" : "Next card"} className="pointer-events-auto w-10 h-10 rounded-full bg-card border border-ink/10 shadow-md text-ink grid place-items-center">{last ? <Check size={18}/> : <ArrowRight size={18}/>}</button>
+        </div>
+      </main>
+
+      <footer className="flex items-center justify-between gap-3 px-4 sm:px-6 pt-3 pb-[calc(env(safe-area-inset-bottom)+14px)] border-t border-ink/10 flex-shrink-0">
+        <button onClick={previous} disabled={index===0} className="h-11 px-4 rounded-xl bg-secondary text-ink text-[14px] font-semibold disabled:opacity-35 sm:hidden">Back</button>
+        <div className="flex items-center gap-1.5 sm:hidden" aria-label="Tour progress">{STEPS.map((s,i)=><span key={i} className={`h-1.5 w-2 rounded-full ${i===index ? "bg-ink w-4" : "bg-ink/20"}`}/>)}</div>
+        <button onClick={next} className="h-11 min-w-32 px-5 rounded-xl bg-ink text-paper text-[14px] font-bold ml-auto">
+          {last ? "Finish and return" : "Next card"}
+        </button>
+      </footer>
     </div>
   )
 }

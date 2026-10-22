@@ -774,54 +774,54 @@ export default function Home() {
   // ---------- developer tools (in Settings) ----------
   const testNotificationSetup = async () => {
     try {
-      if (!("Notification" in window)) return alert("This browser does not support notifications.")
+      if (!("Notification" in window)) return alert("This browser cannot show notifications. You can still use the rest of College Tracker.")
       await enableNotifications()
-      if (Notification.permission !== "granted") return alert("Notifications are not enabled. Allow them in this site's browser settings and try again.")
+      if (Notification.permission !== "granted") return alert("Notifications are turned off for this site. Allow them in your browser settings, then try again.")
       const registration = await registerServiceWorker()
-      if (!registration) return alert("The service worker could not be registered. Background push isn't ready on this browser.")
+      if (!registration) return alert("This device could not finish setting up alerts after you close the app. Local reminders can still run while the app is open.")
       const subscription = await subscribeToPushNotifications()
       const notificationShown = await sendLocalNotification("Attendance Tracker test", { body: "This device accepted a local notification request." })
       alert(!notificationShown
-        ? "No notification was displayed. Check notification permission, the active service worker, and Home Screen installation on iPhone if applicable."
+        ? "No test alert appeared. Check browser permission and try again. On iPhone or iPad, open the Home Screen app and retry setup."
         : subscription
-          ? "Test notification displayed and an FCM token is available. Remote Ping alerts still depend on the configured server sender. Timetable reminders are checked while the app is open."
-          : "Test notification displayed, but no FCM token was obtained. Remote Ping alerts are not confirmed. Timetable reminders are checked while the app is open.")
+          ? "Your test alert was displayed. This device is registered, but background friend alerts still depend on server setup. Class reminders in this version run while the app is open."
+          : "Your test alert was displayed, but background delivery was not confirmed. Local reminders can still run while the app is open.")
     } catch (err) {
       console.error("Test notification error", err)
-      alert("Failed to test notifications: " + (err instanceof Error ? err.message : String(err)))
+      alert("Notification setup could not be completed. " + (err instanceof Error ? err.message : "Please check your browser permissions and try again."))
     }
   }
 
   const testFcmToken = async () => {
     try {
-      if (!("Notification" in window)) return alert("Notifications are not supported in this browser")
-      if (!("serviceWorker" in navigator)) return alert("Service Workers not supported in this browser")
-      if (!("PushManager" in window)) return alert("Push notifications not supported in this browser")
+      if (!("Notification" in window)) return alert("This browser does not support the background alert features needed for this check.")
+      if (!("serviceWorker" in navigator)) return alert("This browser cannot register the background service needed for alerts after the app closes.")
+      if (!("PushManager" in window)) return alert("This browser cannot register for background alerts. Local reminders may still work while the app is open.")
 
       let permission = Notification.permission
       if (permission === "default") permission = await Notification.requestPermission()
-      if (permission !== "granted") return alert("Notification permission denied")
+      if (permission !== "granted") return alert("Notifications are blocked for this site. Change the permission in browser settings and retry.")
 
       const vapidKey = getFirebaseVapidKey()
       if (!vapidKey) {
-        alert("Web Push VAPID public key is missing. In Firebase Console open Project settings → Cloud Messaging → Web Push certificates, then set the PUBLIC key as NEXT_PUBLIC_FIREBASE_VAPID_KEY in .env.local and restart the dev server.")
+        alert("Background alert registration is not configured for this deployment. You can still use local reminders while the app is open. The app administrator needs to finish the notification service setup.")
         return
       }
       await navigator.serviceWorker.register("/sw.js", { scope: "/", updateViaCache: "none" })
       const registration = await navigator.serviceWorker.ready
-      if (!registration.active) return alert("The service worker is not active yet. Refresh the page and retry.")
+      if (!registration.active) return alert("The background alert service is not ready yet. Refresh the page and try again.")
 
       const messaging = await getClientMessaging()
-      if (!messaging) return alert("Firebase messaging is not supported in this browser, or this project is configured to use local emulators.")
+      if (!messaging) return alert("This browser or app setup cannot register for background alerts right now. Local reminders may still work while the app is open.")
 
       const { getToken } = await import("firebase/messaging")
       const token = await getToken(messaging, { vapidKey, serviceWorkerRegistration: registration })
 
       if (token) {
         // FCM registration tokens are private device endpoints; never print or display the token itself.
-        alert("FCM token obtained. This confirms browser token registration only; server-side/background delivery must be configured and tested separately.")
+        alert("This device registered for background alerts. Actual delivery after the app closes still depends on the app server and browser support.")
       } else {
-        alert("No FCM token received. Local reminders may still work while the app is open.")
+        alert("Background alert registration did not complete. Local reminders may still work while the app is open.")
       }
     } catch (error: unknown) {
       console.warn("FCM test could not register remote push.")
@@ -1308,7 +1308,7 @@ export default function Home() {
         />
       )}
       <ScanGate open={scanGate} link={typeof window === "undefined" ? "" : `${window.location.origin}/scan`} onContinue={() => setScanGate(false)} />
-      <DemoTour open={demoTourOpen} onGoto={goto} onEnd={exitDemo} />
+      <DemoTour open={demoTourOpen} onEnd={exitDemo} />
       <WrappedStory open={isWrappedOpen} onClose={() => setIsWrappedOpen(false)} subjects={subjects} mates={mates} onRepay={repayQuiet} />
 
       <SubjectSheet

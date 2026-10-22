@@ -12,11 +12,7 @@ export function isPushServiceUnavailable(error: unknown): boolean {
 
 export function pushSetupMessage(error: unknown): string {
   if (isPushServiceUnavailable(error)) {
-    return "This browser could not register for remote push notifications. In Brave, open brave://settings/privacy, enable “Use Google services for push messaging”, then fully restart Brave. Also verify the Firebase Web Push public VAPID key is set in .env.local. Attendance and friend connections can still work; local reminders may work while the app is open."
+    return "This browser could not register for alerts after the app closes. You can still use local reminders while College Tracker is open. In Brave, enable Google services for push messaging in Privacy and security settings, then fully restart the browser and try again."
   }
-  const e = error && typeof error === "object" ? error as { code?: unknown; message?: unknown } : {}
-  if (typeof e.code === "string" && e.code === "messaging/unsupported-browser") {
-    return "This browser does not support Firebase push messaging. Local attendance reminders may still work while the app is open."
-  }
-  return typeof e.message === "string" && e.message ? e.message : "Remote push notification setup failed. Check the browser console for the error code."
+  return "Background alert setup could not be completed on this device. Check browser notification permission and try again. Local reminders may still work while College Tracker is open."
 }
