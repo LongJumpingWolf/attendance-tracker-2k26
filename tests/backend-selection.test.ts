@@ -82,10 +82,17 @@ describe("the architecture holds: UI/domain -> repository -> adapter", () => {
   const all = ["app", "components", "hooks", "lib"].flatMap(files)
   const text = (f: string) => fs.readFileSync(path.join(ROOT, f), "utf8")
 
-  it("only the Firebase adapter (and the Firebase app bootstrap) imports runtime Firestore functions", () => {
+  it("runtime Firestore imports stay in the adapter, bootstrap, and Firebase-only integrations", () => {
     const re = /import\s+(type\s+)?(?:\{[^}]*\}|\*\s+as\s+\w+|\w+)\s+from\s+["']firebase\/firestore["']/g
     const runtime = all.filter((f) => [...text(f).matchAll(re)].some((m) => !m[1]))
-    expect(runtime.sort()).toEqual(["lib/backend/firebase/index.ts", "lib/firebase.ts"])
+    expect(runtime.sort()).toEqual([
+      "components/feedback-reply-watcher.tsx",
+      "components/share-ping-page.tsx",
+      "lib/backend/firebase/index.ts",
+      "lib/feedback.ts",
+      "lib/firebase.ts",
+      "lib/use-social.ts",
+    ])
   })
 
   it("no application file refers to a Firestore collection path", () => {

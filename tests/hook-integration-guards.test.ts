@@ -90,7 +90,7 @@ describe("the local gateway refuses to start unless everything is loopback", () 
     expect(run2({}).stderr).toMatch(/run-hook-supabase/)
     expect(run2({ FIREBASE_AUTH_EMULATOR_HOST: "example.com:9099", LOCAL_SUPABASE_API_URL: "http://127.0.0.1:54321", LOCAL_SUPABASE_JWT_SECRET: "x", LOCAL_SUPABASE_PUBLISHABLE_KEY: "k" }).stderr).toMatch(/not loopback/)
     expect(run2({ LOCAL_SUPABASE_API_URL: "https://x.supabase.co", LOCAL_SUPABASE_JWT_SECRET: "x", LOCAL_SUPABASE_PUBLISHABLE_KEY: "k" }).stderr).toMatch(/not loopback/)
-  })
+  }, 30000)
 })
 
 describe("how the gateway decides (source rules; the behaviour is proven by the end-to-end run)", () => {

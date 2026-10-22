@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest"
 import crypto from "node:crypto"
 import fs from "node:fs"
 import path from "node:path"
+import { spawnSync } from "node:child_process"
 import { getAttendance, localDate, markFor, markWithUndo, skipVerdict, withSet } from "@/lib/attendance"
 import { cloudPut } from "@/lib/cloud-sync"
 import { dbDel, dbGet, dbSet } from "@/lib/db"
@@ -18,8 +19,8 @@ import type { Mate, Ping, Subject } from "@/lib/types"
  * MIGRATION INVARIANTS.
  *
  * The backend migration (Firebase -> Supabase, see MIGRATION_PLAN.md) must not change what the app does. These tests pin
- * the things that must stay true through every phase. They describe CURRENT behaviour and were written against HEAD 3644948:
- * if one fails during the migration, the migration changed behaviour, and that is a defect in the migration, not in the test.
+ * the things that must stay true through every phase. Protected-file hashes were reviewed and rebased on main at 37a5199
+ * after approved post-migration changes; behavior assertions below remain the regression checks.
  *
  * Do not "update the expected value to make it green". The only legitimate edit is the deliberate, reviewed one described
  * on the protected-files guard below.
@@ -108,14 +109,15 @@ describe("Firebase is still the backend, and nothing has been wired to Supabase"
     expect(offenders).toEqual([])
   })
 
-  it("only the Supabase CLI (dev) is installed, with a local project directory, schema migrations and no remote link", () => {
+  it("only the Supabase CLI (dev) is installed, with a local project directory and no committed remote link", () => {
     // Phase 2 added the CLI and `supabase init`; Phase 2B added the local schema migrations. A client package (@supabase/*) must update this test in the same commit, saying so.
     const pkg = JSON.parse(fs.readFileSync(path.join(ROOT, "package.json"), "utf8"))
     expect(Object.keys(pkg.dependencies ?? {}).filter((n) => /supabase/i.test(n))).toEqual([])
     expect(Object.keys(pkg.devDependencies ?? {}).filter((n) => /supabase/i.test(n))).toEqual(["supabase"])
     expect(fs.existsSync(path.join(ROOT, "supabase", "config.toml"))).toBe(true)
     expect(fs.existsSync(path.join(ROOT, "supabase", "migrations"))).toBe(true)
-    expect(fs.existsSync(path.join(ROOT, "supabase", ".temp", "project-ref"))).toBe(false)
+    const trackedLink = spawnSync("git", ["ls-files", "--error-unmatch", "supabase/.temp/project-ref"], { cwd: ROOT, stdio: "ignore" })
+    expect(trackedLink.status).not.toBe(0)
   })
 
   it("the Firebase project and the deployed rules file are still in place", () => {

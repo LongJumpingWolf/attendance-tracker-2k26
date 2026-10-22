@@ -44,6 +44,8 @@ export type PutResult = { ok: true; rev: number } | { ok: false; reason: "confli
 
 export type CloudKind = "firebase" | "dev" | "none"
 
+export const cloudAvailable = (kind: CloudKind): boolean => kind !== "none"
+
 export const cloudKind = (): CloudKind =>
   firebaseConfigured() ? "firebase" : process.env.NODE_ENV !== "production" ? "dev" : "none"
 

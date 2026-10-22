@@ -2,7 +2,7 @@
  * The remaining safe-replacement defects, as behaviour (real restore-point, reminder, lock, merge and sign-in code on a stubbed
  * localStorage; injected effects only where a failure has to be forced):
  *   demo protection, tags-only / reminders-only data, failed persistence, state changing during the safety copy, overlapping
- *   destructive operations, reset and sign-out failures, restore points written before reminders were kept in them.
+ *   destructive operations, reset and cloud-clear failures, restore points written before reminders were kept in them.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import fs from "node:fs"
@@ -16,7 +16,7 @@ import { loadSchedule, saveSchedule, SCHEDULE_KEY, type ScheduleEntry } from "@/
 import { dataPersisted, resetIsComplete } from "@/lib/replace-verify"
 import { contents, holdsSomething, listRestorePoints, RestorePointError, saveRestorePoint } from "@/lib/restore-points"
 import { MESSAGES, resetEverything, restoreFrom, type ReplaceResult, type RestoreRequest } from "@/lib/safe-replace"
-import { emptyData, planFirstSignIn, PromptController, restorable, runChoice, signOutIfConfigured, withPutTimeout, withReadTimeout, type ChoiceEnv } from "@/lib/signin-reconcile"
+import { emptyData, planFirstSignIn, PromptController, restorable, runChoice, withPutTimeout, withReadTimeout, type ChoiceEnv } from "@/lib/signin-reconcile"
 import { same } from "@/lib/merge"
 import type { Subject } from "@/lib/types"
 
@@ -59,13 +59,13 @@ function device(start: Data = NOW_DATA, reminders: ScheduleEntry[] = [rem("rn")]
     stored: start,
     /** replaces the persistence check (to simulate storage that never confirms, or a concurrent change during the wait) */
     persistCheck: null as null | ((d: BackupData) => Promise<boolean>),
-    signOutFails: false,
-    /** replaces the sign-out (to hang it, or to change the data while it waits) */
-    signOutImpl: null as null | (() => Promise<void>),
+    clearCloudFails: false,
+    /** replaces cloud clearing (to hold it, or to change the data while it waits) */
+    clearCloudImpl: null as null | (() => Promise<void>),
     clearedOk: true,
     applied: 0,
     cleared: 0,
-    signedOut: 0,
+    cloudCleared: 0,
     onSave: null as null | (() => void), // runs while the safety copy is being saved
   }
   saveSchedule(reminders)
@@ -93,11 +93,10 @@ function device(start: Data = NOW_DATA, reminders: ScheduleEntry[] = [rem("rn")]
   const reset = () =>
     resetEverything({
       ...base,
-      signOutTimeoutMs: 40,
-      signOut: async () => {
-        s.signedOut++
-        if (s.signOutImpl) return s.signOutImpl()
-        if (s.signOutFails) throw new Error("sign-out failed")
+      clearCloud: async () => {
+        s.cloudCleared++
+        if (s.clearCloudImpl) return s.clearCloudImpl()
+        if (s.clearCloudFails) throw new Error("cloud clear failed")
       },
       clear: () => {
         s.cleared++
@@ -111,12 +110,12 @@ function device(start: Data = NOW_DATA, reminders: ScheduleEntry[] = [rem("rn")]
 const names = (d: Data) => d.subjects.map((x) => x.name)
 
 describe("demo protection", () => {
-  it.each(["restore", "reset"] as const)("%s is refused while the demo is on screen: nothing is saved, signed out, changed or cleared", async (op) => {
+  it.each(["restore", "reset"] as const)("%s is refused while the demo is on screen: nothing is saved, cleared or changed", async (op) => {
     const d = device()
     d.s.demo = true
     const r = await d[op]()
     expect(r).toEqual({ ok: false, message: MESSAGES.demo })
-    expect(d.s.applied + d.s.cleared + d.s.signedOut).toBe(0)
+    expect(d.s.applied + d.s.cleared + d.s.cloudCleared).toBe(0)
     expect(names(d.s.data)).toEqual(["Now"])
     expect(loadSchedule().map((x) => x.id)).toEqual(["rn"])
     expect(await listRestorePoints()).toEqual([])
@@ -128,21 +127,21 @@ describe("demo protection", () => {
     d.s.onSave = () => void (d.s.demo = true)
     const r = await d[op]()
     expect(r).toEqual({ ok: false, message: MESSAGES.demo })
-    expect(d.s.applied + d.s.cleared + d.s.signedOut).toBe(0)
+    expect(d.s.applied + d.s.cleared + d.s.cloudCleared).toBe(0)
     expect(loadSchedule().map((x) => x.id)).toEqual(["rn"])
     expect(lockHolder()).toBeNull()
   })
 
-  it("reset: the demo starting after sign-out but before the wipe still stops the wipe", async () => {
+  it("reset: the demo starting during cloud clear stops the local wipe", async () => {
     const d = device()
     const base = d.base
     const r = await resetEverything({
       ...base,
-      signOut: async () => void (d.s.demo = true),
+      clearCloud: async () => void (d.s.demo = true),
       clear: () => void d.s.cleared++,
       isCleared: async () => true,
     })
-    expect(r).toEqual({ ok: false, message: MESSAGES.demo })
+    expect(r).toEqual({ ok: false, message: MESSAGES.resetHalfDone })
     expect(d.s.cleared).toBe(0)
   })
 
@@ -327,7 +326,7 @@ describe("the data changing while the safety copy is being saved", () => {
     d.s.onSave = () => void (d.s.data = { ...d.s.data, tags: [...d.s.data.tags, `t${n++}`] })
     const r = await d.reset()
     expect(r).toEqual({ ok: false, message: MESSAGES.changedWhileSaving })
-    expect(d.s.cleared + d.s.signedOut + d.s.applied).toBe(0)
+    expect(d.s.cleared + d.s.cloudCleared + d.s.applied).toBe(0)
     expect(lockHolder()).toBeNull()
   })
 })
@@ -347,7 +346,7 @@ describe("overlapping destructive operations", () => {
     expect(lockHolder()).toBe("restore")
     const second = await d.reset()
     expect(second).toEqual({ ok: false, message: MESSAGES.busy })
-    expect(d.s.cleared + d.s.signedOut).toBe(0)
+    expect(d.s.cleared + d.s.cloudCleared).toBe(0)
     release()
     expect((await first).ok).toBe(true)
     expect(d.s.applied).toBe(1)
@@ -365,7 +364,7 @@ describe("overlapping destructive operations", () => {
   it.each([
     ["a failed safety copy", async (d: ReturnType<typeof device>) => { refuse.add("*"); ls.clear(); return d.restore() }],
     ["a failed persistence check", async (d: ReturnType<typeof device>) => { d.s.persistOk = false; return d.restore() }],
-    ["a failed sign-out", async (d: ReturnType<typeof device>) => { d.s.signOutFails = true; return d.reset() }],
+    ["a failed cloud clear", async (d: ReturnType<typeof device>) => { d.s.clearCloudFails = true; return d.reset() }],
     ["a thrown error", async (d: ReturnType<typeof device>) => { d.base.saveRestorePoint = async () => { throw new TypeError("boom") }; return d.restore() }],
     ["a success", async (d: ReturnType<typeof device>) => d.restore()],
   ])("the lock is released after %s", async (_n, run) => {
@@ -433,29 +432,30 @@ describe("overlapping destructive operations", () => {
   })
 })
 
-describe("reset: sign-out and deletion failures", () => {
-  it("sign-out fails: refused BEFORE anything is wiped (so no empty copy can reach the account), safety copy kept, accurate message", async () => {
+describe("reset: cloud clear and deletion failures", () => {
+  it("cloud clearing fails before the local wipe, and the safety copy is kept", async () => {
     const d = device()
-    d.s.signOutFails = true
+    d.s.clearCloudFails = true
     const r = await d.reset()
-    expect(r).toEqual({ ok: false, message: MESSAGES.signOutFailed })
+    expect(r).toEqual({ ok: false, message: MESSAGES.resetHalfDone })
+    expect(d.s.cloudCleared).toBe(1)
     expect(d.s.cleared).toBe(0)
     expect(names(d.s.data)).toEqual(["Now"])
     expect(loadSchedule().map((x) => x.id)).toEqual(["rn"])
     expect((await listRestorePoints()).length).toBe(1)
   })
 
-  it("the order is: safety copy, sign out, wipe, check", async () => {
+  it("the order is: safety copy, cloud clear, local wipe, check", async () => {
     const events: string[] = []
     await resetEverything({
       current: () => ({ ...NOW_DATA, reminders: [] }),
       saveRestorePoint: async () => void events.push("copy"),
       demoActive: () => false,
-      signOut: async () => void events.push("signout"),
+      clearCloud: async () => void events.push("cloud"),
       clear: () => void events.push("clear"),
       isCleared: async () => (events.push("check"), true),
     })
-    expect(events).toEqual(["copy", "signout", "clear", "check"])
+    expect(events).toEqual(["copy", "cloud", "clear", "check"])
   })
 
   it("something is still stored after the wipe: not a success; the message says so and points at the safety copy", async () => {
@@ -472,7 +472,7 @@ describe("reset: sign-out and deletion failures", () => {
       current: () => ({ ...NOW_DATA, reminders: [] }),
       saveRestorePoint: async () => {},
       demoActive: () => false,
-      signOut: async () => {},
+      clearCloud: async () => {},
       clear: () => {
         throw new Error("x")
       },
@@ -538,7 +538,7 @@ describe("restore points saved before reminders (or tags, mates) were kept in th
 
   it("the screen restores with the right flag and says why reminders are untouched", () => {
     const src = fs.readFileSync(path.join(ROOT, "components/restore-points.tsx"), "utf8")
-    expect(src).toMatch(/onRestore\(p\.data, \{ reminders: p\.remindersKnown !== false, tags: p\.tagsKnown !== false, mates: p\.matesKnown !== false \}\)/)
+    expect(src).toMatch(/onRestore\(p\.data, \{ reminders: p\.remindersKnown !== false, tags: p\.tagsKnown !== false, mates: p\.matesKnown !== false, holidays: p\.holidaysKnown !== false, scheduleOverrides: p\.scheduleOverridesKnown !== false \}\)/)
     expect(src).toMatch(/older copy didn’t include/)
   })
 })
@@ -594,33 +594,18 @@ describe("restore verification does not undo a legitimate concurrent update", ()
   })
 })
 
-describe("reset: bounded, honest sign-out", () => {
-  it("a sign-out that never answers gives up, wipes nothing, keeps the safety copy and releases the lock", async () => {
-    const d = device()
-    d.s.signOutImpl = () => new Promise<void>(() => {}) // never settles
-    const r = await d.reset()
-    expect(r).toEqual({ ok: false, message: MESSAGES.signOutTimedOut })
-    expect(r.ok === false && r.message).toMatch(/reload/)
-    expect(d.s.cleared).toBe(0)
-    expect(names(d.s.data)).toEqual(["Now"])
-    expect(loadSchedule().map((x) => x.id)).toEqual(["rn"])
-    expect((await listRestorePoints()).length).toBe(1)
-    expect(lockHolder()).toBeNull()
-  })
-
-  it("a sign-out that fails is reported as a failure, not swallowed", async () => {
-    const d = device()
-    d.s.signOutFails = true
-    expect(await d.reset()).toEqual({ ok: false, message: MESSAGES.signOutFailed })
-    expect(d.s.cleared).toBe(0)
-  })
-
-  it("the lock is NOT released while the operation is still running (it is never expired by a clock)", async () => {
+describe("reset: cloud clearing", () => {
+  it("the lock stays held while cloud clearing is in progress", async () => {
     const d = device()
     let finish!: () => void
-    d.s.signOutImpl = () => new Promise<void>((r) => (finish = r))
+    let entered!: () => void
+    const cloudClearStarted = new Promise<void>((r) => (entered = r))
+    d.s.clearCloudImpl = () => {
+      entered()
+      return new Promise<void>((r) => (finish = r))
+    }
     const run = d.reset()
-    await new Promise((r) => setTimeout(r, 15)) // well inside the sign-out timeout
+    await cloudClearStarted
     expect(lockHolder()).toBe("reset")
     expect(await d.restore()).toEqual({ ok: false, message: MESSAGES.busy })
     finish()
@@ -628,24 +613,14 @@ describe("reset: bounded, honest sign-out", () => {
     expect(lockHolder()).toBeNull()
   })
 
-  it("without Firebase there is nothing to sign out of: a local-only reset works; with Firebase a real failure still propagates", async () => {
+  it("a reset clears the cloud copy without signing the account out", async () => {
     const called: string[] = []
-    await signOutIfConfigured("none", async () => void called.push("none"))
-    expect(called).toEqual([])
-    await signOutIfConfigured("firebase", async () => void called.push("fb"))
-    await signOutIfConfigured("dev", async () => void called.push("dev"))
-    expect(called).toEqual(["fb", "dev"])
-    await expect(
-      signOutIfConfigured("firebase", async () => {
-        throw new Error("network")
-      }),
-    ).rejects.toThrow("network")
     const d = device()
-    d.s.signOutImpl = () =>
-      signOutIfConfigured("none", async () => {
-        throw new Error("would fail without Firebase keys")
-      })
+    d.s.clearCloudImpl = async () => void called.push("cloud")
     expect((await d.reset()).ok).toBe(true)
+    expect(called).toEqual(["cloud"])
+    expect(d.s.cloudCleared).toBe(1)
+    expect(d.s.cleared).toBe(1)
   })
 
   it("the hook detaches ownership, revision and markers BEFORE waiting on the network, and nothing is swallowed", () => {
@@ -658,13 +633,13 @@ describe("reset: bounded, honest sign-out", () => {
     expect(hook).not.toMatch(/signOutAccount\(\)\.catch/)
   })
 
-  it("data that changed while signing out is saved again before the wipe", async () => {
+  it("data that changed while clearing the cloud copy is saved again before the wipe", async () => {
     const d = device()
-    d.s.signOutImpl = async () => void (d.s.data = { ...d.s.data, subjects: [...d.s.data.subjects, sub("late", "Added while signing out")] })
+    d.s.clearCloudImpl = async () => void (d.s.data = { ...d.s.data, subjects: [...d.s.data.subjects, sub("late", "Added while clearing cloud")] })
     expect((await d.reset()).ok).toBe(true)
     const points = await listRestorePoints()
     expect(points).toHaveLength(2)
-    expect(points[0].data.subjects.map((x) => x.name)).toEqual(["Now", "Added while signing out"])
+    expect(points[0].data.subjects.map((x) => x.name)).toEqual(["Now", "Added while clearing cloud"])
   })
 })
 
@@ -700,9 +675,9 @@ describe("restore points from before tags or mates were recorded", () => {
 
   it("the screen passes exactly what the point did not record, and the sheet turns it into 'unrecorded'", () => {
     const sheet = fs.readFileSync(path.join(ROOT, "components/settings-sheet.tsx"), "utf8")
-    expect(sheet).toMatch(/unrecorded: \("tags" \| "mates"\)\[\]/)
+    expect(sheet).toMatch(/unrecorded: \("tags" \| "mates" \| "holidays" \| "scheduleOverrides"\)\[\]/)
     expect(sheet).toMatch(/full: known\.reminders, unrecorded/)
-    expect(fs.readFileSync(path.join(ROOT, "components/restore-points.tsx"), "utf8")).toMatch(/tags: p\.tagsKnown !== false, mates: p\.matesKnown !== false/)
+    expect(fs.readFileSync(path.join(ROOT, "components/restore-points.tsx"), "utf8")).toMatch(/tags: p\.tagsKnown !== false, mates: p\.matesKnown !== false, holidays: p\.holidaysKnown !== false, scheduleOverrides: p\.scheduleOverridesKnown !== false/)
   })
 
   it("the legacy point is kept exactly as stored when other points are saved", async () => {

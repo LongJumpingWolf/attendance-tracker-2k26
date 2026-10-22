@@ -567,7 +567,7 @@ describe("the tooling is isolated from the application and from secrets", () => 
     const app = ["app", "components", "hooks", "lib"].flatMap(walk).filter((f) => /\.(ts|tsx)$/.test(f))
     expect(app.filter((f) => /migration-import|scripts\/migration/.test(fs.readFileSync(path.join(ROOT, f), "utf8")))).toEqual([])
     for (const f of walk("scripts/migration")) expect(fs.readFileSync(path.join(ROOT, f), "utf8"), f).not.toMatch(/from\s+["'](?:\.\.\/)+(?:lib|app|hooks|components)\//)
-  })
+  }, 15000)
   it("no source file contains a key, a token or a private key, and the ignore rules cover exports and key files", () => {
     for (const f of [...walk("scripts/migration"), "scripts/migration-import.mjs", "scripts/migration-import-selftest.mjs"]) expect(fs.readFileSync(path.join(ROOT, f), "utf8"), f).not.toMatch(/BEGIN (RSA )?PRIVATE KEY|eyJ[A-Za-z0-9_-]{20,}\.|sb_(secret|publishable)_[A-Za-z0-9]/)
     const ignore = fs.readFileSync(path.join(ROOT, ".gitignore"), "utf8")

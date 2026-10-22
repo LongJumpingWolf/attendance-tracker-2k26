@@ -39,7 +39,7 @@ import { applyPingResult, resultIsSaved } from "@/lib/ping-apply"
 import PingEventView from "@/components/ping-event"
 import { loadSchedule, saveSchedule } from "@/lib/reminders"
 import { restoreFrom, resetEverything } from "@/lib/safe-replace"
-import { cloudGet, cloudPut } from "@/lib/cloud-sync"
+import { cloudAvailable, cloudGet, cloudPut } from "@/lib/cloud-sync"
 import { buildBackup, parseFullBackup } from "@/lib/backup"
 import { dataPersisted, resetIsComplete, RESET_DB_KEYS, RESET_LOCAL_KEYS } from "@/lib/replace-verify"
 import { BUSY_MESSAGE, setDemoLive, tryAcquire } from "@/lib/operation-lock"
@@ -447,8 +447,7 @@ export default function Home() {
           localStorage.setItem("attendance-first-used-at", String(firstUsed))
         }
         const dismissedAt = Number(localStorage.getItem("attendance-sync-nudge-dismissed-at") || 0)
-        const backendAvailable = sync.kind === "firebase" || sync.kind === "dev"
-        const eligible = backendAvailable && !sync.account && now - firstUsed >= 2 * 86400000 && now - dismissedAt >= 7 * 86400000
+        const eligible = cloudAvailable(sync.kind) && !sync.account && now - firstUsed >= 2 * 86400000 && now - dismissedAt >= 7 * 86400000
         setShowSyncNudge(eligible)
         if (sync.account) setShowSyncNudge(false)
       } catch {

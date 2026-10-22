@@ -203,11 +203,9 @@ describe("incoming data during and after a reset", () => {
       current: () => ({ ...w.state.data, reminders: loadSchedule() }),
       saveRestorePoint,
       demoActive: () => isDemoLive(),
-      signOut: async () => {
-        w.state.owner = null // what the hook's signOut does before any network wait
-        w.state.epoch++
-      },
       clear: () => {
+        w.state.owner = null
+        w.state.epoch++
         w.state.data = emptyData()
       },
       isCleared: async () => true,
@@ -227,7 +225,7 @@ describe("incoming data during and after a reset", () => {
 
   it("a listener snapshot that arrives while the reset holds the lock is set aside, and with the account gone it is not applied afterwards either", async () => {
     const w = world()
-    let signOutFinished = false
+    let resetFinished = false
     const g = hold()
     const reset = resetEverything({
       current: () => ({ ...w.state.data, reminders: loadSchedule() }),
@@ -236,12 +234,12 @@ describe("incoming data during and after a reset", () => {
         await saveRestorePoint(r, d)
       },
       demoActive: () => false,
-      signOut: async () => {
+      clear: () => {
         w.state.owner = null
         w.state.epoch++
-        signOutFinished = true
+        w.state.data = emptyData()
+        resetFinished = true
       },
-      clear: () => void (w.state.data = emptyData()),
       isCleared: async () => true,
     })
     await flush()
@@ -249,7 +247,7 @@ describe("incoming data during and after a reset", () => {
     expect(await w.pull()).toBeNull() // lock held
     g.open()
     expect((await reset).ok).toBe(true)
-    expect(signOutFinished).toBe(true)
+    expect(resetFinished).toBe(true)
     await flush()
     await flush()
     expect(w.state.data.subjects).toEqual([])

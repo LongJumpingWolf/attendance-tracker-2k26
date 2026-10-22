@@ -202,7 +202,7 @@ export function resetEverything(deps: ResetDeps): Promise<ReplaceResult> {
       // authenticated sync pipeline to publish an empty state for this UID; signing out here previously
       // prevented that and made Reset merely look like a logout.
       if (deps.demoActive()) return { ok: false, message: MESSAGES.demo }
-      // The sign-out took time: if the data moved meanwhile, the copy taken earlier is stale, so another is taken first
+      // Cloud clearing can take time: if the data moved meanwhile, the copy taken earlier is stale, so another is taken first.
       const now = deps.current()
       if (!same(now, before)) {
         try {
@@ -216,6 +216,19 @@ export function resetEverything(deps: ResetDeps): Promise<ReplaceResult> {
       // Clear the authenticated account copy first. If cloud deletion fails, leave local data intact.
       // The caller must scope this operation to the currently signed-in UID and verify the result.
       if (deps.clearCloud) await deps.clearCloud()
+      if (deps.demoActive()) return { ok: false, message: MESSAGES.resetHalfDone }
+      // The local data may change while the cloud copy is being cleared, so keep the safety copy current before wiping it.
+      const afterCloudClear = deps.current()
+      if (!same(afterCloudClear, now)) {
+        try {
+          await deps.saveRestorePoint("Before reset", afterCloudClear)
+        } catch {
+          return { ok: false, message: MESSAGES.resetNotSaved }
+        }
+        if (!same(afterCloudClear, deps.current())) return { ok: false, message: MESSAGES.changedWhileSaving }
+        if (deps.demoActive()) return { ok: false, message: MESSAGES.resetHalfDone }
+      }
+      if (deps.demoActive()) return { ok: false, message: MESSAGES.resetHalfDone }
       await deps.clear()
       if (!(await deps.isCleared())) return { ok: false, message: holdsSomething(before) ? MESSAGES.resetNotKept : MESSAGES.resetNotKeptNoCopy }
       return { ok: true }
