@@ -284,7 +284,7 @@ function Inner({ event, onAnswer, onApproveIntegration, onDeclineIntegration, di
                     </button>
                   )}
                 </div>
-                <p className="text-[12px] text-mute mt-4 leading-snug">A YES response marks the selected class present for {name} on their attendance record.</p>
+                <p className="text-[12px] text-mute mt-4 leading-snug">A YES response can mark the selected class present for {name} after they approve the result.</p>
               </div>
             ) : (
               <div className="wrap-rise w-full mt-7 text-left" style={{ animationDelay: "0.55s" }}>
@@ -307,7 +307,7 @@ function Inner({ event, onAnswer, onApproveIntegration, onDeclineIntegration, di
                           disabled={integrationBusy}
                           className="mt-0.5 h-4 w-4 flex-shrink-0 accent-current"
                         />
-                        <span><b className="block text-[14px]">Don't ask me again for {name}</b><span className="text-mute">Automatically integrate future replies from this Mate. Change this later in the Mates list. This doesn't apply to one-time WhatsApp links.</span></span>
+                        <span><b className="block text-[14px]">Don't ask me again for {name}</b><span className="text-mute">Automatically integrate replies from this Mate, including any already waiting for review. Change this later in the Mates list. One-time WhatsApp links always require approval.</span></span>
                       </label>
                     )}
                     {approvalAutomatic && (
