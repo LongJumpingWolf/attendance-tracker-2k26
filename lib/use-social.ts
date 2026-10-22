@@ -532,7 +532,7 @@ export function useSocial(onNotice?: (message: string) => void): SocialApi {
         const next = [request, ...stored.requests]
         writeMockStore({ ...stored, requests: next })
         setRequests(next)
-        return { ok: true, message: `Invite accepted for ${ownerName}.` }
+        return { ok: true, message: `Invite accepted for ${ownerName}.`, mateUid: ownerId, mateName: ownerName }
       }
 
       const invite = await getDomainBackend("social").invites.read(token)
