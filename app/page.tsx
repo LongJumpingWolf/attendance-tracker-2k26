@@ -1308,7 +1308,7 @@ export default function Home() {
         />
       )}
       <ScanGate open={scanGate} link={typeof window === "undefined" ? "" : `${window.location.origin}/scan`} onContinue={() => setScanGate(false)} />
-      <DemoTour open={demoTourOpen} onGoto={goto} onEnd={() => setDemoTourOpen(false)} />
+      <DemoTour open={demoTourOpen} onGoto={goto} onEnd={exitDemo} />
       <WrappedStory open={isWrappedOpen} onClose={() => setIsWrappedOpen(false)} subjects={subjects} mates={mates} onRepay={repayQuiet} />
 
       <SubjectSheet
