@@ -39,6 +39,9 @@ export type PingInput = Omit<PingItem, "answer">
 export interface ConnectResult {
   ok: boolean
   message: string
+  /** Account resolved by the connection flow; the alias stays private to this device/user. */
+  mateUid?: string
+  mateName?: string
 }
 
 /** Everything the Mates screen needs. Also implemented by a mock in the design preview. */
@@ -456,7 +459,7 @@ export function useSocial(onNotice?: (message: string) => void): SocialApi {
       const codeStub = targetUid.startsWith("mock-") || targetUid.startsWith("friend-") ? targetUid : `friend-${targetUid}`
       const existing = stored.requests.find((r) => r.participants.includes(targetUid) || r.participants.includes(codeStub))
       if (existing) {
-        if (existing.status === "accepted") return { ok: true, message: `You're already connected with ${existing.fromName}.` }
+        if (existing.status === "accepted") return { ok: true, message: `You're already connected with ${existing.fromName}.`, mateUid: targetUid, mateName: existing.fromName }
         if (existing.status === "pending") {
           if (existing.to === myUid) {
             const updated = stored.requests.map((r) =>
@@ -464,9 +467,9 @@ export function useSocial(onNotice?: (message: string) => void): SocialApi {
             )
             writeMockStore({ ...stored, requests: updated })
             setRequests(updated)
-            return { ok: true, message: `Connected with ${existing.fromName}.` }
+            return { ok: true, message: `Connected with ${existing.fromName}.`, mateUid: targetUid, mateName: existing.fromName }
           }
-          return { ok: true, message: `Your request to ${existing.fromName} is already waiting.` }
+          return { ok: true, message: `Your request to ${existing.fromName} is already waiting.`, mateUid: targetUid, mateName: existing.fromName }
         }
       }
 
@@ -484,19 +487,19 @@ export function useSocial(onNotice?: (message: string) => void): SocialApi {
       const next = [request, ...stored.requests]
       writeMockStore({ ...stored, requests: next })
       setRequests(next)
-      return { ok: true, message: `Request sent to ${targetName}.` }
+      return { ok: true, message: `Request sent to ${targetName}.`, mateUid: targetUid, mateName: targetName }
     }
 
     const existing = reqs.current.find((r) => r.participants.includes(targetUid))
     if (existing) {
       const other = existing.from === myUid ? existing.toName : existing.fromName
-      if (existing.status === "accepted") return { ok: true, message: `You're already connected with ${other}.` }
+      if (existing.status === "accepted") return { ok: true, message: `You're already connected with ${other}.`, mateUid: targetUid, mateName: other }
       if (existing.status === "pending") {
         if (existing.to === myUid) {
           await getDomainBackend("social").connections.respond(existing.id, "accepted")
-          return { ok: true, message: `Connected with ${other}.` }
+          return { ok: true, message: `Connected with ${other}.`, mateUid: targetUid, mateName: other }
         }
-        return { ok: true, message: `Your request to ${other} is already waiting.` }
+        return { ok: true, message: `Your request to ${other} is already waiting.`, mateUid: targetUid, mateName: other }
       }
       await getDomainBackend("social").connections.remove(existing.id)
     }
@@ -504,7 +507,7 @@ export function useSocial(onNotice?: (message: string) => void): SocialApi {
     const targetName = knownName ?? (await getDomainBackend("social").profiles.getName(targetUid))
     if (!targetName) return { ok: false, message: "That code isn't valid." }
     await getDomainBackend("social").connections.send({ uid: myUid, name: myName }, { uid: targetUid, name: targetName })
-    return { ok: true, message: `Request sent to ${targetName}.` }
+    return { ok: true, message: `Request sent to ${targetName}.`, mateUid: targetUid, mateName: targetName }
   }, [mockMode])
 
   const connectViaUid = useCallback((target: string) => connect(target), [connect])
