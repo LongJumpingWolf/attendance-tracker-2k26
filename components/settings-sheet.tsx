@@ -79,6 +79,8 @@ interface SettingsSheetProps {
   onExitDemo: () => void
   startPanel?: "home" | "sync" | "tips-terms"
   onResetConsent: () => void
+  usageAnalyticsEnabled: boolean
+  onUsageAnalyticsChange: (enabled: boolean) => void
   onShowSyncNudge: () => void
   onOpenFeedback: () => void
   onPreviewFeedbackAnimation: (kind: "thanks" | "bug") => void
@@ -433,7 +435,27 @@ export default function SettingsSheet(p: SettingsSheetProps) {
 
       {panel === "sync" && <SyncPanel sync={p.sync} onToast={(m) => p.onToast(m)} />}
 
-      {panel === "tips-terms" && <div className="space-y-5"><p className="text-[14px] leading-relaxed text-mute">Keep a recent backup, confirm that sync completed on another device, and test notification permissions on the device where you need alerts.</p><TermsContent/><div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-2"><button onClick={p.onResetConsent} className={tintButton}>Show required notice again</button><button onClick={() => setPanel("sync")} className={`${tintButton} bg-ink text-paper`}>Set up Google sync</button></div></div>}
+      {panel === "tips-terms" && <div className="space-y-5">
+        <p className="text-[14px] leading-relaxed text-mute">Keep a recent backup, confirm that sync completed on another device, and test notification permissions on the device where you need alerts.</p>
+        <section className="rounded-2xl bg-secondary p-4">
+          <label className="flex items-start gap-3 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={p.usageAnalyticsEnabled}
+              onChange={(e) => p.onUsageAnalyticsChange(e.target.checked)}
+              className="mt-1 accent-current"
+              aria-label="Share pseudonymous app usage analytics"
+            />
+            <span className="flex-1">
+              <span className="block text-[15px] font-semibold">{p.usageAnalyticsEnabled ? "App-usage analytics are on" : "App-usage analytics are off"}</span>
+              <span className="block text-[13px] leading-relaxed text-mute mt-1">Optional counts for app opens, screens, attendance actions, subjects and tasks. The analytics log excludes names, attendance values and dates. Your choice is saved on this browser.</span>
+            </span>
+          </label>
+          <p className="text-[12px] text-mute mt-3">{p.usageAnalyticsEnabled ? "Thanks for opting in. You can turn this off at any time." : "The tracker works normally with this setting off."}</p>
+        </section>
+        <TermsContent/>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-2"><button onClick={p.onResetConsent} className={tintButton}>Show required notice again</button><button onClick={() => setPanel("sync")} className={`${tintButton} bg-ink text-paper`}>Set up Google sync</button></div>
+      </div>}
 
       {panel === "scan" && (
         <ScanPanel
