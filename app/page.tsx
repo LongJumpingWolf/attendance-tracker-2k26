@@ -33,6 +33,7 @@ import { dbDel, dbGet, dbSet, protectStorage } from "@/lib/db"
 import { newId } from "@/lib/ids"
 import { saveRestorePoint } from "@/lib/restore-points"
 import { adoptConnections } from "@/lib/identity"
+import { readMateAlias, writeMateAlias } from "@/lib/mate-aliases"
 import { usePingEvents } from "@/lib/use-ping-events"
 import { usePingProcessing } from "@/lib/use-ping-processing"
 import { applyPingResult, resultIsSaved } from "@/lib/ping-apply"
@@ -241,7 +242,7 @@ export default function Home() {
         prev,
         accepted.flatMap((r) => {
           const other = r.participants.find((p) => p !== social.uid)
-          return other ? [{ uid: other, name: r.from === social.uid ? r.toName : r.fromName }] : []
+          return other ? [{ uid: other, name: r.from === social.uid ? r.toName : r.fromName, alias: readMateAlias(social.uid, other) }] : []
         }),
       ),
     )
@@ -277,9 +278,13 @@ export default function Home() {
     const saved = { subjects: (await dbGet<Subject[]>("subjects")) ?? [], mates: (await dbGet<Mate[]>("mates")) ?? [] }
     return resultIsSaved(saved, r, p)
   }
-  usePingProcessing({
-    // Anonymous accounts may still use one-time WhatsApp/share links, but direct in-app Pings require Google sign-in.
-    pings: social.sent.filter((ping) => !social.anonymous || !!ping.shareLink),
+  const processPingNow = usePingProcessing({
+    // Automatic integration is opt-in per connected mate. One-time WhatsApp links always require approval.
+    pings: social.sent.filter((ping) =>
+      !ping.shareLink &&
+      !social.anonymous &&
+      mates.some((mate) => (mate.uid ?? mate.id) === ping.to && mate.autoIntegrateResponses === true),
+    ),
     enabled: loaded && consentReady && consentAccepted && !demoActive,
     deps: { lease: social.leasePing, apply: applyDurably, finalize: social.finalizePing },
   })
@@ -353,6 +358,63 @@ export default function Home() {
   latestSubjects.current = subjects
   const latestMates = useRef(mates)
   latestMates.current = mates
+
+  const saveAliasForMate = async (target: Mate, alias: string) => {
+    const clean = alias.trim().replace(/\s+/g, " ").slice(0, 48)
+    if (!clean) throw new Error("Enter an alias before saving.")
+    if (social.uid && target.uid) writeMateAlias(social.uid, target.uid, clean)
+    const current = latestMates.current
+    const index = current.findIndex((mate) =>
+      mate.id === target.id || (!!target.uid && (mate.uid === target.uid || mate.id === target.uid)),
+    )
+    const next = index < 0
+      ? [...current, { ...target, alias: clean }]
+      : current.map((mate, i) => i === index ? { ...mate, alias: clean } : mate)
+    latestMates.current = next
+    setMates(next)
+    await dbSet("mates", next)
+  }
+
+  const saveIntegrationPreference = async (ping: Ping, enabled: boolean) => {
+    if (ping.shareLink) return { ok: false, message: "One-time WhatsApp links always ask for approval." }
+    const current = latestMates.current
+    const index = current.findIndex((mate) => (mate.uid ?? mate.id) === ping.to)
+    if (index < 0) return { ok: false, message: "Couldn't match this answer to a Mate. Check your Mates list; attendance was not changed." }
+    const next = current.map((mate, i) => i === index ? { ...mate, autoIntegrateResponses: enabled } : mate)
+    latestMates.current = next
+    setMates(next)
+    try {
+      await dbSet("mates", next)
+      return { ok: true, message: "Preference saved." }
+    } catch {
+      latestMates.current = current
+      setMates(current)
+      return { ok: false, message: "Couldn't save this Mate's preference. Attendance was not changed." }
+    }
+  }
+
+  const approvePingIntegration = async (ping: Ping, alwaysIntegrate: boolean) => {
+    if (alwaysIntegrate) {
+      const saved = await saveIntegrationPreference(ping, true)
+      if (!saved.ok) return saved
+    }
+    const result = await processPingNow(ping)
+    if (result === "processed") return { ok: true, message: "Attendance response integrated." }
+    const message = result === "not-leased" || result === "busy"
+      ? "This answer is being handled on another device. Try again shortly."
+      : "Attendance wasn't changed. Check your connection and device storage, then try again."
+    return { ok: false, message }
+  }
+
+  const declinePingIntegration = async (ping: Ping) => {
+    try {
+      // Finalize without calling applyDurably: dismissing never writes attendance.
+      await social.finalizePing(ping.id)
+      return { ok: true, message: "Response dismissed. Attendance was not changed." }
+    } catch {
+      return { ok: false, message: "Couldn't save your decision. Attendance was not changed; try again." }
+    }
+  }
 
   /**
    * Mark (or change, or clear) one class on any date. The toast shows the resulting percentage, and its Undo puts back
@@ -993,6 +1055,7 @@ export default function Home() {
               scheduleOverrides={scheduleOverrides}
               onOpenWrapped={openWrapped}
               showWrappedInPingSection={wrappedDue}
+              onSaveAlias={saveAliasForMate}
               onRemove={(id) => {
                 const m = mates.find((x) => x.id === id)
                 // removing a connected mate also ends the connection
@@ -1158,6 +1221,10 @@ export default function Home() {
           onFinish={pingEvents.finish}
           onLater={pingEvents.later}
           onAcknowledge={pingEvents.acknowledge}
+          onApproveIntegration={approvePingIntegration}
+          onDeclineIntegration={declinePingIntegration}
+          displayName={pingEvents.event.kind === "result" ? latestMates.current.find((mate) => (mate.uid ?? mate.id) === pingEvents.event.ping.to)?.alias : undefined}
+          autoIntegrate={pingEvents.event.kind === "result" && !!latestMates.current.find((mate) => (mate.uid ?? mate.id) === pingEvents.event.ping.to)?.autoIntegrateResponses}
           alertsOffer={pingEvents.alertsOffer}
           onEnableAlerts={pingEvents.enableAlerts}
         />
