@@ -222,7 +222,7 @@ This link expires in 24 hours. The selected classes and times are listed on the 
             {shareLink ? "24-hour Ping link ready" : shareFallback ? "Interactive link not created" : `Ping sent to ${mate.name}`}
           </p>
           <p className="wrap-rise text-[15px] text-mute mt-1.5 leading-snug max-w-[17rem] mx-auto" style={{ animationDelay: "0.55s" }}>
-            {shareLink ? "Once the recipient answers, your app can apply the reply when it is open or next syncs." : shareFallback ? "No official response link exists for this message. A plain-message reply must be recorded manually." : "You’ll get a bubble on Mates when they reply."}
+            {shareLink ? "When they answer, you'll review their response before it changes attendance." : shareFallback ? "No official response link exists for this message. A plain-message reply must be recorded manually." : "You’ll get a bubble on Mates when they reply."}
           </p>
           {(shareLink || shareFallback) && <div className="mt-5 min-w-0 rounded-2xl bg-secondary p-3 sm:p-4 text-left overflow-hidden">
             <p className="text-[12px] text-mute mb-1">{shareLink ? "Unique response link · expires in 24 hours" : "Message without interactive link"}</p>
@@ -234,7 +234,7 @@ This link expires in 24 hours. The selected classes and times are listed on the 
               <button onClick={()=>{window.open(`https://wa.me/?text=${encodeURIComponent(shareMessage)}`,"_blank","noopener,noreferrer")}} className="min-w-0 min-h-10 px-3 py-2 rounded-xl bg-ink text-paper font-semibold text-[13px] leading-tight text-center whitespace-normal sm:col-span-2">{shareLink ? "Open WhatsApp" : "Share plain message"}</button>
             </div>
             {shareFallback && <button onClick={()=>{setPhase("pick");setShareMessage("");setShareFallback(false);setShareFailureReason("")}} className="w-full mt-2 min-h-10 px-3 py-2 rounded-xl bg-card text-[13px] leading-tight font-semibold whitespace-normal">Try creating the official link again</button>}
-            <p className="text-[12px] text-mute mt-3 leading-snug">{shareLink ? "A Yes response may update the selected attendance record." : "No interactive link was created. Plain-message replies do not update attendance automatically."}</p>
+            <p className="text-[12px] text-mute mt-3 leading-snug">{shareLink ? "The sender must approve your response before attendance changes." : "No interactive link was created. Plain-message replies do not update attendance automatically."}</p>
             <button onClick={onClose} className="w-full mt-3 min-h-10 px-3 py-2 rounded-xl bg-card text-[13px] leading-tight font-semibold">Done</button>
           </div>}
         </div>
