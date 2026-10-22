@@ -10,6 +10,7 @@ import type { PingInput } from "@/lib/use-social"
 
 interface Props {
   open: boolean
+  online: boolean
   onClose: () => void
   mate: Mate | null
   subjects: Subject[]
@@ -30,7 +31,7 @@ type Row = { key: string; subject: Subject; attendanceSubjectId: string; display
 
 const dayDate = (offset: number) => new Date(new Date().getFullYear(), new Date().getMonth(), new Date().getDate() - offset)
 
-export default function PingSheet({ open, onClose, mate, subjects, scheduleOverrides = [], canDirect = false, canChooseDirectMate = false, onChooseDirectMate, waiting, onAsk, onCreateSharePing, onToast }: Props) {
+export default function PingSheet({ open, online, onClose, mate, subjects, scheduleOverrides = [], canDirect = false, canChooseDirectMate = false, onChooseDirectMate, waiting, onAsk, onCreateSharePing, onToast }: Props) {
   const [offset, setOffset] = useState(0)
   const [picked, setPicked] = useState<Set<string>>(new Set())
   const [showOther, setShowOther] = useState(false)
@@ -102,6 +103,10 @@ export default function PingSheet({ open, onClose, mate, subjects, scheduleOverr
 
   const label = (r: Row) => `${r.displayName ?? r.subject.name}${r.t ? ` (${formatTime(r.t)})` : ""}`
   const share = async () => {
+    if (!online || (typeof navigator !== "undefined" && navigator.onLine === false)) {
+      onToast("You're offline. Ping wasn't sent or created.")
+      return
+    }
     if (!onCreateSharePing) {
       const text = `Hi, could you please confirm whether you marked me present for ${chosen.map(label).join(", ")} ${offset === 0 ? "today" : "yesterday"}?`
       try {
@@ -114,6 +119,11 @@ export default function PingSheet({ open, onClose, mate, subjects, scheduleOverr
     const items: PingInput[] = chosen.map((r) => ({ key: r.key, subjectId: r.attendanceSubjectId, name: r.displayName ?? r.subject.name, ...(r.t ? { t: r.t } : {}), ...(r.substituted ? { substituted: true } : {}) }))
     const result = await onCreateSharePing(mate?.id === "__general__" ? "" : mate?.name ?? "", date, items)
     if (!result.ok || !result.link) {
+      if (typeof navigator !== "undefined" && navigator.onLine === false) {
+        setPhase("pick")
+        onToast("Your connection was lost. The Ping wasn't created.")
+        return
+      }
       // Even without a configured cloud account/rules, keep the plain WhatsApp workflow available.
       // Make the limitation explicit: this message has no interactive link and cannot auto-update attendance.
       const who = general ? "Hi!" : `Hey ${mate.name},`
@@ -150,6 +160,10 @@ This link expires in 24 hours. The selected classes and times are listed on the 
   }
 
   const ask = async () => {
+    if (!online || (typeof navigator !== "undefined" && navigator.onLine === false)) {
+      onToast("You're offline. Ping wasn't sent or created.")
+      return
+    }
     if (deliveryMode === "whatsapp" || !directAvailable) {
       await share()
       return
@@ -307,13 +321,15 @@ This link expires in 24 hours. The selected classes and times are listed on the 
             </>
           )}
 
-          {!directAvailable && connected && <p className="text-[12px] text-mute mt-4 leading-snug">Sign in with Google to enable direct in-app Pings. WhatsApp links remain available without a Mates connection.</p>}
+          {!online && <p className="mt-4 rounded-xl bg-warn/10 px-3 py-2.5 text-[13px] text-warn leading-snug">You're offline. You can review the selected classes, but sending is paused until you reconnect.</p>}
+          {online && !directAvailable && connected && <p className="text-[12px] text-mute mt-4 leading-snug">Sign in with Google to enable direct in-app Pings. WhatsApp links remain available without a Mates connection.</p>}
           {!connected && !general && <p className="text-[12px] text-mute mt-4 leading-snug">This person is not connected in the app. You can use a WhatsApp link now; direct in-app Pings require both people to connect and accept the request.</p>}
           <button
             type="button"
             onClick={ask}
-            disabled={chosen.length === 0 || phase === "sending"}
-            className={`${primaryButton} mt-6 flex items-center justify-center gap-2 disabled:opacity-40`}
+            disabled={!online || chosen.length === 0 || phase === "sending"}
+            title={!online ? "Requires an internet connection" : undefined}
+            className={`${primaryButton} mt-6 flex items-center justify-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed`}
           >
             {phase === "sending" ? (
               "Sending…"

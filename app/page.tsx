@@ -113,6 +113,7 @@ export default function Home() {
   const [consentReady, setConsentReady] = useState(false)
   const [consentAccepted, setConsentAccepted] = useState(false)
   const [showSyncNudge, setShowSyncNudge] = useState(false)
+  const [isOnline, setIsOnline] = useState<boolean | null>(null)
   const [isImportOpen, setIsImportOpen] = useState(false)
   const [scan, setScan] = useState<ScanState | null>(null)
   const scanBefore = useRef<{ id: string; date: string; t: string; prev: LogEntry | null } | null>(null) // the class a scan marked and what it was before, for Undo
@@ -182,6 +183,17 @@ export default function Home() {
   }, [])
 
   useEffect(() => {
+    const update = () => setIsOnline(navigator.onLine)
+    update()
+    window.addEventListener("online", update)
+    window.addEventListener("offline", update)
+    return () => {
+      window.removeEventListener("online", update)
+      window.removeEventListener("offline", update)
+    }
+  }, [])
+
+  useEffect(() => {
     // Foreground push messages. Without Firebase env vars this rejects, so never let it surface as an error.
     Promise.resolve(
       onMessageListener((payload) => {
@@ -226,9 +238,9 @@ export default function Home() {
   }, [])
 
   useEffect(() => {
-    if (consentReady && consentAccepted && currentPage === "mates") social.enable()
+    if (isOnline === true && consentReady && consentAccepted && currentPage === "mates") social.enable()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentPage, consentReady, consentAccepted])
+  }, [currentPage, consentReady, consentAccepted, isOnline])
 
   // Accepted connections appear in the favour ledger
   useEffect(() => {
@@ -436,7 +448,12 @@ export default function Home() {
   // Remind established users once they've had the app for two days. Existing installations without a timestamp
   // are treated as established; cloud sync is promoted only when a sync backend is configured.
   useEffect(() => {
-    if (!loaded || !consentReady || !consentAccepted) return
+    // Wait for persisted authentication to restore before deciding the user is signed out.
+    // Otherwise this reminder flashes for existing Google-signed-in users on startup.
+    if (!loaded || !consentReady || !consentAccepted || !sync.ready) {
+      setShowSyncNudge(false)
+      return
+    }
     const evaluate = () => {
       try {
         const now = Date.now()
@@ -447,7 +464,7 @@ export default function Home() {
           localStorage.setItem("attendance-first-used-at", String(firstUsed))
         }
         const dismissedAt = Number(localStorage.getItem("attendance-sync-nudge-dismissed-at") || 0)
-        const eligible = cloudAvailable(sync.kind) && !sync.account && now - firstUsed >= 2 * 86400000 && now - dismissedAt >= 7 * 86400000
+        const eligible = sync.ready && cloudAvailable(sync.kind) && !sync.account && now - firstUsed >= 2 * 86400000 && now - dismissedAt >= 7 * 86400000
         setShowSyncNudge(eligible)
         if (sync.account) setShowSyncNudge(false)
       } catch {
@@ -457,7 +474,7 @@ export default function Home() {
     evaluate()
     const timer = window.setInterval(evaluate, 60_000)
     return () => window.clearInterval(timer)
-  }, [loaded, consentReady, consentAccepted, subjects.length, tasks.length, mates.length, sync.kind, sync.account])
+  }, [loaded, consentReady, consentAccepted, subjects.length, tasks.length, mates.length, sync.kind, sync.account, sync.ready])
 
   // Ask for a rating or bug report after roughly a day and a half of real use. The prompt is dismissible and Settings
   // always provides a permanent entry point. Existing installations are treated as established, like the sync reminder.
@@ -860,7 +877,7 @@ export default function Home() {
         ? `${subjects.length} ${subjects.length === 1 ? "subject" : "subjects"}`
         : currentPage === "calendar"
           ? `${tasks.filter((t) => !t.done).length} open`
-          : sync.account ? `${mates.length} ${mates.length === 1 ? "mate" : "mates"}` : "Sign in required"
+          : sync.account ? `${mates.length} ${mates.length === 1 ? "mate" : "mates"}` : isOnline === false ? "Offline · saved mates" : "Sign in required"
 
   // Home-screen shortcuts: /?go=mates opens a tab, /?mark=next marks the class that has started and isn't marked yet
   const pendingMark = useRef(false)
@@ -982,8 +999,9 @@ export default function Home() {
           )}
 
           {currentPage === "mates" && (
-            sync.account ? <MatesView
+            (sync.account || isOnline !== true) ? <MatesView
               mates={mates}
+              online={isOnline === true}
               social={social}
               onToast={(message) => showToast(message)}
               addOpen={isMateOpen}

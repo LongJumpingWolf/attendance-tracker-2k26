@@ -26,6 +26,7 @@ interface MatesViewProps {
   /** Open the weekly recap, only exposed on Saturday from the Ping section. */
   onOpenWrapped: () => void
   showWrappedInPingSection?: boolean
+  online: boolean
   onToast: (message: string) => void
 }
 
@@ -59,7 +60,7 @@ async function shareOrCopy(text: string, url: string, onToast: (m: string) => vo
 
 /* ---------- connect: QR + links ---------- */
 
-function ConnectCard({ social, onToast }: { social: SocialApi; onToast: (m: string) => void }) {
+function ConnectCard({ social, onToast, online }: { social: SocialApi; onToast: (m: string) => void; online: boolean }) {
   const [qr, setQr] = useState("")
   const [qrError, setQrError] = useState(false)
   const [invite, setInvite] = useState<{ link: string; expiresAt: number } | null>(null)
@@ -71,14 +72,14 @@ function ConnectCard({ social, onToast }: { social: SocialApi; onToast: (m: stri
 
   // This component also initiates setup when opened, so an idle state cannot leave the card loading forever.
   useEffect(() => {
-    if (!social.configured || social.status === "ready" || social.status === "error") {
+    if (!online || !social.configured || social.status === "ready" || social.status === "error") {
       setWaitingLong(false)
       return
     }
     if (social.status === "idle" || social.status === "off") social.enable()
     const timer = window.setTimeout(() => setWaitingLong(true), 5000)
     return () => window.clearTimeout(timer)
-  }, [social.configured, social.status, social.enable])
+  }, [online, social.configured, social.status, social.enable])
 
   useEffect(() => {
     const result = shareableAppOrigin(window.location.origin, process.env.NEXT_PUBLIC_APP_URL)
@@ -102,6 +103,15 @@ function ConnectCard({ social, onToast }: { social: SocialApi; onToast: (m: stri
     const t = setInterval(() => setTick(Date.now()), 1000)
     return () => clearInterval(t)
   }, [invite])
+
+  if (!online) {
+    return (
+      <div className={`${card} p-5`} role="status" aria-live="polite">
+        <p className="text-[17px] font-semibold">Connection tools are paused offline</p>
+        <p className="text-[14px] text-mute mt-1.5 leading-snug">Your saved Mates, favour balances and loaded history remain available. Connecting accounts and creating or sending Pings will work again when you reconnect.</p>
+      </div>
+    )
+  }
 
   if (!social.configured) {
     return (
@@ -264,7 +274,7 @@ const timeLabel = (t?: string) => {
   return `${h % 12 || 12}:${String(m).padStart(2, "0")} ${h >= 12 ? "PM" : "AM"}`
 }
 
-function PingCard({ ping, index, disabled = false, onSend }: { ping: Ping; index: number; disabled?: boolean; onSend: (answers: Record<string, "yes" | "no">) => Promise<void> }) {
+function PingCard({ ping, index, disabled = false, disabledMessage, onSend }: { ping: Ping; index: number; disabled?: boolean; disabledMessage?: string; onSend: (answers: Record<string, "yes" | "no">) => Promise<void> }) {
   const [ans, setAns] = useState<Record<string, "yes" | "no">>({})
   const [busy, setBusy] = useState(false)
   const complete = ping.items.every((i) => ans[i.key])
@@ -306,7 +316,7 @@ function PingCard({ ping, index, disabled = false, onSend }: { ping: Ping; index
           </li>
         ))}
       </ul>
-      {disabled && <p className="mt-3 text-[13px] text-mute">In-app Pings require Google sign-in. Sign in with Google to answer this request; WhatsApp Ping links remain available.</p>}
+      {disabled && <p className="mt-3 text-[13px] text-mute">{disabledMessage ?? "This action is temporarily unavailable."}</p>}
       <div className="flex items-center gap-3 mt-3.5">
         {ping.items.length > 1 && (
           <button
@@ -358,7 +368,7 @@ function pingStatus(sent: Ping[], m: Mate) {
 }
 
 /** Everything you asked or answered in the last month, newest first */
-function PingHistory({ sent, received, onClear }: { sent: Ping[]; received: Ping[]; onClear: (id: string) => void }) {
+function PingHistory({ sent, received, online, onClear }: { sent: Ping[]; received: Ping[]; online: boolean; onClear: (id: string) => void }) {
   const [open, setOpen] = useState(false)
   type Row = { id: string; date: string; text: string; tone: "yes" | "no" | "mute"; sentByMe: boolean }
   const rows: Row[] = [
@@ -399,7 +409,7 @@ function PingHistory({ sent, received, onClear }: { sent: Ping[]; received: Ping
               <span className="min-w-0 flex-1 text-[14px] leading-snug">{r.text}</span>
               <span className="text-[12px] text-mute whitespace-nowrap mt-0.5">{whenLabel(r.date)}</span>
               {r.sentByMe && (
-                <button onClick={() => onClear(r.id)} aria-label="Remove from history" className="text-mute hover:text-bad mt-0.5">
+                <button onClick={() => onClear(r.id)} disabled={!online} title={!online ? "Requires an internet connection" : "Remove from history"} aria-label="Remove from history" className="text-mute hover:text-bad mt-0.5 disabled:opacity-35 disabled:cursor-not-allowed>
                   <X weight="bold" className="w-3.5 h-3.5" />
                 </button>
               )}
@@ -413,7 +423,7 @@ function PingHistory({ sent, received, onClear }: { sent: Ping[]; received: Ping
 
 /* ---------- main view ---------- */
 
-export default function MatesView({ mates, social, subjects, scheduleOverrides = [], addOpen, onCloseAdd, onOpenAdd, onRemove, onOpenWrapped, showWrappedInPingSection = false, onToast }: MatesViewProps) {
+export default function MatesView({ mates, social, subjects, scheduleOverrides = [], addOpen, onCloseAdd, onOpenAdd, onRemove, onOpenWrapped, showWrappedInPingSection = false, online, onToast }: MatesViewProps) {
   const [mateCode, setMateCode] = useState("")
   const [connectingCode, setConnectingCode] = useState(false)
   // Removing a mate wipes their favour history (and ends a connection), so it needs a second tap
@@ -496,6 +506,11 @@ export default function MatesView({ mates, social, subjects, scheduleOverrides =
 
   return (
     <div className="space-y-7 lg:space-y-0 lg:columns-2 lg:gap-x-10 lg:[&>*]:break-inside-avoid lg:[&>*]:mb-7">
+      {!online && (
+        <div className="rounded-2xl bg-warn/10 text-warn px-4 py-3 text-[13px] font-medium leading-snug lg:col-span-2 lg:columns-none" role="status" aria-live="polite">
+          You&apos;re offline. Mates is read-only for now; Pings and connection changes are paused until you reconnect.
+        </div>
+      )}
       <section className={`${card} p-4 sm:p-5`} data-tour="mates-quick-ping">
         <div className="flex items-start gap-3">
           <span className="w-11 h-11 rounded-2xl bg-good/15 text-good grid place-items-center flex-shrink-0"><ShareNetwork weight="bold" className="w-5 h-5" /></span>
@@ -503,9 +518,9 @@ export default function MatesView({ mates, social, subjects, scheduleOverrides =
             <h2 className="text-[17px] font-bold">Quick WhatsApp Ping</h2>
             <p className="text-[13px] text-mute leading-snug mt-1">Create a one-time Yes/No link for selected classes. It works without adding the recipient as a Mate and expires after 24 hours.</p>
             <div className="mt-3 flex flex-col gap-2">
-              <button onClick={() => setPinging({ id: "__general__", name: "", covered: 0, repaid: 0 })} className={`${primaryButton} flex items-center justify-center gap-2`}><ShareNetwork className="w-4 h-4" />WhatsApp Ping · 24h</button>
+              <button onClick={() => setPinging({ id: "__general__", name: "", covered: 0, repaid: 0 })} disabled={!online} title={!online ? "Requires an internet connection" : "Create a one-time interactive Ping link"} className={`${primaryButton} flex items-center justify-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed`}><ShareNetwork className="w-4 h-4" />WhatsApp Ping · 24h</button>
               {canUseDirectPings && connectedMates.length > 0 && (
-                <button onClick={() => setDirectChooserOpen(true)} className="h-12 px-3 rounded-2xl bg-secondary text-[14px] font-semibold flex items-center justify-center gap-2"><ChatCircleDots className="w-4 h-4" />In-app Ping</button>
+                <button onClick={() => setDirectChooserOpen(true)} disabled={!online} title={!online ? "Requires an internet connection" : "Send an in-app Ping"} className="h-12 px-3 rounded-2xl bg-secondary text-[14px] font-semibold flex items-center justify-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed><ChatCircleDots className="w-4 h-4" />In-app Ping</button>
               )}
               {social.configured && social.anonymous && (
                 <button type="button" disabled title="Sign in with Google to enable direct Pings" className="h-11 px-3 rounded-2xl bg-secondary/70 text-[13px] text-mute font-semibold flex items-center justify-center gap-2 disabled:opacity-70"><LockKey className="w-4 h-4" />In-app Ping · Google sign-in required</button>
@@ -514,7 +529,8 @@ export default function MatesView({ mates, social, subjects, scheduleOverrides =
                 <button type="button" disabled title="Connect with a friend and wait for them to accept first" className="h-11 px-3 rounded-2xl bg-secondary/70 text-[13px] text-mute font-semibold flex items-center justify-center gap-2 disabled:opacity-70"><LockKey className="w-4 h-4" />In-app Ping · connect a friend first</button>
               )}
             </div>
-            {social.configured && social.anonymous && <p className="text-[12px] text-mute mt-2">This browser is using an anonymous account. Sign in with Google, then connect with a friend to enable direct in-app Pings. WhatsApp links remain available.</p>}
+            {!online && <p className="text-[12px] text-mute mt-2">Reconnect to create interactive WhatsApp links or send in-app Pings.</p>}
+            {online && social.configured && social.anonymous && <p className="text-[12px] text-mute mt-2">This browser is using an anonymous account. Sign in with Google, then connect with a friend to enable direct in-app Pings. WhatsApp links remain available.</p>}
             {canUseDirectPings && connectedMates.length === 0 && <p className="text-[12px] text-mute mt-2">Enter a friend&apos;s unique account code with the + button. Direct Pings become available after the connection is accepted by both accounts.</p>}
           </div>
         </div>
@@ -541,7 +557,8 @@ export default function MatesView({ mates, social, subjects, scheduleOverrides =
                 key={p.id}
                 ping={p}
                 index={i}
-                disabled={social.anonymous && social.configured}
+                disabled={!online || (social.anonymous && social.configured)}
+                disabledMessage={!online ? "You're offline. Reconnect before sending your Yes/No answers." : social.anonymous && social.configured ? "In-app Pings require Google sign-in. Sign in with Google to answer this request." : undefined}
                 onSend={(answers) => social.answerPing(p.id, answers).then((r) => onToast(r.message))}
               />
             ))}
@@ -566,6 +583,8 @@ export default function MatesView({ mates, social, subjects, scheduleOverrides =
                 </div>
                 <button
                   onClick={() => social.respond(r.id, "declined")}
+                  disabled={!online}
+                  title={!online ? "Requires an internet connection" : "Decline request"}
                   aria-label={`Decline ${r.fromName}`}
                   className="w-10 h-10 rounded-full bg-bad/15 text-bad grid place-items-center"
                 >
@@ -573,6 +592,8 @@ export default function MatesView({ mates, social, subjects, scheduleOverrides =
                 </button>
                 <button
                   onClick={() => social.respond(r.id, "accepted").then(() => onToast(`Connected with ${r.fromName}`))}
+                  disabled={!online}
+                  title={!online ? "Requires an internet connection" : "Accept request"}
                   aria-label={`Accept ${r.fromName}`}
                   className="w-10 h-10 rounded-full bg-good text-paper grid place-items-center"
                 >
@@ -650,6 +671,8 @@ export default function MatesView({ mates, social, subjects, scheduleOverrides =
                       {st.cancel && (
                         <button
                           onClick={() => social.cancelPing(st.id).then(() => onToast(`Cancelled your ping to ${m.name}`))}
+                           disabled={!online}
+                           title={!online ? "Requires an internet connection" : "Cancel Ping"}
                           className="text-mute font-semibold flex-shrink-0"
                         >
                           Cancel
@@ -659,21 +682,21 @@ export default function MatesView({ mates, social, subjects, scheduleOverrides =
                   )
                 })()}
                 <div className="flex flex-wrap items-center gap-1.5 mt-3.5">
-                  <button onClick={() => setPinging(m)} title={canSendInAppPing({ configured: social.configured, ready: social.status === "ready", anonymous: social.anonymous, connected: isConnected(m) }) ? "Send an in-app Ping or a WhatsApp link" : "Create a 24-hour WhatsApp Ping link; Google sign-in and an accepted connection enable in-app Pings"} className={chip}>
+                  <button onClick={() => setPinging(m)} disabled={!online} title={!online ? "Requires an internet connection" : canSendInAppPing({ configured: social.configured, ready: social.status === "ready", anonymous: social.anonymous, connected: isConnected(m) }) ? "Send an in-app Ping or a WhatsApp link" : "Create a 24-hour WhatsApp Ping link; Google sign-in and an accepted connection enable in-app Pings"} className={chip}>
                     {canSendInAppPing({ configured: social.configured, ready: social.status === "ready", anonymous: social.anonymous, connected: isConnected(m) }) ? "In-app Ping" : "WhatsApp Ping"}
                   </button>
                   {m.uid && !isConnected(m) && social.configured && (
                     <button
                       type="button"
                       onClick={() => void requestMateConnection(m)}
-                      disabled={social.status !== "ready" || connectingMateId !== null}
-                      title="Send a connection request to this account. They must accept before an in-app Ping can be sent."
+                      disabled={!online || social.status !== "ready" || connectingMateId !== null}
+                      title={!online ? "Requires an internet connection" : "Send a connection request to this account. They must accept before an in-app Ping can be sent."}
                       className={`${chip} disabled:opacity-45`}
                     >
                       {connectingMateId === m.id ? "Sending…" : "Connect"}
                     </button>
                   )}
-                  <button onClick={() => setRemoving(m)} className="ml-auto text-[13px] text-mute hover:text-bad pl-1">
+                  <button onClick={() => setRemoving(m)} disabled={!online} title={!online ? "Requires an internet connection" : "Remove mate"} className="ml-auto text-[13px] text-mute hover:text-bad pl-1 disabled:opacity-35 disabled:cursor-not-allowed">
                     Remove
                   </button>
                 </div>
@@ -686,7 +709,7 @@ export default function MatesView({ mates, social, subjects, scheduleOverrides =
         )}
       </section>
 
-      <PingHistory sent={social.sent} received={social.received} onClear={(id) => void social.cancelPing(id)} />
+      <PingHistory sent={social.sent} received={social.received} online={online} onClear={(id) => void social.cancelPing(id)} />
 
       {/* Waiting for a reply */}
       {outgoing.length > 0 && (
@@ -697,7 +720,7 @@ export default function MatesView({ mates, social, subjects, scheduleOverrides =
               <li key={r.id} className="flex items-center gap-3.5 px-4 py-3">
                 <Avatar name={r.toName} i={i + 1} size={40} />
                 <p className="flex-1 min-w-0 text-[15px] font-medium truncate">{r.toName}</p>
-                <button onClick={() => social.cancel(r.id)} className="text-[13px] font-semibold text-mute">
+                <button onClick={() => social.cancel(r.id)} disabled={!online} title={!online ? "Requires an internet connection" : "Cancel request"} className="text-[13px] font-semibold text-mute disabled:opacity-35 disabled:cursor-not-allowed">
                   Cancel
                 </button>
               </li>
@@ -709,7 +732,7 @@ export default function MatesView({ mates, social, subjects, scheduleOverrides =
       {/* QR + links */}
       <section>
         <SectionHeader>Connect with friends</SectionHeader>
-        <ConnectCard social={social} onToast={onToast} />
+        <ConnectCard social={social} onToast={onToast} online={online} />
       </section>
 
       <p className="text-[13px] text-mute px-1 leading-snug -mt-2">
@@ -759,6 +782,7 @@ export default function MatesView({ mates, social, subjects, scheduleOverrides =
 
       <PingSheet
         open={pinging !== null}
+        online={online}
         onClose={() => setPinging(null)}
         mate={pinging && !isConnected(pinging) ? { ...pinging, uid: undefined } : pinging}
         subjects={subjects}
