@@ -9,6 +9,8 @@ import { shareableAppOrigin } from "@/lib/share-ping-link"
 import { copyText } from "@/lib/clipboard"
 import { PING_HISTORY_DAYS, daysSince, isAnswered, isExpired, whenLabel } from "@/lib/pings"
 import { canSendInAppPing, canUseInAppPing } from "@/lib/ping-capabilities"
+import { writeMateAlias } from "@/lib/mate-aliases"
+import InfoTip from "./info-tip"
 import PingSheet from "./ping-sheet"
 import type { SocialApi } from "@/lib/use-social"
 import Sheet, { Field, inputClass, primaryButton, SectionHeader, tintButton } from "./sheet"
@@ -20,6 +22,8 @@ interface MatesViewProps {
   onCloseAdd: () => void
   onOpenAdd: () => void
   onRemove: (id: string) => void
+  onSaveAlias: (mate: Mate, alias: string) => Promise<void> | void
+  onSaveIntegrationPreference: (mate: Mate, enabled: boolean) => Promise<void>
   /** Your subjects, so a ping can name the exact classes you were away for */
   subjects: Subject[]
   scheduleOverrides?: ScheduleOverride[]
@@ -32,6 +36,10 @@ interface MatesViewProps {
 const TINTS = ["bg-ink/10 text-ink"]
 const chip = "h-8 px-3 rounded-full whitespace-nowrap bg-secondary text-[13px] font-semibold disabled:opacity-35"
 const card = "rounded-2xl bg-card"
+
+const visibleMateName = (mate: Mate) =>
+  mate.alias?.trim() ||
+  (/^mate[-_ ]+[a-z0-9_-]{4,}$/i.test(mate.name.trim()) ? "Unnamed mate" : mate.name)
 
 function Avatar({ name, i = 0, size = 48 }: { name: string; i?: number; size?: number }) {
   return (
@@ -413,8 +421,11 @@ function PingHistory({ sent, received, onClear }: { sent: Ping[]; received: Ping
 
 /* ---------- main view ---------- */
 
-export default function MatesView({ mates, social, subjects, scheduleOverrides = [], addOpen, onCloseAdd, onOpenAdd, onRemove, onOpenWrapped, showWrappedInPingSection = false, onToast }: MatesViewProps) {
+export default function MatesView({ mates, social, subjects, scheduleOverrides = [], addOpen, onCloseAdd, onOpenAdd, onRemove, onSaveAlias, onSaveIntegrationPreference, onOpenWrapped, showWrappedInPingSection = false, onToast }: MatesViewProps) {
   const [mateCode, setMateCode] = useState("")
+  const [mateAlias, setMateAlias] = useState("")
+  const [aliasEditingId, setAliasEditingId] = useState<string | null>(null)
+  const [aliasDraft, setAliasDraft] = useState("")
   const [connectingCode, setConnectingCode] = useState(false)
   // Removing a mate wipes their favour history (and ends a connection), so it needs a second tap
   const [removing, setRemoving] = useState<Mate | null>(null)
@@ -465,7 +476,8 @@ export default function MatesView({ mates, social, subjects, scheduleOverrides =
   const submit = async (e: React.FormEvent) => {
     e.preventDefault()
     const raw = mateCode.trim()
-    if (!raw || connectingCode) return
+    const alias = mateAlias.trim().replace(/\s+/g, " ").slice(0, 48)
+    if (!raw || !alias || connectingCode) return
     let addUid = raw
     let inviteToken = ""
     try {
@@ -482,11 +494,21 @@ export default function MatesView({ mates, social, subjects, scheduleOverrides =
     setConnectingCode(true)
     try {
       const result = inviteToken ? await social.connectViaInvite(inviteToken) : await social.connectViaUid(addUid)
-      onToast(result.message)
       if (result.ok) {
+        const mateUid = result.mateUid || addUid
+        if (social.uid && mateUid) writeMateAlias(social.uid, mateUid, alias)
+        await onSaveAlias({
+          id: mateUid,
+          uid: mateUid,
+          name: result.mateName || "Mate",
+          covered: 0,
+          repaid: 0,
+        }, alias)
         setMateCode("")
+        setMateAlias("")
         onCloseAdd()
       }
+      onToast(result.message)
     } catch {
       onToast("Couldn't send the connection request. Check the code or link and try again.")
     } finally {
@@ -500,22 +522,44 @@ export default function MatesView({ mates, social, subjects, scheduleOverrides =
         <div className="flex items-start gap-3">
           <span className="w-11 h-11 rounded-2xl bg-good/15 text-good grid place-items-center flex-shrink-0"><ShareNetwork weight="bold" className="w-5 h-5" /></span>
           <div className="min-w-0 flex-1">
-            <h2 className="text-[17px] font-bold">Quick WhatsApp Ping</h2>
-            <p className="text-[13px] text-mute leading-snug mt-1">Create a one-time Yes/No link for selected classes. It works without adding the recipient as a Mate and expires after 24 hours.</p>
-            <div className={`mt-3 grid ${canUseDirectPings && connectedMates.length > 0 ? "grid-cols-2" : "grid-cols-1"} gap-2`}>
-              <button onClick={() => setPinging({ id: "__general__", name: "", covered: 0, repaid: 0 })} className={`${primaryButton} flex items-center justify-center gap-2`}><ShareNetwork className="w-4 h-4" />WhatsApp Ping · 24h</button>
+            <div className="flex flex-wrap items-center gap-2">
+              <h2 className="text-[17px] font-bold">Quick WhatsApp Ping</h2>
+              <InfoTip label="About Quick WhatsApp Ping">
+                Create a one-time link that expires after 24 hours. The recipient answers Yes or No, and you review the result before it changes your attendance. In-app Pings require Google sign-in and an accepted Mate connection.
+              </InfoTip>
+            </div>
+            <div className="mt-3 grid grid-cols-1 min-[360px]:grid-cols-2 gap-2">
+              <button
+                onClick={() => setPinging({ id: "__general__", name: "", covered: 0, repaid: 0 })}
+                className="grid min-h-12 w-full min-w-0 grid-cols-[auto_minmax(0,1fr)] items-center justify-center gap-2 rounded-2xl bg-ink px-3 py-3 text-left text-[14px] font-semibold leading-tight text-paper transition hover:opacity-90"
+              >
+                <ShareNetwork className="h-5 w-5" />
+                <span className="min-w-0">WhatsApp Ping<span className="mt-0.5 block text-[11px] font-medium opacity-75">One-time link · 24h</span></span>
+              </button>
               {canUseDirectPings && connectedMates.length > 0 && (
-                <button onClick={() => setDirectChooserOpen(true)} className="h-12 px-3 rounded-2xl bg-secondary text-[14px] font-semibold flex items-center justify-center gap-2"><ChatCircleDots className="w-4 h-4" />In-app Ping</button>
+                <button onClick={() => setDirectChooserOpen(true)} className="grid min-h-12 w-full min-w-0 grid-cols-[auto_minmax(0,1fr)] items-center justify-center gap-2 rounded-2xl bg-secondary px-3 py-3 text-left text-[14px] font-semibold leading-tight">
+                  <ChatCircleDots className="h-5 w-5" />
+                  <span className="min-w-0">In-app Ping<span className="mt-0.5 block text-[11px] font-medium text-mute">Connected mates</span></span>
+                </button>
               )}
               {social.configured && social.anonymous && (
-                <button type="button" disabled title="Sign in with Google to enable direct Pings" className="h-11 px-3 rounded-2xl bg-secondary/70 text-[13px] text-mute font-semibold flex items-center justify-center gap-2 disabled:opacity-70"><LockKey className="w-4 h-4" />In-app Ping · Google sign-in required</button>
+                <button type="button" disabled title="Sign in with Google to enable direct Pings" className="grid min-h-12 w-full min-w-0 grid-cols-[auto_minmax(0,1fr)] items-center gap-2 rounded-2xl bg-secondary/70 px-3 py-3 text-left text-[13px] font-semibold text-mute disabled:opacity-70">
+                  <LockKey className="h-5 w-5" /><span className="min-w-0">In-app Ping<span className="mt-0.5 block text-[11px] font-medium">Google sign-in required</span></span>
+                </button>
               )}
               {canUseDirectPings && connectedMates.length === 0 && (
-                <button type="button" disabled title="Connect with a friend and wait for them to accept first" className="h-11 px-3 rounded-2xl bg-secondary/70 text-[13px] text-mute font-semibold flex items-center justify-center gap-2 disabled:opacity-70"><LockKey className="w-4 h-4" />In-app Ping · connect a friend first</button>
+                <button type="button" disabled title="Connect with a friend and wait for them to accept first" className="grid min-h-12 w-full min-w-0 grid-cols-[auto_minmax(0,1fr)] items-center gap-2 rounded-2xl bg-secondary/70 px-3 py-3 text-left text-[13px] font-semibold text-mute disabled:opacity-70">
+                  <LockKey className="h-5 w-5" /><span className="min-w-0">In-app Ping<span className="mt-0.5 block text-[11px] font-medium">Connect a friend first</span></span>
+                </button>
               )}
             </div>
-            {social.configured && social.anonymous && <p className="text-[12px] text-mute mt-2">This browser is using an anonymous account. Sign in with Google, then connect with a friend to enable direct in-app Pings. WhatsApp links remain available.</p>}
-            {canUseDirectPings && connectedMates.length === 0 && <p className="text-[12px] text-mute mt-2">Enter a friend&apos;s unique account code with the + button. Direct Pings become available after the connection is accepted by both accounts.</p>}
+            {(social.configured && social.anonymous) || (canUseDirectPings && connectedMates.length === 0) ? (
+              <p className="mt-2 text-[12px] leading-snug text-mute">
+                {social.configured && social.anonymous
+                  ? "Sign in with Google and connect with a friend to enable in-app Pings. WhatsApp links remain available."
+                  : "Connect with a friend and wait for them to accept to enable in-app Pings."}
+              </p>
+            ) : null}
           </div>
         </div>
         <p className="text-[12px] text-mute leading-relaxed mt-3">A Yes response can update the selected attendance records; in-app Pings also update the connected Mate&apos;s favour count.</p>
@@ -774,11 +818,14 @@ export default function MatesView({ mates, social, subjects, scheduleOverrides =
 
       <Sheet open={addOpen} onClose={onCloseAdd} title="Connect with a Mate">
         <form onSubmit={submit} className="space-y-3">
-          <Field label="Unique account code or link">
-            <input autoFocus value={mateCode} onChange={(e) => setMateCode(e.target.value)} placeholder="Paste code or friend link" className={inputClass} autoCapitalize="none" autoCorrect="off" spellCheck={false} />
+          <Field label="Your alias for this mate">
+            <input autoFocus required value={mateAlias} onChange={(e) => setMateAlias(e.target.value)} placeholder="e.g. Aditya from anatomy lab" maxLength={48} className={inputClass} autoCorrect="off" />
           </Field>
-          <p className="text-[13px] text-mute leading-snug">Names are not unique, so connect using the person&apos;s full account code, permanent QR/link, or one-time invite link. They must accept the request before appearing as a connected Mate.</p>
-          <button type="submit" disabled={!mateCode.trim() || connectingCode} className={`${primaryButton} disabled:opacity-50`}>
+          <Field label="Unique account code or link">
+            <input required value={mateCode} onChange={(e) => setMateCode(e.target.value)} placeholder="Paste code or friend link" className={inputClass} autoCapitalize="none" autoCorrect="off" spellCheck={false} />
+          </Field>
+          <p className="text-[13px] text-mute leading-snug">The alias is visible only to you. Use the full account code, permanent QR/link, or one-time invite link to identify the right person. They must accept before in-app Pings are enabled.</p>
+          <button type="submit" disabled={!mateCode.trim() || !mateAlias.trim() || connectingCode} className={`${primaryButton} disabled:opacity-50`}>
             {connectingCode ? "Sending request…" : "Send connection request"}
           </button>
         </form>
