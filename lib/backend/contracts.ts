@@ -106,7 +106,7 @@ export interface PingStore {
   lease(id: string, deviceId: string, now?: number): Promise<boolean>
   finalize(id: string): Promise<"processed" | "already">
   /** The asker explicitly declined to apply the answer to their attendance. */
-  dismiss(id: string): Promise<"dismissed" | "already-dismissed" | "already-processed">
+  dismiss(id: string, deviceId: string): Promise<"dismissed" | "already-dismissed" | "already-processed">
   remove(id: string): Promise<void>
 }
 
