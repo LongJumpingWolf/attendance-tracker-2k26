@@ -61,6 +61,7 @@ describe("with no transport (the only way the app can build it today)", () => {
       ["pings.answer", () => be.pings.answer("id", [])],
       ["pings.lease", () => be.pings.lease("id", "dev")],
       ["pings.finalize", () => be.pings.finalize("id")],
+      ["pings.dismiss", () => be.pings.dismiss("id", "deviceAlice01")],
       ["pings.remove", () => be.pings.remove("id")],
       ["pushTokens.save", () => be.pushTokens.save(A, "t")],
       ["pushTokens.remove", () => be.pushTokens.remove(A)],
@@ -145,7 +146,7 @@ describe("with an injected fake transport (argument mapping only; the identity b
   })
 
   it("maps requests, pings, profiles, invites and push tokens to the Phase 3 functions", async () => {
-    const rpc = vi.fn(async (fn: string) => ({ data: fn === "create_ping" ? "existing" : fn === "finalize_ping" ? "already" : fn === "lease_ping" ? true : fn === "send_request" ? "newid" : null, error: null }))
+    const rpc = vi.fn(async (fn: string) => ({ data: fn === "create_ping" ? "existing" : fn === "finalize_ping" ? "already" : fn === "lease_ping" ? true : fn === "dismiss_ping" ? "dismissed" : fn === "send_request" ? "newid" : null, error: null }))
     const be = make(rpc)
     expect(await be.connections.send(ping.from, ping.to)).toBe("newid")
     expect(rpc).toHaveBeenLastCalledWith("send_request", { p_to_uid: B, p_from_name: "Alice", p_to_name: "Bob" })
@@ -158,6 +159,8 @@ describe("with an injected fake transport (argument mapping only; the identity b
     expect(await be.pings.lease("p", "deviceAlice01")).toBe(true)
     expect(rpc).toHaveBeenLastCalledWith("lease_ping", { p_id: "p", p_device_id: "deviceAlice01" })
     expect(await be.pings.finalize("p")).toBe("already")
+    expect(await be.pings.dismiss("p", "deviceAlice01")).toBe("dismissed")
+    expect(rpc).toHaveBeenLastCalledWith("dismiss_ping", { p_id: "p", p_device_id: "deviceAlice01" })
     await be.pings.answer("p", ping.items)
     expect(rpc).toHaveBeenLastCalledWith("answer_ping", { p_id: "p", p_items: ping.items })
     await be.pings.remove("p")
