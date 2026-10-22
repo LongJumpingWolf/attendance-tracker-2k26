@@ -117,7 +117,7 @@ export default function Sheet({ open, onClose, title, children, wide, onBack, he
         aria-modal="true"
         aria-label={title}
         className={`animate-sheet w-full ${wide ? "sm:max-w-4xl" : "sm:max-w-md"} bg-card rounded-t-[28px] sm:rounded-[28px] max-h-[92dvh] overflow-y-auto overscroll-contain will-change-transform`}
-        style={{ transform: dragOffset > 0 ? `translate3d(0, ${dragOffset}px, 0)` : "translate3d(0, 0, 0)", transition: isDragging ? "none" : "transform 220ms cubic-bezier(0.22, 1, 0.36, 1)" }}
+        style={{ transform: dragOffset > 0 ? `translate3d(0, ${dragOffset}px, 0)` : "translate3d(0, 0, 0)", transition: isDragging ? "none" : isDismissing ? "transform 180ms ease-in" : "transform 220ms cubic-bezier(0.22, 1, 0.36, 1)" }}
         onClick={(e) => e.stopPropagation()}
       >
         <div
