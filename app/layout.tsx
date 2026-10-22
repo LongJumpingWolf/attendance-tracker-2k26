@@ -18,8 +18,8 @@ export const metadata: Metadata = {
     // Keep the browser favicon on directly-renderable PNGs: SVG favicons with
     // external <image href> references can render blank in Chromium.
     icon: [
-      { url: "/icon-light.png", type: "image/png", sizes: "512x512" },
-      { url: "/icon-dark.png", type: "image/png", sizes: "512x512", media: "(prefers-color-scheme: dark)" },
+      { url: "/icon-light.png?v=2", type: "image/png", sizes: "512x512" },
+      { url: "/icon-dark.png?v=2", type: "image/png", sizes: "512x512", media: "(prefers-color-scheme: dark)" },
     ],
     apple: [
       { url: "/icon-light.png", type: "image/png", sizes: "512x512", media: "(prefers-color-scheme: light)" },
