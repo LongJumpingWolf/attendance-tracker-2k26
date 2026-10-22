@@ -1205,7 +1205,7 @@ export default function Home() {
         </div>
       )}
       {showFeedbackNudge && consentAccepted && !showFeedback && (
-        <FeedbackNudge onRate={() => { setFeedbackKind("rating"); setShowFeedbackNudge(false); setShowFeedback(true) }} onReportBug={() => { setFeedbackKind("bug"); setShowFeedbackNudge(false); setShowFeedback(true) }} onSuggest={() => { setFeedbackKind("suggestion"); setShowFeedbackNudge(false); setShowFeedback(true) }} onDismiss={() => setShowFeedbackNudge(false)} />
+        <FeedbackNudge onRate={() => { setFeedbackKind("rating"); setShowFeedbackNudge(false); setShowFeedback(true) }} onDismiss={() => setShowFeedbackNudge(false)} />
       )}
       <FeedbackSheet key={feedbackKind} initialKind={feedbackKind} open={showFeedback} onClose={() => setShowFeedback(false)} onSubmitted={() => { try { localStorage.setItem("attendance-feedback-submitted", "1"); if (feedbackKind === "rating") localStorage.setItem("attendance-rating-submitted", "1") } catch {}; setShowFeedbackNudge(false); setFeedbackCelebration(null); setFeedbackReplyText(""); showToast("Feedback sent — thank you") }} />
       <FeedbackReplyWatcher onReply={(reply, kind) => { setFeedbackReplyText(reply); setFeedbackCelebration(kind === "bug" ? "bug" : "thanks") }} />
