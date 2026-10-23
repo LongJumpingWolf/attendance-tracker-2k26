@@ -21,9 +21,9 @@ export const metadata: Metadata = {
     description: "College Tracker - attendance and deadline tracker",
     images: [
       {
-        url: "https://attendance-tracker-2k26.vercel.app/favicon-512.png",
-        width: 512,
-        height: 512,
+        url: "https://i.ibb.co/4nHZ5w1r/college-tracker-apple-touch-icon.png",
+        width: 180,
+        height: 180,
         alt: "College Tracker app icon",
       },
     ],
@@ -32,7 +32,7 @@ export const metadata: Metadata = {
     card: "summary",
     title: "College Tracker",
     description: "College Tracker - attendance and deadline tracker",
-    images: ["https://attendance-tracker-2k26.vercel.app/favicon-512.png"],
+    images: ["https://i.ibb.co/4nHZ5w1r/college-tracker-apple-touch-icon.png"],
   },
   generator: "v0.app",
   manifest: "/manifest.json?v=6",
@@ -41,7 +41,7 @@ export const metadata: Metadata = {
       { url: "/icons/college-tracker-light-192-v6.png", type: "image/png", sizes: "192x192" },
       { url: "/icons/college-tracker-dark-192-v6.png", type: "image/png", sizes: "192x192", media: "(prefers-color-scheme: dark)" },
     ],
-    apple: [{ url: "/college-tracker-apple-touch-icon-v6.png", type: "image/png", sizes: "180x180" }],
+    apple: [{ url: "https://i.ibb.co/4nHZ5w1r/college-tracker-apple-touch-icon.png", type: "image/png", sizes: "180x180" }],
   },
   appleWebApp: {
     capable: true,
