@@ -6,6 +6,7 @@ import type { Ping } from "./types"
 import {
   FOCUS_MESSAGES,
   emptyPresented,
+  joinedAt,
   loadPresented,
   nextEvent,
   pendingCount,
@@ -48,6 +49,18 @@ export function usePingEvents({ social, enabled, onNotice }: Options) {
     setPresented(loadPresented())
     setReady(true)
   }, [])
+
+  // First time this device opens the app as this account: answers that arrived earlier were read (or can be read in the
+  // history) already, so they are not replayed one by one on a new browser
+  useEffect(() => {
+    if (!ready || !me) return
+    setPresented((prev) => {
+      if (prev.joined?.[me] !== undefined) return prev
+      const next = { ...prev, joined: { ...prev.joined, [me]: joinedAt(prev, me) } }
+      savePresented(next)
+      return next
+    })
+  }, [ready, me])
 
   // A notification opens the app at /?ping=<id>; if the app is already running the worker sends a message instead
   useEffect(() => {

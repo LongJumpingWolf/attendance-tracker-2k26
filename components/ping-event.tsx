@@ -39,7 +39,8 @@ function Inner({ event, onAnswer, onFinish, onLater, onAcknowledge, alertsOffer,
   const incoming = event.kind === "incoming"
   const [phase, setPhase] = useState<"ask" | "sending" | "sent">("ask")
   const [error, setError] = useState("")
-  const [each, setEach] = useState(false)
+  // With several classes, each gets its own Yes/No by default: one tap on "all" shouldn't answer for classes that weren't covered
+  const [each, setEach] = useState(ping.items.length > 1)
   const [picked, setPicked] = useState<Record<string, "yes" | "no">>({})
   const [leaving, setLeaving] = useState(false)
   const [offer, setOffer] = useState(alertsOffer)

@@ -236,9 +236,10 @@ export default function CalendarView({ tasks, subjects, onAdd, onEdit, onToggleD
           }}>
             <h3 className="text-[16px] font-bold">Add a holiday or holiday break</h3>
             <label className="block text-[12px] font-semibold text-mute">Name<input value={holidayName} onChange={e=>setHolidayName(e.target.value)} required maxLength={100} placeholder="e.g. College vacation" className="w-full h-11 mt-1 rounded-xl bg-secondary px-3 text-[15px] text-ink"/></label>
-            <div className="grid grid-cols-2 gap-2">
-              <div><p className="text-[12px] font-semibold text-mute mb-1.5">Starts</p><DatePicker label="Holiday start date" value={holidayStart} onChange={(d) => { setHolidayStart(d); if (holidayEnd && holidayEnd < d) setHolidayEnd("") }} /></div>
-              <div><p className="text-[12px] font-semibold text-mute mb-1.5">Ends (optional)</p><DatePicker label="Holiday end date" value={holidayEnd} onChange={setHolidayEnd} minDate={holidayStart} allowClear /></div>
+            {/* One column: the calendar opens under its field at full width instead of squeezed into half of the form */}
+            <div className="space-y-3">
+              <div><p className="text-[12px] font-semibold text-mute mb-1.5">Starts</p><DatePicker label="Holiday start date" value={holidayStart} rangeFrom={holidayStart} rangeTo={holidayEnd} onChange={(d) => { setHolidayStart(d); if (holidayEnd && holidayEnd < d) setHolidayEnd("") }} /></div>
+              <div><p className="text-[12px] font-semibold text-mute mb-1.5">Ends (optional)</p><DatePicker label="Holiday end date" value={holidayEnd} rangeFrom={holidayStart} rangeTo={holidayEnd} onChange={setHolidayEnd} minDate={holidayStart} allowClear /></div>
             </div>
             <p className="text-[12px] text-mute">Leave the end date empty for a single-day holiday. A range includes both start and end dates.</p>
             <div className="grid grid-cols-2 gap-2"><button type="button" onClick={()=>setShowHolidayForm(false)} className="h-11 rounded-xl bg-secondary font-semibold text-[14px]">Cancel</button><button type="submit" className="h-11 rounded-xl bg-ink text-paper font-semibold text-[14px]">Save holiday</button></div>

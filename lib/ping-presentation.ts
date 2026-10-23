@@ -25,6 +25,12 @@ export interface PingEvent {
 export interface Presented {
   incoming: Record<string, number>
   result: Record<string, number>
+  /**
+   * account id -> when this device first opened the app as that account. "Seen" is remembered per device, so a new
+   * browser knows nothing about the answers already read elsewhere; anything answered before this moment is the
+   * account's history, not news, and is not put on screen.
+   */
+  joined?: Record<string, number>
 }
 
 export const PRESENTED_KEY = "pingPresented"
@@ -44,7 +50,14 @@ export function loadPresented(now = Date.now()): Presented {
     if (!isRecord(parsed)) return emptyPresented()
     const clean = (v: unknown) =>
       isRecord(v) ? Object.fromEntries(Object.entries(v).filter(([, at]) => typeof at === "number" && now - at < KEEP_MS)) : {}
-    return { incoming: clean(parsed.incoming) as Record<string, number>, result: clean(parsed.result) as Record<string, number> }
+    const joined = isRecord(parsed.joined)
+      ? (Object.fromEntries(Object.entries(parsed.joined).filter(([, at]) => typeof at === "number")) as Record<string, number>)
+      : undefined
+    return {
+      incoming: clean(parsed.incoming) as Record<string, number>,
+      result: clean(parsed.result) as Record<string, number>,
+      ...(joined ? { joined } : {}),
+    }
   } catch {
     return emptyPresented()
   }
@@ -63,10 +76,22 @@ const involves = (p: Ping, me: string) => Array.isArray(p.participants) && p.par
 /** A request waiting for my answer: I am the one asked, it is still asking, and it hasn't expired */
 export const isActionableIncoming = (p: Ping, me: string) => involves(p, me) && p.to === me && p.status === "asking" && !isExpired(p)
 
+/**
+ * When this device first opened the app as `me`. A device that already remembers Pings from before this was recorded
+ * keeps showing everything it hasn't seen (0); a fresh device or a newly signed-in account starts from now.
+ */
+export function joinedAt(presented: Presented, me: string, nowMs = Date.now()): number {
+  const known = presented.joined?.[me]
+  if (known !== undefined) return known
+  const legacy = presented.joined === undefined && (Object.keys(presented.incoming).length > 0 || Object.keys(presented.result).length > 0)
+  return legacy ? 0 : nowMs
+}
+
 /** The answer to my own Ping, recent enough to be worth a screen of its own (older ones are just in the history) */
-export function isPresentableResult(p: Ping, me: string, nowMs: number) {
+export function isPresentableResult(p: Ping, me: string, nowMs: number, since = 0) {
   if (!involves(p, me) || p.from !== me || !isAnswered(p)) return false
   const at = msOf(p.respondedAt)
+  if (at !== null && at < since) return false
   return at !== null ? nowMs - at <= PING_EXPIRES_DAYS * DAY_MS : daysSince(p.date) <= PING_EXPIRES_DAYS + 1
 }
 
@@ -92,7 +117,8 @@ export function nextEvent(pings: Ping[], me: string | null, presented: Presented
   const seen = new Set<string>()
   const unique = pings.filter((p) => (seen.has(p.id) ? false : (seen.add(p.id), true)))
   const incoming = unique.filter((p) => isActionableIncoming(p, me) && !presented.incoming[p.id]).sort(order)
-  const results = unique.filter((p) => isPresentableResult(p, me, nowMs) && !presented.result[p.id]).sort(order)
+  const since = joinedAt(presented, me, nowMs)
+  const results = unique.filter((p) => isPresentableResult(p, me, nowMs, since) && !presented.result[p.id]).sort(order)
   const queue: PingEvent[] = [
     ...incoming.map((ping) => ({ kind: "incoming" as const, ping })),
     ...results.map((ping) => ({ kind: "result" as const, ping })),
@@ -112,12 +138,13 @@ export function nextEvent(pings: Ping[], me: string | null, presented: Presented
 export function pendingCount(pings: Ping[], me: string | null, presented: Presented, nowMs = Date.now()): number {
   if (!me) return 0
   const seen = new Set<string>()
+  const since = joinedAt(presented, me, nowMs)
   let n = 0
   for (const p of pings) {
     if (seen.has(p.id)) continue
     seen.add(p.id)
     if (isActionableIncoming(p, me) && !presented.incoming[p.id]) n++
-    else if (isPresentableResult(p, me, nowMs) && !presented.result[p.id]) n++
+    else if (isPresentableResult(p, me, nowMs, since) && !presented.result[p.id]) n++
   }
   return n
 }

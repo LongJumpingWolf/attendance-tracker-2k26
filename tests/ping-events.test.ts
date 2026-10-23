@@ -2,6 +2,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { attempt, OFFLINE_MESSAGE } from "@/lib/ping-send"
 import {
   emptyPresented,
+  joinedAt,
+  pendingCount,
   loadPresented,
   nextEvent,
   resolveFocus,
@@ -21,7 +23,7 @@ const ping = (o: Partial<Ping> = {}): Ping => ({
 })
 const mine = (o: Partial<Ping> = {}) => ping({ from: ME, to: MATE, fromName: "Me", toName: "Rahul", participants: [ME, MATE], ...o }) // a Ping I sent
 const answered = (o: Partial<Ping> = {}) => mine({ status: "answered", items: [{ key: "s@09:00", subjectId: "s", name: "DBMS", t: "09:00", answer: "yes" }], respondedAt: Date.now(), ...o })
-const none: Presented = emptyPresented()
+const none: Presented = { ...emptyPresented(), joined: { [ME]: 0 } } // a device that has been using the app as me for a while
 
 describe("a Ping asking for my answer", () => {
   it("1. appears at once when it arrives while the app is open (the live list gains it)", () => {
@@ -214,6 +216,38 @@ describe("13. Pings never claim success without the server", () => {
     const write = vi.fn(async () => 1)
     expect((await attempt(write)).ok).toBe(false)
     expect(write).not.toHaveBeenCalled()
+    vi.unstubAllGlobals()
+  })
+})
+
+describe("signing in on a new browser", () => {
+  const fresh = (): Presented => emptyPresented()
+
+  it("does not replay answers that arrived before this browser knew the account, but still shows new ones", () => {
+    const old = answered({ id: "old", respondedAt: Date.now() - 3 * 86_400_000 })
+    expect(nextEvent([old], ME, fresh())).toBeNull()
+    expect(pendingCount([old], ME, fresh())).toBe(0)
+    // once this browser has recorded when it joined, an answer that lands afterwards is news
+    const joined = { ...fresh(), joined: { [ME]: Date.now() - 1000 } }
+    expect(nextEvent([old, answered({ id: "new", respondedAt: Date.now() })], ME, joined)?.ping.id).toBe("new")
+  })
+
+  it("still asks for a request that is waiting for my answer, on any device", () => {
+    expect(nextEvent([ping({ id: "waiting" })], ME, fresh())?.ping.id).toBe("waiting")
+  })
+
+  it("a device with saved history keeps showing what it has not seen; a new account on it starts from now", () => {
+    const legacy: Presented = { incoming: {}, result: { other: Date.now() } }
+    expect(joinedAt(legacy, ME)).toBe(0)
+    const later: Presented = { ...legacy, joined: { [ME]: 0 } }
+    expect(joinedAt(later, "someone-else", 5000)).toBe(5000)
+  })
+
+  it("remembers when the device joined across reloads", () => {
+    const storage = new Map<string, string>()
+    vi.stubGlobal("localStorage", { getItem: (k: string) => storage.get(k) ?? null, setItem: (k: string, v: string) => void storage.set(k, v) })
+    savePresented({ ...emptyPresented(), joined: { [ME]: 123 } })
+    expect(loadPresented().joined).toEqual({ [ME]: 123 })
     vi.unstubAllGlobals()
   })
 })

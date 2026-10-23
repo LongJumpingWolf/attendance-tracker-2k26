@@ -16,13 +16,16 @@ interface DatePickerProps {
   markedDates?: string[]
   /** Optional domain rule, e.g. only dates matching a recurring lecture weekday. */
   isDateDisabled?: (date: string) => boolean
+  /** A range being chosen (e.g. a holiday break): the days from `rangeFrom` to `rangeTo` are shaded, so both ends show in either calendar. */
+  rangeFrom?: string
+  rangeTo?: string
 }
 
 const WEEKDAYS = ["M", "T", "W", "T", "F", "S", "S"]
 const dateString = (date: Date) => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`
 
 /** The shared Attendance Tracker calendar. Never relies on the browser's native date-picker UI. */
-export default function DatePicker({ value, onChange, label = "Date", minDate, maxDate, allowClear = false, markedDates = [], isDateDisabled }: DatePickerProps) {
+export default function DatePicker({ value, onChange, label = "Date", minDate, maxDate, allowClear = false, markedDates = [], isDateDisabled, rangeFrom, rangeTo }: DatePickerProps) {
   const [open, setOpen] = useState(false)
   const picked = value ? parseLocalDate(value) : new Date()
   const [view, setView] = useState(() => new Date(picked.getFullYear(), picked.getMonth(), 1))
@@ -84,6 +87,8 @@ export default function DatePicker({ value, onChange, label = "Date", minDate, m
               const isSelected = value === cell.date
               const isToday = cell.date === today
               const isDisabled = disabled(cell.date)
+              const inRange = Boolean(rangeFrom && rangeTo && cell.date >= rangeFrom && cell.date <= rangeTo)
+              const isRangeEnd = Boolean(rangeFrom && (cell.date === rangeFrom || cell.date === rangeTo))
               return (
                 <button
                   key={cell.date}
@@ -95,7 +100,7 @@ export default function DatePicker({ value, onChange, label = "Date", minDate, m
                   className="grid h-[46px] place-items-center disabled:cursor-not-allowed"
                 >
                   <span className="flex flex-col items-center gap-[3px]">
-                    <span className={`grid h-8 w-8 place-items-center rounded-full text-[15px] num transition ${isSelected ? "bg-ink font-semibold text-paper" : isToday ? "font-semibold ring-2 ring-ink" : isDisabled ? "text-mute/30" : "hover:bg-ink/10"}`}>
+                    <span className={`grid h-8 w-8 place-items-center rounded-full text-[15px] num transition ${isSelected ? "bg-ink font-semibold text-paper" : isRangeEnd ? "bg-ink/25 font-semibold" : inRange ? "bg-ink/10" : isToday ? "font-semibold ring-2 ring-ink" : isDisabled ? "text-mute/30" : "hover:bg-ink/10"}`}>
                       {cell.day}
                     </span>
                     <span className={`h-[5px] w-[5px] rounded-full ${markers.has(cell.date) ? "bg-amber-500" : "bg-transparent"}`} aria-hidden />

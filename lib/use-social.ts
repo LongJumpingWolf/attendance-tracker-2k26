@@ -15,6 +15,7 @@ import { collection, deleteDoc, doc, onSnapshot, query, runTransaction, serverTi
 import { getAuth } from "firebase/auth"
 import { followIdentity } from "./social-session"
 import { announceProfile, completeCarry } from "./identity"
+import { placeholderName, resolveProfileName } from "./profile-name"
 import { forget, idFor, logicalKey } from "./ping-id"
 import { deviceId } from "./device"
 import { shareableAppOrigin } from "./share-ping-link"
@@ -272,6 +273,30 @@ export function useSocial(onNotice?: (message: string) => void): SocialApi {
     if (demoLoaded) localStorage.setItem(DEMO_PINGS_KEY, JSON.stringify(demoPings))
   }, [demoPings, demoLoaded])
 
+  /**
+   * Settles which name this account uses on this device (see resolveProfileName) and shows it. Returns the name to
+   * announce to mates, or "" when the profile couldn't be read and only a placeholder is known.
+   */
+  const adoptName = useCallback(async (forUid: string, authName: string | null | undefined) => {
+    let local = ""
+    try { local = localStorage.getItem(NAME_KEY) || "" } catch { /* private browsing */ }
+    const { name: resolved, publish } = await resolveProfileName(forUid, local, authName)
+    if (me.current.uid !== null && me.current.uid !== forUid) return ""
+    try { localStorage.setItem(NAME_KEY, resolved) } catch { /* private browsing */ }
+    setNameState(resolved)
+    return publish ? resolved : ""
+  }, [])
+
+  // The name was edited in Settings: carry it into the live session so Pings sent from here use it straight away
+  useEffect(() => {
+    const onRename = (e: Event) => {
+      const next = (e as CustomEvent<unknown>).detail
+      if (typeof next === "string" && next.trim()) setNameState(next.trim())
+    }
+    window.addEventListener("display-name-changed", onRename)
+    return () => window.removeEventListener("display-name-changed", onRename)
+  }, [])
+
   const enable = useCallback(() => {
     if (mockMode) {
       const stored = readMockStore()
@@ -297,18 +322,13 @@ export function useSocial(onNotice?: (message: string) => void): SocialApi {
           // immediately after setup in development. The sign-in promise itself is authoritative.
           setUid(user.uid)
           setAnonymous(user.isAnonymous)
-          let saved = ""
-          try { saved = localStorage.getItem(NAME_KEY) || "" } catch { /* private browsing */ }
-          if (!saved) {
-            saved = `Mate-${user.uid.slice(-8).toUpperCase()}`
-            try { localStorage.setItem(NAME_KEY, saved) } catch { /* private browsing */ }
-          }
-          setNameState(saved)
           setError("")
           if (authWatchdog.current) clearTimeout(authWatchdog.current)
           authWatchdog.current = null
           setStatus("ready")
-          void announceProfile(db, user.uid, saved).catch((e: unknown) => setError(describeSocialAuthError(e)))
+          void adoptName(user.uid, user.isAnonymous ? null : user.displayName).then((saved) => {
+            if (saved) return announceProfile(db, user.uid, saved).catch((e: unknown) => setError(describeSocialAuthError(e)))
+          })
         })
         .catch((e: unknown) => {
           if (authWatchdog.current) clearTimeout(authWatchdog.current)
@@ -371,19 +391,14 @@ export function useSocial(onNotice?: (message: string) => void): SocialApi {
           authWatchdog.current = null
           // A display label is generated from the account ID; identity is the full Firebase UID, never the label.
           // This removes the name-entry blocker and avoids treating names as unique identifiers.
-          let saved = ""
-          try { saved = localStorage.getItem(NAME_KEY) || "" } catch { /* private browsing */ }
-          if (!saved) {
-            saved = `Mate-${newUid.slice(-8).toUpperCase()}`
-            try { localStorage.setItem(NAME_KEY, saved) } catch { /* private browsing */ }
-          }
-          setNameState(saved)
           setError("")
-          void announceProfile(db, newUid, saved)
           void registerPingAlerts(newUid, false)
-          // Mates carried over from an account this device left are asked to reconnect (see lib/identity.ts)
-          void completeCarry(db, newUid, saved).then((n) => {
-            if (n > 0) noticeRef.current?.(`Asked ${n} ${n === 1 ? "mate" : "mates"} to reconnect with your account.`)
+          void adoptName(newUid, anon ? null : getAuth(app).currentUser?.displayName).then((saved) => {
+            if (saved) void announceProfile(db, newUid, saved)
+            // Mates carried over from an account this device left are asked to reconnect (see lib/identity.ts)
+            return completeCarry(db, newUid, saved || placeholderName(newUid)).then((n) => {
+              if (n > 0) noticeRef.current?.(`Asked ${n} ${n === 1 ? "mate" : "mates"} to reconnect with your account.`)
+            })
           })
           setStatus("ready")
         },

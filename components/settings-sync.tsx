@@ -4,6 +4,7 @@ import { useEffect, useState } from "react"
 import { getAuth, updateProfile } from "firebase/auth"
 import { GoogleLogo, SpinnerGap, UserCircle, PencilSimple } from "@phosphor-icons/react"
 import { app } from "@/lib/firebase"
+import { saveProfile } from "@/lib/social"
 import type { CloudSync } from "@/hooks/use-cloud-sync"
 import { inputClass, primaryButton, tintButton } from "./sheet"
 
@@ -80,7 +81,10 @@ export default function SyncPanel({ sync, onToast }: { sync: CloudSync; onToast:
     try {
       const user = getAuth(app).currentUser
       if (user && !user.isAnonymous) await updateProfile(user, { displayName: next })
+      // Mates read the name from the account's cloud profile, and a new browser starts from it, so it has to be saved there too
+      if (user) await saveProfile(user.uid, next)
       localStorage.setItem("displayName", next)
+      window.dispatchEvent(new CustomEvent("display-name-changed", { detail: next }))
       localStorage.setItem(NAME_LIMIT_KEY, JSON.stringify({ month: nameMonth(), count: used + 1 }))
       setProfileName(next)
       setNameDraft(next)
