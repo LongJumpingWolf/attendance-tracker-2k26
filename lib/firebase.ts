@@ -3,6 +3,7 @@ import { initializeApp, getApps, getApp } from 'firebase/app';
 import { getAuth, connectAuthEmulator } from 'firebase/auth';
 import { getFirestore, connectFirestoreEmulator } from 'firebase/firestore';
 import { getMessaging, isSupported } from 'firebase/messaging';
+import { initializeAppCheck, ReCaptchaV3Provider } from 'firebase/app-check';
 import { isPushServiceUnavailable, resolveFirebaseVapidKey } from './push-config';
 import { SW_OPTIONS, SW_URL } from './sw-config';
 
@@ -17,6 +18,27 @@ const firebaseConfig = {
 };
 
 export const app = !getApps().length ? initializeApp(firebaseConfig) : getApp();
+
+/**
+ * Firebase App Check: proves to Firebase that a request comes from this app on a real browser, so scripts that only know
+ * the public project keys can't flood feedback or analytics. Off unless NEXT_PUBLIC_FIREBASE_APPCHECK_SITE_KEY is set (a
+ * reCAPTCHA v3 site key registered under Firebase console > App Check), so nothing changes until that is set up. Do not
+ * switch ENFORCEMENT on in the console until a deploy with the key has been live long enough for people to update.
+ */
+const appCheckSiteKey = process.env.NEXT_PUBLIC_FIREBASE_APPCHECK_SITE_KEY?.trim();
+if (appCheckSiteKey && typeof window !== 'undefined' && !usingEmulatorsEarly()) {
+  try {
+    // A local development build asks for a debug token instead of a real reCAPTCHA check
+    if (process.env.NODE_ENV !== 'production') (self as unknown as { FIREBASE_APPCHECK_DEBUG_TOKEN?: boolean }).FIREBASE_APPCHECK_DEBUG_TOKEN = true;
+    initializeAppCheck(app, { provider: new ReCaptchaV3Provider(appCheckSiteKey), isTokenAutoRefreshEnabled: true });
+  } catch {
+    /* already initialised (hot reload) or the browser can't run it: the app works without it */
+  }
+}
+function usingEmulatorsEarly() {
+  return process.env.NODE_ENV !== 'production' && Boolean(process.env.NEXT_PUBLIC_FIREBASE_AUTH_EMULATOR_HOST);
+}
+
 export const db = getFirestore(app);
 
 /**

@@ -13,7 +13,7 @@
  */
 const functions = require('firebase-functions');
 const admin = require('firebase-admin');
-const { makeHandlers } = require('./ping-handlers');
+const { makeHandlers, pushAllowance } = require('./ping-handlers');
 
 const region = functions.region('asia-south1');
 
@@ -24,6 +24,16 @@ const handlers = makeHandlers({
   },
   deleteToken: (uid) => admin.firestore().collection('pushTokens').doc(uid).delete(),
   send: (message) => admin.messaging().send(message),
+  // Counts per sender and recipient, kept in pushThrottle/{from}_{to} (no rule opens it: only these functions touch it)
+  allowPush: (from, to) => {
+    const ref = admin.firestore().collection('pushThrottle').doc(`${from}_${to}`);
+    return admin.firestore().runTransaction(async (tx) => {
+      const snap = await tx.get(ref);
+      const { allowed, next } = pushAllowance(snap.exists ? snap.data() : null, Date.now());
+      tx.set(ref, next);
+      return allowed;
+    });
+  },
 });
 
 /** A mate asked "did you mark me present?" -> tell the person who was asked (the message names no class) */

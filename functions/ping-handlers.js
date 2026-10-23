@@ -10,7 +10,15 @@ const { incomingMessage, answeredMessage } = require('./ping-messages');
 
 const DEAD_TOKEN = ['messaging/registration-token-not-registered', 'messaging/invalid-registration-token'];
 
-function makeHandlers({ getToken, deleteToken, send, log = console }) {
+/** Pushes one person may send another in a window: more than this is nudging, and only the notification is held back */
+const PUSH_LIMIT = 5;
+const PUSH_WINDOW_MS = 10 * 60 * 1000;
+
+/**
+ * `allowPush(from, to)` answers whether this sender may notify this person now (see pushAllowance). Left out, nothing is
+ * limited. The Ping itself is always kept: a held-back notification only means the person sees it when they open the app.
+ */
+function makeHandlers({ getToken, deleteToken, send, allowPush, log = console }) {
   async function push(uid, message) {
     if (!uid) return 'no-recipient';
     const token = await getToken(uid);
@@ -31,7 +39,19 @@ function makeHandlers({ getToken, deleteToken, send, log = console }) {
 
   return {
     /** A new request: tell the person who was asked */
-    onCreated: (ping, id) => (ping && ping.status === 'asking' ? push(ping.to, incomingMessage(ping, id)) : Promise.resolve('ignored')),
+    onCreated: async (ping, id) => {
+      if (!ping || ping.status !== 'asking') return 'ignored';
+      if (allowPush) {
+        let allowed = true;
+        try {
+          allowed = await allowPush(ping.from, ping.to);
+        } catch (e) {
+          log.error('Ping push limit check failed; sending anyway', e); // a broken counter must not silence real Pings
+        }
+        if (!allowed) return 'throttled';
+      }
+      return push(ping.to, incomingMessage(ping, id));
+    },
 
     /** Only the moment it is answered: tell the person who asked. Taking the lease, or finishing, is not news. */
     onUpdated: (before, after, id) =>
@@ -41,4 +61,16 @@ function makeHandlers({ getToken, deleteToken, send, log = console }) {
   };
 }
 
-module.exports = { makeHandlers, DEAD_TOKEN };
+/**
+ * The counting rule behind allowPush, separate from where the counts are kept: given what is stored for a sender and
+ * recipient (or nothing) and the time, whether this push is allowed and what to store next.
+ */
+function pushAllowance(stored, now) {
+  const fresh = !stored || typeof stored.start !== 'number' || now - stored.start >= PUSH_WINDOW_MS;
+  const start = fresh ? now : stored.start;
+  const count = fresh ? 0 : Number(stored.count) || 0;
+  if (count >= PUSH_LIMIT) return { allowed: false, next: { start, count } };
+  return { allowed: true, next: { start, count: count + 1 } };
+}
+
+module.exports = { makeHandlers, pushAllowance, DEAD_TOKEN, PUSH_LIMIT, PUSH_WINDOW_MS };

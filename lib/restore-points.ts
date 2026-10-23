@@ -102,21 +102,41 @@ function serial<T>(job: () => Promise<T>): Promise<T> {
   return run
 }
 
+/** When storage is full, the newest copies are never the ones given up, and neither are the safety copies made before a reset or a restore */
+export const KEEP_WHEN_FULL = 5
+const precious = (p: unknown) => /^Before (reset|restore)/i.test(String((p as RestorePoint | null)?.reason ?? ""))
+
 /**
  * Saves a copy unless it is empty or identical to the newest one. After writing, the list is read back from storage and
  * the copy must be in it; if it is not (storage full or blocked) this throws RestorePointError rather than claiming success.
+ *
+ * Copies are never trimmed to keep a tidy list. Only when the device really has no room for the new one is the oldest
+ * ordinary copy let go to make space, and the write tried again: without that, a full device would refuse every incoming
+ * sync, restore and reset ("could not save a safety copy") for good.
  */
 export function saveRestorePoint(reason: string, data: FullBackupData): Promise<void> {
   return serial(async () => {
     if (isEmpty(data)) return
-    const all = await stored()
+    let all = await stored()
     const newest = (await listRestorePoints())[0]
     if (newest && same(newest.data, data)) return
-    // Never trimmed automatically: only the person deleting one removes it
+    // Not trimmed to keep a tidy list: copies go only when the device has no room for the new one (below)
     const point: RestorePoint = { id: newId(), at: Date.now(), reason, data }
-    await dbSet(KEY, [point, ...all])
-    const back = (await listRestorePoints()).find((p) => p.id === point.id)
-    if (!back || !same(back.data, data)) throw new RestorePointError()
+    for (;;) {
+      await dbSet(KEY, [point, ...all])
+      const back = (await listRestorePoints()).find((p) => p.id === point.id)
+      if (back && same(back.data, data)) return
+      // No room. Give up the oldest copy that is neither recent nor a before-reset/restore safety copy, then try again.
+      let drop = -1
+      for (let i = all.length - 1; i >= KEEP_WHEN_FULL; i--) {
+        if (!precious(all[i])) {
+          drop = i
+          break
+        }
+      }
+      if (drop === -1) throw new RestorePointError()
+      all = all.filter((_, i) => i !== drop)
+    }
   })
 }
 

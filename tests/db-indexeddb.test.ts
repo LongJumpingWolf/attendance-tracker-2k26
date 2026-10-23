@@ -17,11 +17,13 @@ interface Faults {
   txError: boolean
   /** writes are acknowledged (the transaction completes) but nothing is stored */
   dropWrites: boolean
+  /** a write bigger than this many characters of JSON aborts with QuotaExceededError (a device that is nearly full) */
+  limit: number | null
 }
 
 function fakeIndexedDB() {
   const stores = new Map<string, Map<string, unknown>>()
-  const faults: Faults = { openError: false, quota: false, txError: false, dropWrites: false }
+  const faults: Faults = { openError: false, quota: false, txError: false, dropWrites: false, limit: null }
   const stats = { opens: 0, transactions: 0 }
   const factory = {
     open(name: string) {
@@ -46,7 +48,7 @@ function fakeIndexedDB() {
                 put: (value: unknown, key: string) => {
                   const r: { result?: unknown } = {}
                   ops.push(() => {
-                    if (faults.quota) throw Object.assign(new Error("quota"), { name: "QuotaExceededError" })
+                    if (faults.quota || (faults.limit !== null && JSON.stringify(value).length > faults.limit)) throw Object.assign(new Error("quota"), { name: "QuotaExceededError" })
                     if (faults.dropWrites) return
                     data.set(key, structuredClone(value))
                     r.result = key
@@ -236,6 +238,53 @@ describe("lib/db.ts against an in-memory IndexedDB", () => {
     const { idb, db } = await fresh()
     expect(idb.stores.size).toBe(0)
     expect(await db.dbGet("k")).toBeUndefined()
+  })
+})
+
+describe("restore points when the device is nearly full", () => {
+  const reasons = async (rp: { listRestorePoints: () => Promise<{ reason: string }[]> }) => (await rp.listRestorePoints()).map((p) => p.reason)
+
+  it("makes room by giving up the oldest ordinary copy, instead of refusing every sync, restore and reset from then on", async () => {
+    const { rp, idb, local } = await fresh()
+    for (let i = 0; i < 8; i++) await rp.saveRestorePoint(`p${i}`, point(i + 1))
+    const size = JSON.stringify(idb.stores.get("college-tracker")!.get("restorePoints")).length
+    idb.faults.limit = size + 20 // room for the same number of copies, not one more
+    local.fail.writes = true
+    await rp.saveRestorePoint("new", point(9))
+    const kept = await reasons(rp)
+    expect(kept[0]).toBe("new")
+    expect(kept).not.toContain("p0") // the oldest went
+    expect(kept).toHaveLength(8)
+    expect(kept.slice(1, 6)).toEqual(["p7", "p6", "p5", "p4", "p3"]) // the recent ones are untouched
+  })
+
+  it("never gives up the newest few, or a safety copy made before a reset or a restore", async () => {
+    const { rp, idb, local } = await fresh()
+    await rp.saveRestorePoint("Before reset", point(1)) // the oldest, and precious
+    for (let i = 1; i < 9; i++) await rp.saveRestorePoint(`p${i}`, point(i + 1))
+    const size = JSON.stringify(idb.stores.get("college-tracker")!.get("restorePoints")).length
+    idb.faults.limit = size + 20
+    local.fail.writes = true
+    await rp.saveRestorePoint("new", point(10))
+    const kept = await reasons(rp)
+    expect(kept).toContain("Before reset")
+    expect(kept).not.toContain("p1") // the oldest ordinary copy went instead
+  })
+
+  it("still fails loudly when there is nothing it may give up", async () => {
+    const { rp, idb, local } = await fresh()
+    for (let i = 0; i < 3; i++) await rp.saveRestorePoint(`p${i}`, point(i + 1)) // only recent copies
+    idb.faults.limit = 10
+    local.fail.writes = true
+    await expect(rp.saveRestorePoint("new", point(4))).rejects.toBeInstanceOf(rp.RestorePointError)
+    idb.faults.limit = null
+    expect(await reasons(rp)).toEqual(["p2", "p1", "p0"]) // nothing was lost by the failed attempt
+  })
+
+  it("when there is room, nothing is ever trimmed", async () => {
+    const { rp } = await fresh()
+    for (let i = 0; i < 40; i++) await rp.saveRestorePoint(`p${i}`, point(i + 1))
+    expect(await rp.listRestorePoints()).toHaveLength(40)
   })
 })
 

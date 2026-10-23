@@ -14,6 +14,18 @@ const nextConfig = {
   async headers() {
     return [
       {
+        // Everywhere. These only close doors (no framing by other sites, no guessing a file's type, no leaking the page's
+        // address to other sites, no plugins) and cannot stop the app's own scripts, so they are safe to ship untested in
+        // every browser. A CSP that also restricts scripts needs a nonce setup and testing in the real app first.
+        source: '/:path*',
+        headers: [
+          { key: 'X-Content-Type-Options', value: 'nosniff' },
+          { key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' },
+          { key: 'X-Frame-Options', value: 'DENY' },
+          { key: 'Content-Security-Policy', value: "frame-ancestors 'none'; object-src 'none'; base-uri 'self'" },
+        ],
+      },
+      {
         source: '/sw.js',
         headers: [
           {

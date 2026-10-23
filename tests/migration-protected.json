@@ -5,7 +5,7 @@
   "lib/merge.ts": "f2adfc2deb8aaabfcf7cae658ec2ba3e26c1a6cceac8ae7605b01683046a6592",
   "lib/backup.ts": "5264255a9b1eba114566d7213ed6688998c546993a957694efbeccdedd560234",
   "lib/backup-import.ts": "a6fc0bfa32e426184983262de4ba56676eb81996c339c18d62665bbd3ed17724",
-  "lib/restore-points.ts": "ccd003eb9fe899fa3d7c3aea11262a5ba47128a0fd9d9b01e334e1c3bb8f8526",
+  "lib/restore-points.ts": "d8e9743fd02d64a845069cff74771c3499d9807fcbbc39b7cb7882dda068881a",
   "lib/ping-processing.ts": "1945665165c2024df91b4173d69bd32e39a8be324b0cbda9eef8027c5ff41b23",
   "lib/ping-apply.ts": "6674ac49763525287ed05a3b767dc0c8d2aa9069b0116323ffbb05ac3db26981",
   "lib/ping-id.ts": "4f9cebe433b01dbd676fc881f9376a335dd5f072766278b095be034df31a0757",
@@ -19,8 +19,8 @@
   "firestore.rules": "d698ea742879c5d6c0cdc155ceac358488d6e839f1c05cdff5ec7f4f7c9abe67",
   "firestore.indexes.json": "244f5cd12bc39edffc0a412dfc27af0e8cdf3f1847d65ce1cd3c39e59c49b883",
   "functions/index.js": "63fdbbd1527d56e4146fe0645a9cf0a08899d878f56b67b521a87bd0adf44605",
-  "functions/pings.js": "782226d5dce35c70e1ad4a0dd5c39c4a4eb4befc6cce6f6b073fba828b457a43",
-  "functions/ping-handlers.js": "9e458a7b0edfaf108109968a1c3ebc781a8cb9825e3801e8ca28869fb6534e81",
+  "functions/pings.js": "f67f8c80c29f49aa044c48b99eb160d781f265c886b3092bc5fba36bb37b543f",
+  "functions/ping-handlers.js": "dda82aefb52e89aa9f93456d48029180a0396bf6242205c0e308ae1ac80f2760",
   "functions/ping-messages.js": "dd494518ca6dd8a8b680b001d88ffcf05cc71fea7caf9d6ea2e02fdfe2c56a19",
   "public/sw.js": "c9b726ad144fd8e80d8607b8d1d977872f3811d6a825d98cd3a259916eaef65a"
 }

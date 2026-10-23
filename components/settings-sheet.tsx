@@ -87,6 +87,9 @@ interface SettingsSheetProps {
   onOpenFeedback: (kind: "rating" | "bug" | "suggestion") => void
   /** The person's current rating (1 to 5), if they have rated */
   myRating: number | null
+  /** Treat holidays as days without class (shown on every screen, never saved or synced) */
+  holidaysCancelClasses: boolean
+  onHolidaysCancelClassesChange: (on: boolean) => void
   ticketCount: number
   /** A later reply from the developer in a conversation, not yet opened: shown at the top of Settings */
   ticketAlert: { id: string; kind: "rating" | "bug" | "suggestion"; title: string; count: number } | null
@@ -324,6 +327,16 @@ export default function SettingsSheet(p: SettingsSheetProps) {
                 status={notifStatus}
                 onClick={() => setPanel("notifications")}
               />
+              <li>
+                <label className="flex min-h-[64px] cursor-pointer items-center gap-3.5 px-4 py-3">
+                  <span className="grid h-10 w-10 flex-shrink-0 place-items-center rounded-xl bg-secondary text-ink"><CalendarPlus weight="duotone" className={icon} /></span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block text-[16px] font-semibold leading-snug">Holidays cancel classes</span>
+                    <span className="block text-[13px] leading-snug text-mute">{p.holidaysCancelClasses ? "Classes on a holiday don't appear to mark" : "Classes still appear on holidays"}</span>
+                  </span>
+                  <input type="checkbox" role="switch" checked={p.holidaysCancelClasses} onChange={(e) => p.onHolidaysCancelClassesChange(e.target.checked)} aria-label="Holidays cancel classes" className="h-6 w-11 flex-shrink-0 cursor-pointer accent-current" />
+                </label>
+              </li>
             </ul>
           </section>
 

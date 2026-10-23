@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useCallback, useRef } from "react"
+import { useState, useEffect, useCallback, useMemo, useRef } from "react"
 import { GearSix, Plus } from "@phosphor-icons/react"
 import { useNotifications } from "@/hooks/use-notifications"
 import {
@@ -34,6 +34,7 @@ import { newId } from "@/lib/ids"
 import { saveRestorePoint } from "@/lib/restore-points"
 import { adoptConnections } from "@/lib/identity"
 import { liveNames } from "@/lib/profile-name"
+import { holidayCancellations, isHolidayCancellation } from "@/lib/holidays"
 import { getProfileName } from "@/lib/social"
 import { mustWaitToApply } from "@/lib/ping-unapplied"
 import { usePingEvents } from "@/lib/use-ping-events"
@@ -104,6 +105,12 @@ export default function Home() {
   const [mates, setMates] = useState<Mate[]>([])
   const [holidays, setHolidays] = useState<Holiday[]>([])
   const [scheduleOverrides, setScheduleOverrides] = useState<ScheduleOverride[]>([])
+  // Optional: treat a holiday as a day without class. The cancelled classes are made for display only (never saved or synced).
+  const [holidaysCancel, setHolidaysCancel] = useState(false)
+  const effectiveOverrides = useMemo(
+    () => (holidaysCancel ? [...scheduleOverrides, ...holidayCancellations(subjects, holidays, scheduleOverrides)] : scheduleOverrides),
+    [holidaysCancel, subjects, holidays, scheduleOverrides],
+  )
   const [allTags, setAllTags] = useState<string[]>([])
   const [detailId, setDetailId] = useState<string | null>(null)
   const [calendarFocusDate, setCalendarFocusDate] = useState<string | null>(null)
@@ -155,7 +162,7 @@ export default function Home() {
   const myRating = myTickets.tickets.find((t) => t.kind === "rating" && t.id === `rating-${myTickets.uid}`) ?? myTickets.tickets.find((t) => t.kind === "rating") ?? null
   const replyToShow = previewTicket ?? (myTickets.firstReply && !dismissedReplyIds.has(myTickets.firstReply.id) ? myTickets.firstReply : null)
 
-  const { notificationSupported, notificationPermission, isSubscribed, enableNotifications } = useNotifications(subjects, scheduleOverrides)
+  const { notificationSupported, notificationPermission, isSubscribed, enableNotifications } = useNotifications(subjects, effectiveOverrides)
   const social = useSocial()
   const [pendingLink, setPendingLink] = useState<{ kind: "add" | "invite"; value: string } | null>(null)
 
@@ -189,6 +196,7 @@ export default function Home() {
         for (const key of ["todos", "binTodos", "binClearDate", "habits", "tutorialSeen"]) localStorage.removeItem(key)
       } catch { /* site data blocked: the app still has to finish loading */ }
 
+      try { setHolidaysCancel(localStorage.getItem("holidaysCancelClasses") === "1") } catch { /* default: holidays are shown, classes stay */ }
       setDateLabel(new Date().toLocaleDateString("en-US", { weekday: "long", day: "numeric", month: "long" }))
       setLoaded(true)
       void protectStorage() // ask the browser not to evict this data when the device runs low on space
@@ -678,7 +686,7 @@ export default function Home() {
 
   /** What a scan does: pick the class that fits this moment and mark it, or ask */
   const runScan = () => {
-    const result = pickScanTarget(subjects, new Date(), scheduleOverrides)
+    const result = pickScanTarget(subjects, new Date(), effectiveOverrides)
     if (result.kind === "mark") return scanMark(result.target, result)
     // A newcomer with nothing set up is shown the welcome tour, which is already open, rather than an empty scan screen
     let newcomer = false
@@ -1072,7 +1080,7 @@ export default function Home() {
     const now = new Date()
     const nowMin = now.getHours() * 60 + now.getMinutes()
     const today = localDate(now)
-    const next = classesOn(subjects, now, scheduleOverrides).find((c) => markFor(c.attendanceSubject ?? c.subject, today, c.slot.start) === null && toMin(c.slot.start) <= nowMin && !c.cancelled)
+    const next = classesOn(subjects, now, effectiveOverrides).find((c) => markFor(c.attendanceSubject ?? c.subject, today, c.slot.start) === null && toMin(c.slot.start) <= nowMin && !c.cancelled)
     if (next) setToday((next.attendanceSubject ?? next.subject).id, today, "P", { t: next.slot.start, k: next.slot.kind })
     else showToast("No unmarked class right now")
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1117,7 +1125,7 @@ export default function Home() {
           {currentPage === "today" && (
             <TodayView
               subjects={subjects}
-              scheduleOverrides={scheduleOverrides}
+              scheduleOverrides={effectiveOverrides}
               onClassActions={(target) => setClassActionsTarget(target)}
               onSleep={(subject) => setSleepTarget(subject)}
               mates={mates}
@@ -1137,7 +1145,7 @@ export default function Home() {
               <SubjectDetail
                 subject={detailSubject}
                 allSubjects={subjects}
-                scheduleOverrides={scheduleOverrides}
+                scheduleOverrides={effectiveOverrides}
                 onClassActions={(target) => setClassActionsTarget(target)}
                 onSleep={(subject) => setSleepTarget(subject)}
                 onBack={() => setDetailId(null)}
@@ -1169,7 +1177,7 @@ export default function Home() {
               tasks={tasks}
               subjects={subjects}
               holidays={holidays}
-              scheduleOverrides={scheduleOverrides}
+              scheduleOverrides={effectiveOverrides}
               onAddHoliday={(holiday) => {
                 const name = holiday.name.trim()
                 if (!name) return showToast("Enter a holiday name")
@@ -1199,7 +1207,7 @@ export default function Home() {
               onCloseAdd={() => setIsMateOpen(false)}
               onOpenAdd={() => setIsMateOpen(true)}
               subjects={subjects}
-              scheduleOverrides={scheduleOverrides}
+              scheduleOverrides={effectiveOverrides}
               onOpenWrapped={openWrapped}
               showWrappedInPingSection={wrappedDue}
               onRemove={(id) => {
@@ -1220,7 +1228,7 @@ export default function Home() {
       <ClassChangeSheet
         target={classActionsTarget}
         subjects={subjects}
-        overrides={scheduleOverrides}
+        overrides={effectiveOverrides}
         onClose={() => setClassActionsTarget(null)}
         onCancelClass={(subjectId, date, start) => {
           setScheduleOverrides(prev => [...prev.filter(o => !(o.originalSubjectId === subjectId && o.date === date && o.start === start)), { id: newId(), originalSubjectId: subjectId, date, start, kind: "cancelled" }])
@@ -1231,7 +1239,7 @@ export default function Home() {
           setScheduleOverrides(prev => [...prev.filter(o => !(o.originalSubjectId === subjectId && o.date === date && o.start === start)), { id: newId(), originalSubjectId: subjectId, date, start, kind: "substitute", substituteSubjectId }])
           showToast("Substitute saved for this date")
         }}
-        onRestore={(subjectId, date, start) => { setScheduleOverrides(prev => prev.filter(o => !(o.originalSubjectId === subjectId && o.date === date && o.start === start))); showToast("Original lecture restored") }}
+        onRestore={(subjectId, date, start) => { if (effectiveOverrides.some((o) => isHolidayCancellation(o) && o.originalSubjectId === subjectId && o.date === date && o.start === start)) return showToast("A holiday cancels this class. Turn off \"Holidays cancel classes\" in Settings to attend it."); setScheduleOverrides(prev => prev.filter(o => !(o.originalSubjectId === subjectId && o.date === date && o.start === start))); showToast("Original lecture restored") }}
       />
       <SleepSubjectSheet
         subject={sleepTarget}
@@ -1330,6 +1338,8 @@ export default function Home() {
         onShowSyncNudge={() => { setShowSyncNudge(true); setIsSettingsOpen(false) }}
         onOpenFeedback={(kind) => { setFeedbackKind(kind); setIsSettingsOpen(false); setShowFeedback(true) }}
         myRating={myRating?.rating ?? null}
+        holidaysCancelClasses={holidaysCancel}
+        onHolidaysCancelClassesChange={(on) => { setHolidaysCancel(on); try { localStorage.setItem("holidaysCancelClasses", on ? "1" : "0") } catch {} }}
         ticketCount={myTickets.tickets.length}
         ticketAlert={myTickets.followUps[0] ? { id: myTickets.followUps[0].id, kind: myTickets.followUps[0].kind, title: ticketTitle(myTickets.followUps[0]), count: myTickets.followUps.length } : null}
         onOpenTickets={(id) => { setIsSettingsOpen(false); setTicketsOpenId(id ?? null); setShowTickets(true) }}
