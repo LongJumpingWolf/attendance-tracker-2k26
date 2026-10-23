@@ -13,18 +13,14 @@ export const metadata: Metadata = {
   title: "College Tracker",
   description: "College Tracker - attendance and deadline tracker",
   generator: "v0.app",
-  manifest: "/manifest.json",
+  manifest: "/manifest.json?v=3",
   icons: {
-    // Keep the browser favicon on directly-renderable PNGs: SVG favicons with
-    // external <image href> references can render blank in Chromium.
     icon: [
-      { url: "/icon-light.png?v=2", type: "image/png", sizes: "512x512" },
-      { url: "/icon-dark.png?v=2", type: "image/png", sizes: "512x512", media: "(prefers-color-scheme: dark)" },
+      { url: "/icon-light.png?v=3", type: "image/png", sizes: "512x512" },
+      { url: "/icon-dark.png?v=3", type: "image/png", sizes: "512x512", media: "(prefers-color-scheme: dark)" },
     ],
-    apple: [
-      { url: "/icon-light.png", type: "image/png", sizes: "512x512", media: "(prefers-color-scheme: light)" },
-      { url: "/icon-dark.png", type: "image/png", sizes: "512x512", media: "(prefers-color-scheme: dark)" },
-    ],
+    // One unconditional icon is important for Safari's Add to Home Screen flow.
+    apple: [{ url: "/apple-touch-icon.png?v=3", type: "image/png", sizes: "180x180" }],
   },
   appleWebApp: {
     capable: true,
