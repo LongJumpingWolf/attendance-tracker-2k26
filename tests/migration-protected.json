@@ -16,7 +16,7 @@
   "lib/realtime.ts": "bacee3438b0eebfc21af2dba27bde71f331643ab9d38efcd72f046f8ce82e899",
   "lib/backend/firebase/index.ts": "cc4b720f871e535ef4ed17dbc28398a0ac9bd612678861b491b3d19a1b30473b",
   "hooks/use-cloud-sync.ts": "17085192d1bd08e66b4cd5f459886d296c863329138033df869193312723509d",
-  "firestore.rules": "0abe495fdbab0b87122ce9cdcec4d95b91643a7c815f99300990434096bb6687",
+  "firestore.rules": "f66ef1cff7f76ba3ecdedba2f3d6e2a669a8c630ce80ea88ba33f375b43d190c",
   "firestore.indexes.json": "244f5cd12bc39edffc0a412dfc27af0e8cdf3f1847d65ce1cd3c39e59c49b883",
   "functions/index.js": "63fdbbd1527d56e4146fe0645a9cf0a08899d878f56b67b521a87bd0adf44605",
   "functions/pings.js": "782226d5dce35c70e1ad4a0dd5c39c4a4eb4befc6cce6f6b073fba828b457a43",

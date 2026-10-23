@@ -24,12 +24,20 @@ export type UsageEventName =
   | "task_reopen"
   | "task_delete"
 
+export type UsageDeviceType = "phone_tablet" | "desktop" | "unknown"
+export type UsageBrowserFamily = "Chrome" | "Safari" | "Edge" | "Firefox" | "Samsung Internet" | "Opera" | "Other"
+
 export interface ProductUsageEvent {
   id: string
   actorUid: string
   sessionId: string
   event: UsageEventName
   screen: UsageScreen
+  /** Random first-party browser-storage ID; it is not a hardware identifier. */
+  visitorId?: string
+  /** Coarse, derived categories only. The raw user-agent string is never stored. */
+  deviceType?: UsageDeviceType
+  browserFamily?: UsageBrowserFamily
   createdAt: { toDate?: () => Date } | Date | null
 }
 
@@ -40,7 +48,38 @@ const randomHex = () => {
   return Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("")
 }
 let memorySessionId = ""
+let memoryVisitorId = ""
 const fallbackDedup = new Set<string>()
+
+function getVisitorId() {
+  try {
+    const saved = localStorage.getItem("attendance-analytics-visitor-id")
+    if (saved && /^[a-f0-9]{32}$/.test(saved)) return saved
+    const id = randomHex()
+    if (id) localStorage.setItem("attendance-analytics-visitor-id", id)
+    return id
+  } catch {
+    if (!memoryVisitorId) memoryVisitorId = randomHex()
+    return memoryVisitorId
+  }
+}
+
+function getCoarseDeviceType(): UsageDeviceType {
+  if (typeof window === "undefined" || typeof navigator === "undefined") return "unknown"
+  return window.matchMedia?.("(pointer: coarse)").matches ? "phone_tablet" : "desktop"
+}
+
+function getBrowserFamily(): UsageBrowserFamily {
+  if (typeof navigator === "undefined") return "Other"
+  const ua = navigator.userAgent
+  if (/SamsungBrowser\//i.test(ua)) return "Samsung Internet"
+  if (/(EdgA?|EdgiOS|Edg)\//i.test(ua)) return "Edge"
+  if (/OPR\//i.test(ua) || /Opera/i.test(ua)) return "Opera"
+  if (/Firefox\//i.test(ua) || /FxiOS\//i.test(ua)) return "Firefox"
+  if (/CriOS\//i.test(ua) || /Chrome\//i.test(ua)) return "Chrome"
+  if (/Safari\//i.test(ua) || /Version\//i.test(ua)) return "Safari"
+  return "Other"
+}
 
 function getSessionId() {
   try {
@@ -56,21 +95,29 @@ function getSessionId() {
 }
 
 /**
- * Optional, high-level usage analytics. It records only a pseudonymous Firebase UID,
- * random tab-session ID, an allowlisted event and screen name, and a server timestamp.
- * It intentionally never receives subject/task names, attendance values or dates,
- * free text, email, location, IP address, or device/browser fingerprints.
+ * Optional, high-level usage analytics, collected only after the existing opt-in.
+ * It records a pseudonymous Firebase UID, random tab-session ID, random first-party
+ * browser-storage ID, coarse device/browser categories, an allowlisted event/screen,
+ * and server timestamp. It never stores raw user-agent, IP, precise location, titles,
+ * attendance values/dates, free text, emails, or hardware fingerprints.
  */
 export async function recordProductUsageEvent(event: UsageEventName, screen: UsageScreen): Promise<boolean> {
   try {
     if (typeof window === "undefined") return false
-    if (localStorage.getItem(TERMS_KEY) !== "1" || localStorage.getItem(USAGE_ANALYTICS_KEY) !== "1") return false
+    if (localStorage.getItem(USAGE_ANALYTICS_KEY) !== "1") {
+      try { localStorage.removeItem("attendance-analytics-visitor-id") } catch {}
+      return false
+    }
+    if (localStorage.getItem(TERMS_KEY) !== "1") return false
     const user = getAuth(app).currentUser
     if (!user?.uid || user.uid.length > 128) return false
 
     const sessionId = getSessionId()
+    const visitorId = getVisitorId()
+    const deviceType = getCoarseDeviceType()
+    const browserFamily = getBrowserFamily()
     const id = randomHex()
-    if (!sessionId || !id) return false
+    if (!sessionId || !visitorId || !id) return false
 
     const dedupKey = event === "app_open"
       ? `attendance-usage-opened:${sessionId}`
@@ -85,14 +132,34 @@ export async function recordProductUsageEvent(event: UsageEventName, screen: Usa
       try { sessionStorage.setItem(dedupKey, event === "app_open" ? "1" : screen) } catch { fallbackDedup.add(dedupKey) }
     }
 
-    await setDoc(doc(db, "productUsageEvents", id), {
-      actorUid: user.uid,
-      sessionId,
-      event,
-      screen,
-      createdAt: serverTimestamp(),
-    })
-    return true
+    try {
+      await setDoc(doc(db, "productUsageEvents", id), {
+        actorUid: user.uid,
+        sessionId,
+        visitorId,
+        deviceType,
+        browserFamily,
+        event,
+        screen,
+        createdAt: serverTimestamp(),
+      })
+      return true
+    } catch (writeError) {
+      // Older published rules allow only the legacy schema. Retry that safe,
+      // minimal shape so analytics does not stop working while rules are updated.
+      const code = writeError && typeof writeError === "object" && "code" in writeError
+        ? String((writeError as { code?: unknown }).code || "")
+        : ""
+      if (code !== "permission-denied") return false
+      await setDoc(doc(db, "productUsageEvents", id), {
+        actorUid: user.uid,
+        sessionId,
+        event,
+        screen,
+        createdAt: serverTimestamp(),
+      })
+      return true
+    }
   } catch {
     // Analytics must never interrupt attendance, task, or timetable operations.
     return false
@@ -123,6 +190,9 @@ export async function getDeveloperProductUsageEvents(): Promise<ProductUsageEven
       id: row.id,
       actorUid: String(d.actorUid ?? ""),
       sessionId: String(d.sessionId ?? ""),
+      visitorId: typeof d.visitorId === "string" && /^[a-f0-9]{32}$/.test(d.visitorId) ? d.visitorId : undefined,
+      deviceType: ["phone_tablet", "desktop", "unknown"].includes(d.deviceType) ? d.deviceType as UsageDeviceType : undefined,
+      browserFamily: ["Chrome", "Safari", "Edge", "Firefox", "Samsung Internet", "Opera", "Other"].includes(d.browserFamily) ? d.browserFamily as UsageBrowserFamily : undefined,
       event: d.event as UsageEventName,
       screen: d.screen as UsageScreen,
       createdAt: dateVal(d.createdAt),

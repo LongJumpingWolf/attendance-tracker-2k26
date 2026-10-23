@@ -69,7 +69,7 @@ export default function DeveloperAnalytics() {
   const [range, setRange] = useState<RangeKey>("30d")
   const [source, setSource] = useState<SourceKey>("all")
   const [busy, setBusy] = useState(false)
-  const [tab, setTab] = useState<"overview" | "links" | "events" | "usage" | "insights">("overview")
+  const [tab, setTab] = useState<"overview" | "links" | "events" | "usage" | "insights" | "visitors">("overview")
   const auth = getAuth(app)
   const isAdmin = Boolean(user && !user.isAnonymous && user.emailVerified && user.email?.toLowerCase() === DEVELOPER_EMAIL)
   const needsSignIn = authReady && (!user || user.isAnonymous)
@@ -575,13 +575,111 @@ export default function DeveloperAnalytics() {
   }, [usageEvents, usageScope, range])
 
 
+  const visitorInsights = useMemo(() => {
+    const now = Date.now()
+    const cutoff = now - RANGE_MS[range]
+    const firstSeenByBrowser = new Map<string, number>()
+    for (const event of usageEvents) {
+      if (!event.visitorId) continue
+      const at = timestampMs(event.createdAt)
+      if (!at || at > now) continue
+      const first = firstSeenByBrowser.get(event.visitorId)
+      if (first === undefined || at < first) firstSeenByBrowser.set(event.visitorId, at)
+    }
+    const actionEvents = new Set<UsageEventName>([
+      "attendance_mark", "attendance_clear", "scan_checkin",
+      "subject_create", "subject_update", "subject_delete",
+      "task_create", "task_update", "task_complete", "task_reopen", "task_delete",
+    ])
+    const sessionMap = new Map<string, {
+      openedAt: number
+      visitorId?: string
+      deviceType?: string
+      browserFamily?: string
+      screenSet: Set<string>
+      hasAction: boolean
+      hasOpen: boolean
+    }>()
+    for (const event of usageScope) {
+      const at = timestampMs(event.createdAt)
+      if (!at || at > now) continue
+      const key = event.actorUid + "::" + event.sessionId
+      const row = sessionMap.get(key) || {
+        openedAt: 0,
+        screenSet: new Set<string>(),
+        hasAction: false,
+        hasOpen: false,
+      }
+      if (event.event === "app_open") {
+        row.hasOpen = true
+        if (!row.openedAt || at < row.openedAt) row.openedAt = at
+      }
+      if (event.visitorId) row.visitorId = event.visitorId
+      if (event.deviceType) row.deviceType = event.deviceType
+      if (event.browserFamily) row.browserFamily = event.browserFamily
+      if (event.event === "screen_view" || event.event === "settings_open") row.screenSet.add(event.screen)
+      if (actionEvents.has(event.event)) row.hasAction = true
+      sessionMap.set(key, row)
+    }
+    const visits = [...sessionMap.values()].filter((session) => session.hasOpen && session.openedAt >= cutoff)
+    const knownVisitors = new Set(visits.map((session) => session.visitorId).filter((id): id is string => Boolean(id)))
+    let newVisitors = 0
+    let returningVisitors = 0
+    let unknownAgeVisitors = 0
+    for (const visitorId of knownVisitors) {
+      const first = firstSeenByBrowser.get(visitorId)
+      if (first === undefined) unknownAgeVisitors += 1
+      else if (first >= cutoff) newVisitors += 1
+      else returningVisitors += 1
+    }
+    const bounced = visits.filter((session) => !session.hasAction && session.screenSet.size <= 1).length
+    const interacted = visits.filter((session) => session.hasAction).length
+    const dist = (key: "deviceType" | "browserFamily") => {
+      const counts = new Map<string, number>()
+      for (const session of visits) {
+        const label = session[key] || "Legacy / unknown"
+        counts.set(label, (counts.get(label) || 0) + 1)
+      }
+      return [...counts.entries()].sort((a, b) => b[1] - a[1])
+    }
+    const trend = usageTrend.map((bucket) => {
+      const bucketVisits = visits.filter((session) => session.openedAt >= bucket.start && session.openedAt < bucket.end)
+      return {
+        label: bucket.label,
+        start: bucket.start,
+        visits: bucketVisits.length,
+        visitors: new Set(bucketVisits.map((session) => session.visitorId).filter(Boolean)).size,
+        bounced: bucketVisits.filter((session) => !session.hasAction && session.screenSet.size <= 1).length,
+      }
+    })
+    const visitorTotal = newVisitors + returningVisitors
+    return {
+      visits: visits.length,
+      uniqueBrowsers: knownVisitors.size,
+      newVisitors,
+      returningVisitors,
+      unknownAgeVisitors,
+      newVisitorRate: visitorTotal ? Math.round(newVisitors / visitorTotal * 100) : null,
+      bounceCount: bounced,
+      bounceRate: visits.length ? Math.round(bounced / visits.length * 100) : null,
+      interactedSessions: interacted,
+      deviceMix: dist("deviceType"),
+      browserMix: dist("browserFamily"),
+      legacyVisits: visits.filter((session) => !session.visitorId || !session.deviceType || !session.browserFamily).length,
+      trend,
+      maxVisits: Math.max(1, ...trend.map((bucket) => bucket.visits)),
+      maxDeviceVisits: Math.max(1, ...dist("deviceType").map((pair) => pair[1])),
+      maxBrowserVisits: Math.max(1, ...dist("browserFamily").map((pair) => pair[1])),
+    }
+  }, [usageEvents, usageScope, usageTrend, range])
+
   const maxUsageUsers = Math.max(1, ...usageTrend.map((b) => b.users.size))
   const maxScreenCount = Math.max(1, ...usageMetrics.screenPopularity.map(([, count]) => count))
   const maxUsageActionCount = Math.max(1, ...usageMetrics.actions.map(([, count]) => count))
 
   const exportUsageEvents = () => exportFile("attendance-tracker-app-usage.csv", [
-    ["Occurred at", "Event", "Screen", "Pseudonymous account ID", "Tab session ID"],
-    ...usageScope.slice().sort((a, b) => timestampMs(b.createdAt) - timestampMs(a.createdAt)).map((e) => [dateText(timestampMs(e.createdAt)), usageEventName(e.event), usageScreenName(e.screen), e.actorUid, e.sessionId]),
+    ["Occurred at", "Event", "Screen", "Pseudonymous account ID", "Tab session ID", "Random browser ID", "Coarse device type", "Browser family"],
+    ...usageScope.slice().sort((a, b) => timestampMs(b.createdAt) - timestampMs(a.createdAt)).map((e) => [dateText(timestampMs(e.createdAt)), usageEventName(e.event), usageScreenName(e.screen), e.actorUid, e.sessionId, e.visitorId || "", e.deviceType || "", e.browserFamily || ""]),
   ])
 
   const exportFile = (filename: string, lines: unknown[][]) => {
@@ -686,7 +784,7 @@ export default function DeveloperAnalytics() {
 
           {loading ? <section className="rounded-2xl bg-card p-8 text-center text-sm text-mute">Loading analytics from Firestore…</section> : <>
             <nav className="flex flex-wrap gap-2" aria-label="Analytics views">
-              {([["overview", "Overview"], ["usage", "App usage"], ["insights", "Retention & engagement"], ["links", "Link performance"], ["events", "Event explorer"]] as const).map(([key, label]) => <button key={key} onClick={() => setTab(key)} className={`rounded-xl px-4 py-2 text-sm font-semibold ${tab === key ? "bg-ink text-paper" : "bg-secondary"}`} aria-pressed={tab === key}>{label}</button>)}
+              {([["overview", "Overview"], ["visitors", "Visits & devices"], ["usage", "App usage"], ["insights", "Retention & engagement"], ["links", "Link performance"], ["events", "Event explorer"]] as const).map(([key, label]) => <button key={key} onClick={() => setTab(key)} className={`rounded-xl px-4 py-2 text-sm font-semibold ${tab === key ? "bg-ink text-paper" : "bg-secondary"}`} aria-pressed={tab === key}>{label}</button>)}
             </nav>
 
             {tab === "overview" && <>
@@ -751,6 +849,77 @@ export default function DeveloperAnalytics() {
               </section>
             </>}
 
+            {tab === "visitors" && <>
+              {usageError ? <section className="rounded-2xl bg-card p-6 space-y-2">
+                <h2 className="text-lg font-bold">Visit analytics cannot be loaded</h2>
+                <p className="text-sm text-mute">{usageError}</p>
+              </section> : usageEvents.length === 0 ? <section className="rounded-2xl bg-card p-6 space-y-2">
+                <h2 className="text-lg font-bold">Waiting for opted-in visits</h2>
+                <p className="text-sm text-mute leading-relaxed">Visits, coarse device/browser categories and bounce-like sessions are recorded only when a user accepts the separate optional analytics setting. Nothing is backfilled from activity before opt-in.</p>
+              </section> : <>
+                <section className="rounded-2xl bg-secondary p-4 text-xs text-mute leading-relaxed">
+                  <p><b className="text-ink">Privacy & definitions:</b> these numbers cover consenting users only, not every public website visit. “New browser” means the random first-party browser ID was first observed in the selected range; cleared site data or another browser looks new. “Bounce-like” means a visit with no feature action and no more than one recorded screen. This is a practical SPA engagement proxy, not a conventional page-view bounce rate. {visitorInsights.legacyVisits > 0 ? "Some visits have no device/browser metadata yet. If new visits continue showing as legacy/unknown, publish the latest " : "If device/browser categories do not start appearing after this deployment, publish the latest "}<a className="underline underline-offset-2 text-ink" href="https://raw.githubusercontent.com/LongJumpingWolf/attendance-tracker-2k26/main/firestore.rules" target="_blank" rel="noreferrer">Firestore rules file</a> to permit the new allowlisted fields, then refresh.</p>
+                </section>
+                <section className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3">
+                  {[
+                    ["Visits", visitorInsights.visits, "Opted-in app-open sessions"],
+                    ["Unique browsers", visitorInsights.uniqueBrowsers, "Random browser IDs seen"],
+                    ["New browsers", visitorInsights.newVisitors, visitorInsights.newVisitorRate === null ? "Rate unavailable" : visitorInsights.newVisitorRate + "% of known browsers"],
+                    ["Returning browsers", visitorInsights.returningVisitors, "Seen before this range"],
+                    ["Bounce-like rate", visitorInsights.bounceRate === null ? "—" : visitorInsights.bounceRate + "%", visitorInsights.bounceCount + " single-screen, no-action visits"],
+                    ["Engaged visits", visitorInsights.interactedSessions, "At least one feature action"],
+                  ].map(([label, value, hint]) => <article key={String(label)} className="rounded-2xl bg-card p-4 min-w-0">
+                    <p className="text-xs text-mute">{label}</p><p className="text-2xl sm:text-3xl font-bold mt-1 tabular-nums">{value}</p><p className="text-[11px] text-mute mt-1">{hint}</p>
+                  </article>)}
+                </section>
+                <section className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+                  <article className="rounded-2xl bg-card p-4">
+                    <h2 className="font-bold">Visits over time</h2>
+                    <p className="text-xs text-mute mt-1">App-open sessions by interval in {RANGE_LABEL[range].toLowerCase()}.</p>
+                    <div className="grid gap-2 mt-4" style={{ gridTemplateColumns: "repeat(" + visitorInsights.trend.length + ", minmax(0, 1fr))" }}>
+                      {visitorInsights.trend.map((bucket) => <div key={bucket.start} className="min-w-0">
+                        <div className="h-32 rounded-lg bg-secondary/60 flex items-end justify-center px-0.5 pt-2" title={bucket.label + ": " + bucket.visits + " visits, " + bucket.visitors + " known browsers, " + bucket.bounced + " bounce-like"}>
+                          <div className="w-full max-w-5 rounded-t bg-ink" style={{ height: Math.max(2, bucket.visits / visitorInsights.maxVisits * 100) + "%" }} />
+                        </div>
+                        <p className="text-[9px] sm:text-[10px] text-mute truncate text-center mt-1">{bucket.label}</p>
+                        <p className="text-[10px] text-center tabular-nums">{bucket.visits}</p>
+                      </div>)}
+                    </div>
+                  </article>
+                  <article className="rounded-2xl bg-card p-4 space-y-3">
+                    <h2 className="font-bold">New vs returning browsers</h2>
+                    <p className="text-xs text-mute">First-seen status is based on available opted-in event history.</p>
+                    <div className="flex h-4 overflow-hidden rounded-full bg-secondary">
+                      <div className="bg-ink" style={{ width: (visitorInsights.uniqueBrowsers ? visitorInsights.newVisitors / visitorInsights.uniqueBrowsers * 100 : 0) + "%" }} />
+                      <div className="bg-blue-500" style={{ width: (visitorInsights.uniqueBrowsers ? visitorInsights.returningVisitors / visitorInsights.uniqueBrowsers * 100 : 0) + "%" }} />
+                    </div>
+                    <MetricLine label="New" value={String(visitorInsights.newVisitors)} hint="First observed in selected range" />
+                    <MetricLine label="Returning" value={String(visitorInsights.returningVisitors)} hint="Observed before selected range" />
+                    {visitorInsights.unknownAgeVisitors > 0 && <MetricLine label="Age unknown" value={String(visitorInsights.unknownAgeVisitors)} hint="Insufficient first-seen history" />}
+                  </article>
+                </section>
+                <section className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+                  <article className="rounded-2xl bg-card p-4 space-y-3">
+                    <h2 className="font-bold">Visits by device type</h2>
+                    <p className="text-xs text-mute">Coarse classification only; no screen size or hardware fingerprint is saved.</p>
+                    {visitorInsights.deviceMix.map(([label, count]) => <div key={label} className="space-y-1.5">
+                      <div className="flex justify-between gap-2 text-sm"><span>{label === "phone_tablet" ? "Phone / tablet" : label === "desktop" ? "Desktop" : "Legacy / unknown"}</span><b className="tabular-nums">{count} · {percent(count, visitorInsights.visits)}</b></div>
+                      <div className="h-2 rounded-full bg-secondary overflow-hidden"><div className="h-full rounded-full bg-ink" style={{ width: (count / visitorInsights.maxDeviceVisits * 100) + "%" }} /></div>
+                    </div>)}
+                    {visitorInsights.deviceMix.length === 0 && <p className="text-sm text-mute">No device breakdown in this range yet.</p>}
+                  </article>
+                  <article className="rounded-2xl bg-card p-4 space-y-3">
+                    <h2 className="font-bold">Visits by browser</h2>
+                    <p className="text-xs text-mute">Browser family only; the raw user-agent string is not retained.</p>
+                    {visitorInsights.browserMix.map(([label, count]) => <div key={label} className="space-y-1.5">
+                      <div className="flex justify-between gap-2 text-sm"><span>{label}</span><b className="tabular-nums">{count} · {percent(count, visitorInsights.visits)}</b></div>
+                      <div className="h-2 rounded-full bg-secondary overflow-hidden"><div className="h-full rounded-full bg-ink" style={{ width: (count / visitorInsights.maxBrowserVisits * 100) + "%" }} /></div>
+                    </div>)}
+                    {visitorInsights.browserMix.length === 0 && <p className="text-sm text-mute">No browser breakdown in this range yet.</p>}
+                  </article>
+                </section>
+              </>}
+            </>}
             {tab === "usage" && <>
               {usageError ? <section className="rounded-2xl bg-card p-6 space-y-2">
                 <h2 className="text-lg font-bold">App-usage analytics cannot be loaded</h2>

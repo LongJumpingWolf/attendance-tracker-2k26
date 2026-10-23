@@ -742,7 +742,10 @@ export default function Home() {
       isCleared: resetIsComplete,
     })
     if (!r.ok) showToast(r.message) // never reset what could not be kept
-    if (r.ok) setUsageAnalyticsEnabled(false) // a full reset also withdraws the optional local analytics choice
+    if (r.ok) {
+      setUsageAnalyticsEnabled(false) // a full reset also withdraws the optional local analytics choice
+      try { localStorage.removeItem("attendance-analytics-visitor-id") } catch {}
+    }
     return r.ok
   }
 
@@ -1227,6 +1230,7 @@ export default function Home() {
           try {
             localStorage.setItem(CONSENT_VERSION, "1")
             localStorage.setItem(USAGE_ANALYTICS_KEY, usageEnabled ? "1" : "0")
+            if (!usageEnabled) localStorage.removeItem("attendance-analytics-visitor-id")
           } catch {}
           setUsageAnalyticsEnabled(usageEnabled)
           setConsentAccepted(true)
@@ -1249,7 +1253,10 @@ export default function Home() {
         onResetConsent={() => { try { localStorage.removeItem(CONSENT_VERSION) } catch {}; setConsentAccepted(false); setConsentReady(true); setIsSettingsOpen(false) }}
         usageAnalyticsEnabled={usageAnalyticsEnabled}
         onUsageAnalyticsChange={(enabled) => {
-          try { localStorage.setItem(USAGE_ANALYTICS_KEY, enabled ? "1" : "0") } catch {}
+          try {
+            localStorage.setItem(USAGE_ANALYTICS_KEY, enabled ? "1" : "0")
+            if (!enabled) localStorage.removeItem("attendance-analytics-visitor-id")
+          } catch {}
           setUsageAnalyticsEnabled(enabled)
           showToast(enabled ? "Optional app-usage analytics enabled" : "Optional app-usage analytics disabled")
         }}
