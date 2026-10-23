@@ -3,15 +3,30 @@
 import { useEffect } from "react"
 import { Bug, ThumbsUp } from "@phosphor-icons/react"
 
-export default function FeedbackCelebration({ open, kind = "thanks", message, onClose }: { open: boolean; kind?: "thanks" | "bug"; message?: string; onClose: () => void }) {
-  useEffect(() => { if (!open) return; const timer = window.setTimeout(onClose, message ? 8000 : 3000); return () => window.clearTimeout(timer) }, [open, onClose, message])
+export default function FeedbackCelebration({ open, kind = "thanks", message, original, onClose }: { open: boolean; kind?: "thanks" | "bug"; message?: string; /** What the person wrote, shown above the reply */ original?: { message: string; rating: number | null } | null; onClose: () => void }) {
+  useEffect(() => { if (!open) return; const timer = window.setTimeout(onClose, message ? 60000 : 3000); return () => window.clearTimeout(timer) }, [open, onClose, message])
   if (!open) return null
   const Icon = kind === "bug" ? Bug : ThumbsUp
   return <div className="fixed inset-0 z-[100] grid place-items-center bg-black/35 p-5" role="status" aria-live="polite" onClick={onClose}>
-    <div className="animate-feedback-pop w-full max-w-xs max-h-[80dvh] overflow-y-auto rounded-[28px] bg-card shadow-2xl p-6 text-center" onClick={e => e.stopPropagation()}>
+    <div className="animate-feedback-pop w-full max-w-sm max-h-[85dvh] overflow-y-auto rounded-[28px] bg-card shadow-2xl p-6 text-center" onClick={e => e.stopPropagation()}>
       <div className={`mx-auto mb-4 w-20 h-20 rounded-3xl grid place-items-center ${kind === "bug" ? "animate-feedback-bug bg-good/15 text-good" : "animate-feedback-icon bg-ink text-paper"}`}><Icon size={42} weight="duotone" /></div>
       <h2 className="text-[22px] font-bold">{kind === "bug" ? "Bug swatted!" : "Thank you!"}</h2>
-      <p className="text-[14px] text-mute leading-snug mt-2">{message || (kind === "bug" ? "Thanks for reporting this. The developer has replied to your bug report." : "The developer has read your feedback and sends their thanks.")}</p>
+      {message ? (
+        <div className="mt-4 space-y-3 text-left">
+          {original && (original.message || original.rating !== null) && (
+            <section>
+              <p className="text-[12px] font-bold uppercase tracking-wider text-ink">You wrote{original.rating !== null ? ` · ${"★".repeat(original.rating)}${"☆".repeat(5 - original.rating)}` : ""}</p>
+              {original.message && <p className="mt-1.5 rounded-2xl bg-secondary px-4 py-3 text-[15px] leading-snug text-ink whitespace-pre-wrap break-words">{original.message}</p>}
+            </section>
+          )}
+          <section>
+            <p className="text-[12px] font-bold uppercase tracking-wider text-ink">Developer&apos;s reply</p>
+            <p className="mt-1.5 rounded-2xl border-2 border-ink bg-card px-4 py-3 text-[16px] font-medium leading-snug text-ink whitespace-pre-wrap break-words">{message}</p>
+          </section>
+        </div>
+      ) : (
+        <p className="text-[15px] text-ink leading-snug mt-2">{kind === "bug" ? "Thanks for reporting this. The developer has replied to your bug report." : "The developer has read your feedback and sends their thanks."}</p>
+      )}
       <button onClick={onClose} className="mt-5 w-full h-11 rounded-xl bg-secondary text-[14px] font-semibold">Done</button>
     </div>
     <style jsx>{`
