@@ -86,7 +86,6 @@ describe("the architecture holds: UI/domain -> repository -> adapter", () => {
     const re = /import\s+(type\s+)?(?:\{[^}]*\}|\*\s+as\s+\w+|\w+)\s+from\s+["']firebase\/firestore["']/g
     const runtime = all.filter((f) => [...text(f).matchAll(re)].some((m) => !m[1]))
     expect(runtime.sort()).toEqual([
-      "components/feedback-reply-watcher.tsx",
       "components/share-ping-page.tsx",
       "lib/backend/firebase/index.ts",
       "lib/feedback.ts",

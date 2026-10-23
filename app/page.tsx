@@ -76,7 +76,11 @@ import { recordProductUsageEvent, USAGE_ANALYTICS_KEY } from "@/lib/usage-analyt
 import FeedbackSheet from "@/components/feedback-sheet"
 import FeedbackNudge from "@/components/feedback-nudge"
 import FeedbackCelebration from "@/components/feedback-celebration"
-import FeedbackReplyWatcher from "@/components/feedback-reply-watcher"
+import TicketsSheet from "@/components/tickets-sheet"
+import FixCheckIn from "@/components/fix-check-in"
+import { useMyTickets } from "@/lib/use-my-tickets"
+import { markTicketSeen, type FeedbackRecord } from "@/lib/feedback"
+import { ticketTitle } from "@/lib/feedback-threads"
 
 type Page = "today" | "subjects" | "calendar" | "mates"
 
@@ -139,9 +143,14 @@ export default function Home() {
   const [showFeedback, setShowFeedback] = useState(false)
   const [feedbackKind, setFeedbackKind] = useState<"rating" | "bug" | "suggestion">("bug")
   const [showFeedbackNudge, setShowFeedbackNudge] = useState(false)
-  const [feedbackCelebration, setFeedbackCelebration] = useState<"thanks" | "bug" | null>(null)
-  const [feedbackReplyText, setFeedbackReplyText] = useState("")
-  const [feedbackOriginal, setFeedbackOriginal] = useState<{ message: string; rating: number | null } | null>(null)
+  // The person's tickets (bug reports, feature requests, rating) and what in them needs attention
+  const myTickets = useMyTickets()
+  const [showTickets, setShowTickets] = useState(false)
+  const [ticketsOpenId, setTicketsOpenId] = useState<string | null>(null)
+  const [dismissedReplyIds, setDismissedReplyIds] = useState<Set<string>>(new Set())
+  const [previewTicket, setPreviewTicket] = useState<FeedbackRecord | null>(null)
+  const myRating = myTickets.tickets.find((t) => t.kind === "rating" && t.id === `rating-${myTickets.uid}`) ?? myTickets.tickets.find((t) => t.kind === "rating") ?? null
+  const replyToShow = previewTicket ?? (myTickets.firstReply && !dismissedReplyIds.has(myTickets.firstReply.id) ? myTickets.firstReply : null)
 
   const { notificationSupported, notificationPermission, isSubscribed, enableNotifications } = useNotifications(subjects, scheduleOverrides)
   const social = useSocial()
@@ -1075,8 +1084,9 @@ export default function Home() {
                   <Plus weight="regular" className="w-[22px] h-[22px]" />
                 </button>
               )}
-              <button onClick={() => { setSettingsStartPanel("home"); setIsSettingsOpen(true) }} aria-label="Settings" className={iconButton}>
+              <button onClick={() => { setSettingsStartPanel("home"); setIsSettingsOpen(true) }} aria-label={myTickets.followUps.length ? "Settings, the developer replied to you" : "Settings"} className={`${iconButton} relative`}>
                 <GearSix weight="regular" className="w-[22px] h-[22px]" />
+                {myTickets.followUps.length > 0 && <span aria-hidden className="absolute right-1.5 top-1.5 h-2.5 w-2.5 rounded-full bg-bad ring-2 ring-background" />}
               </button>
             </div>
           </header>
@@ -1223,12 +1233,42 @@ export default function Home() {
           <button aria-label="Dismiss sync reminder" onClick={() => { setShowSyncNudge(false); try { localStorage.setItem("attendance-sync-nudge-dismissed-at", String(Date.now())) } catch {} }} className="text-paper/75 text-xl leading-none px-1">×</button>
         </div>
       )}
-      {showFeedbackNudge && consentAccepted && !showFeedback && (
+      {showFeedbackNudge && consentAccepted && !showFeedback && !myRating && (
         <FeedbackNudge onRate={() => { setFeedbackKind("rating"); setShowFeedbackNudge(false); setShowFeedback(true) }} onDismiss={() => setShowFeedbackNudge(false)} />
       )}
-      <FeedbackSheet key={feedbackKind} initialKind={feedbackKind} open={showFeedback} onClose={() => setShowFeedback(false)} onSubmitted={() => { try { localStorage.setItem("attendance-feedback-submitted", "1"); if (feedbackKind === "rating") localStorage.setItem("attendance-rating-submitted", "1") } catch {}; setShowFeedbackNudge(false); setFeedbackCelebration(null); setFeedbackReplyText(""); setFeedbackOriginal(null); showToast("Feedback sent — thank you") }} />
-      <FeedbackReplyWatcher onReply={(reply, kind, original) => { setFeedbackReplyText(reply); setFeedbackOriginal(original); setFeedbackCelebration(kind === "bug" ? "bug" : "thanks") }} />
-      <FeedbackCelebration open={feedbackCelebration !== null} kind={feedbackCelebration ?? "thanks"} message={feedbackReplyText || undefined} original={feedbackOriginal} onClose={() => { setFeedbackCelebration(null); setFeedbackReplyText(""); setFeedbackOriginal(null) }} />
+      <FeedbackSheet key={feedbackKind} initialKind={feedbackKind} existingRating={myRating} open={showFeedback} onClose={() => setShowFeedback(false)} onSubmitted={(kind, changedRating) => { try { localStorage.setItem("attendance-feedback-submitted", "1"); if (kind === "rating") localStorage.setItem("attendance-rating-submitted", "1") } catch {}; setShowFeedbackNudge(false); showToast(changedRating ? "Rating updated" : "Feedback sent — thank you") }} />
+      <FeedbackCelebration
+        ticket={replyToShow}
+        onClose={() => {
+          if (!replyToShow) return
+          if (previewTicket) return setPreviewTicket(null)
+          setDismissedReplyIds((ids) => new Set(ids).add(replyToShow.id))
+          myTickets.acknowledge(replyToShow.id)
+          void markTicketSeen(replyToShow.id).catch(() => {})
+        }}
+        onViewThread={() => {
+          if (!replyToShow) return
+          const id = replyToShow.id
+          if (previewTicket) setPreviewTicket(null)
+          else { setDismissedReplyIds((ids) => new Set(ids).add(id)); myTickets.acknowledge(id) }
+          setTicketsOpenId(id)
+          setShowTickets(true)
+        }}
+      />
+      <FixCheckIn
+        ticket={!replyToShow && !showTickets && !isSettingsOpen && !showFeedback ? myTickets.fixDue : null}
+        onDone={() => { if (myTickets.fixDue) myTickets.snooze(myTickets.fixDue.id) }}
+        onLater={() => { if (myTickets.fixDue) myTickets.snooze(myTickets.fixDue.id) }}
+        onToast={(m) => showToast(m)}
+      />
+      <TicketsSheet
+        open={showTickets}
+        onClose={() => { setShowTickets(false); setTicketsOpenId(null) }}
+        tickets={myTickets.tickets}
+        openId={ticketsOpenId}
+        onOpenFeedback={(kind) => { setShowTickets(false); setTicketsOpenId(null); setFeedbackKind(kind); setShowFeedback(true) }}
+        onToast={(m) => showToast(m)}
+      />
       <TermsGate
         open={loaded && onboardingResolved && consentReady && !consentAccepted}
         onAgree={(usageEnabled) => {
@@ -1267,7 +1307,16 @@ export default function Home() {
         }}
         onShowSyncNudge={() => { setShowSyncNudge(true); setIsSettingsOpen(false) }}
         onOpenFeedback={(kind) => { setFeedbackKind(kind); setIsSettingsOpen(false); setShowFeedback(true) }}
-        onPreviewFeedbackAnimation={(kind) => { setFeedbackOriginal({ message: kind === "bug" ? "The calendar looks squashed on my phone." : "Love the app, a dark mode toggle would be great.", rating: kind === "bug" ? null : 5 }); setFeedbackReplyText(kind === "bug" ? "Preview only: this is the bug-report reply animation." : "Preview only: this is the thank-you animation for ratings and suggestions."); setFeedbackCelebration(kind) }}
+        myRating={myRating?.rating ?? null}
+        ticketCount={myTickets.tickets.length}
+        ticketAlert={myTickets.followUps[0] ? { id: myTickets.followUps[0].id, kind: myTickets.followUps[0].kind, title: ticketTitle(myTickets.followUps[0]), count: myTickets.followUps.length } : null}
+        onOpenTickets={(id) => { setIsSettingsOpen(false); setTicketsOpenId(id ?? null); setShowTickets(true) }}
+        onPreviewFeedbackAnimation={(kind) => setPreviewTicket({
+          id: "preview", uid: null, userEmail: null, userName: null, kind: kind === "bug" ? "bug" : "suggestion", rating: null, status: "resolved", seenByUser: false, devReplyCount: 1,
+          message: kind === "bug" ? "The calendar looks squashed on my phone." : "A dark mode schedule would be great.",
+          developerReply: kind === "bug" ? "Found it: the date picker was opening inside half the form. It now opens full width. Update the app and let me know if it still looks off." : "Good idea. I have added it to the list and will start with a schedule that follows sunset.",
+          createdAt: new Date(Date.now() - 2 * 86_400_000), repliedAt: new Date(),
+        })}
         subjects={subjects}
         tasks={tasks}
         holidays={holidays}

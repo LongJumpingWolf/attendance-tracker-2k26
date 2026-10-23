@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react"
 import { getAuth, onAuthStateChanged } from "firebase/auth"
 import { app } from "@/lib/firebase"
-import { BellRinging, Bell, CalendarPlus, CaretRight, CircleHalf, FloppyDisk, Sparkle, Tag, Trash, Info, Star, Bug, Lightbulb, UserCircle } from "@phosphor-icons/react"
+import { BellRinging, Bell, CalendarPlus, CaretRight, CircleHalf, FloppyDisk, Sparkle, Tag, Trash, Info, Star, Bug, Lightbulb, UserCircle, ChatCircleText } from "@phosphor-icons/react"
 import Sheet, { Segmented, tintButton } from "./sheet"
 import { RemindersList, ReminderEditor } from "./settings-reminders"
 import ScanPanel from "./settings-scan"
@@ -85,6 +85,12 @@ interface SettingsSheetProps {
   onUsageAnalyticsChange: (enabled: boolean) => void
   onShowSyncNudge: () => void
   onOpenFeedback: (kind: "rating" | "bug" | "suggestion") => void
+  /** The person's current rating (1 to 5), if they have rated */
+  myRating: number | null
+  ticketCount: number
+  /** A later reply from the developer in a conversation, not yet opened: shown at the top of Settings */
+  ticketAlert: { id: string; kind: "rating" | "bug" | "suggestion"; title: string; count: number } | null
+  onOpenTickets: (ticketId?: string) => void
   onPreviewFeedbackAnimation: (kind: "thanks" | "bug") => void
 }
 
@@ -262,6 +268,19 @@ export default function SettingsSheet(p: SettingsSheetProps) {
 
       {panel === "home" && (
         <div className="space-y-5">
+          {p.ticketAlert && (
+            <button onClick={() => p.onOpenTickets(p.ticketAlert!.id)} className="flex w-full items-center gap-3 rounded-2xl bg-ink px-4 py-3.5 text-left text-paper active:opacity-90">
+              <span className="relative grid h-10 w-10 flex-shrink-0 place-items-center rounded-xl bg-white/15">
+                <ChatCircleText weight="duotone" className="h-5 w-5" />
+                <span aria-hidden className="absolute -right-0.5 -top-0.5 h-3 w-3 rounded-full bg-bad ring-2 ring-ink" />
+              </span>
+              <span className="min-w-0 flex-1">
+                <span className="block text-[15px] font-semibold leading-snug">{p.ticketAlert.count > 1 ? `${p.ticketAlert.count} new replies from the developer` : "The developer replied to you"}</span>
+                <span className="block truncate text-[13px] leading-snug text-paper/85">{p.ticketAlert.count > 1 ? "Tap to see them" : `On your ${p.ticketAlert.kind === "bug" ? "bug report" : p.ticketAlert.kind === "rating" ? "rating" : "feature request"}: ${p.ticketAlert.title}`}</span>
+              </span>
+              <CaretRight weight="bold" className="h-4 w-4 flex-shrink-0 text-paper/85" />
+            </button>
+          )}
           <section>
             <h3 className={label}>Account & data</h3>
             <ul className={groupClass}>
@@ -314,7 +333,7 @@ export default function SettingsSheet(p: SettingsSheetProps) {
               <Row
                 icon={<Star weight="duotone" className={icon} />}
                 title="Rate the app"
-                hint="Leave a quick rating for the developer"
+                hint={p.myRating ? `You rated ${p.myRating} of 5 · tap to change it` : "Leave a quick rating for the developer"}
                 onClick={() => p.onOpenFeedback("rating")}
               />
               <Row
@@ -328,6 +347,13 @@ export default function SettingsSheet(p: SettingsSheetProps) {
                 title="Request a feature"
                 hint="Share an idea or suggestion"
                 onClick={() => p.onOpenFeedback("suggestion")}
+              />
+              <Row
+                icon={<ChatCircleText weight="duotone" className={icon} />}
+                title="Your tickets"
+                hint={p.ticketAlert ? "The developer replied to you" : p.ticketCount ? "Ratings, bug reports and requests, with replies" : "Your reports and the developer's replies show up here"}
+                status={p.ticketAlert ? { text: p.ticketAlert.count > 1 ? `${p.ticketAlert.count} new` : "New", tone: "bad" } : undefined}
+                onClick={() => p.onOpenTickets()}
               />
             </ul>
           </section>

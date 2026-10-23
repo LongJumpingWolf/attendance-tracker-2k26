@@ -429,21 +429,94 @@ service cloud.firestore {
           && request.resource.data.seenByUser == false
           && request.resource.data.createdAt == request.time;
       }
-      allow create: if validFeedback();
+      // A person has one rating (feedback/rating-<uid>) that they can change later; every other report is its own ticket.
+      function ratingIdOk() {
+        return request.resource.data.kind != 'rating' || request.resource.data.uid == null
+          || feedbackId == 'rating-' + request.resource.data.uid;
+      }
+      function ownThread() {
+        return request.auth != null && resource.data.uid != null && resource.data.uid == request.auth.uid;
+      }
+      function onlyKeys(keys) {
+        return request.resource.data.diff(resource.data).affectedKeys().hasOnly(keys);
+      }
+      function stamped(key) {
+        return request.resource.data[key] == request.time;
+      }
+      function nextCount(key) {
+        return request.resource.data[key] is int
+          && request.resource.data[key] <= 500
+          && request.resource.data[key] == resource.data.get(key, 0) + 1;
+      }
+      allow create: if validFeedback() && ratingIdOk();
       allow get, list: if developer() || (request.auth != null && resource.data.uid != null && resource.data.uid == request.auth.uid);
-      allow update: if developer()
-                    && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['developerReply', 'status', 'repliedAt'])
-                    && request.resource.data.developerReply is string
-                    && request.resource.data.developerReply.size() <= 2000
-                    && request.resource.data.status in ['replied', 'resolved']
-                    && request.resource.data.repliedAt == request.time
-                    || (request.auth != null
-                    && resource.data.uid != null
-                    && resource.data.uid == request.auth.uid
-                    && resource.data.seenByUser == false
-                    && request.resource.data.seenByUser == true
-                    && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['seenByUser']));
+      allow update:
+        // The developer replies, closes or reopens a ticket.
+        if (developer()
+            && onlyKeys(['developerReply', 'status', 'repliedAt', 'lastMessageAt', 'lastFrom', 'devReplyCount', 'seenByUser'])
+            && (!('developerReply' in request.resource.data) || (request.resource.data.developerReply is string && request.resource.data.developerReply.size() <= 2000))
+            && request.resource.data.status in ['open', 'replied', 'resolved']
+            && (!('lastMessageAt' in request.resource.data.diff(resource.data).affectedKeys()) || stamped('lastMessageAt')))
+        // The author has opened the reply.
+        || (ownThread()
+            && resource.data.seenByUser == false
+            && request.resource.data.seenByUser == true
+            && onlyKeys(['seenByUser']))
+        // The author adds to an open conversation: it goes back to waiting for the developer.
+        || (ownThread()
+            && (resource.data.status != 'resolved' || resource.data.kind == 'rating')
+            && onlyKeys(['status', 'lastMessageAt', 'lastFrom', 'messageCount'])
+            && request.resource.data.status == 'open'
+            && request.resource.data.lastFrom == 'user'
+            && stamped('lastMessageAt')
+            && nextCount('messageCount'))
+        // The author says whether a fix worked (once, even after the ticket was closed). Only after the developer has answered.
+        || (ownThread()
+            && resource.data.kind == 'bug'
+            && resource.data.status in ['replied', 'resolved']
+            && resource.data.get('fixFeedback', null) == null
+            && onlyKeys(['fixFeedback', 'lastMessageAt', 'lastFrom', 'messageCount'])
+            && request.resource.data.fixFeedback in ['up', 'down']
+            && request.resource.data.lastFrom == 'user'
+            && stamped('lastMessageAt')
+            && nextCount('messageCount'))
+        // The author changes their rating.
+        || (ownThread()
+            && resource.data.kind == 'rating'
+            && onlyKeys(['rating', 'ratingUpdatedAt'])
+            && request.resource.data.rating is int
+            && request.resource.data.rating >= 1
+            && request.resource.data.rating <= 5
+            && stamped('ratingUpdatedAt'));
       allow delete: if false;
+
+      // The conversation on a ticket. Messages are never edited or removed.
+      match /messages/{messageId} {
+        function ticket() {
+          return get(/databases/$(database)/documents/feedback/$(feedbackId)).data;
+        }
+        allow read: if developer() || (request.auth != null && ticket().uid != null && ticket().uid == request.auth.uid);
+        allow create: if
+          (developer()
+            && request.resource.data.keys().hasOnly(['from', 'text', 'createdAt'])
+            && request.resource.data.from == 'developer'
+            && request.resource.data.text is string
+            && request.resource.data.text.size() > 0
+            && request.resource.data.text.size() <= 2000
+            && request.resource.data.createdAt == request.time)
+          || (request.auth != null
+            && ticket().uid != null
+            && ticket().uid == request.auth.uid
+            && request.resource.data.keys().hasOnly(['from', 'text', 'createdAt', 'helpful'])
+            && request.resource.data.from == 'user'
+            && request.resource.data.text is string
+            && request.resource.data.text.size() <= 1000
+            && (request.resource.data.text.size() > 0 || 'helpful' in request.resource.data)
+            && (!('helpful' in request.resource.data) || (request.resource.data.helpful is bool && ticket().kind == 'bug'))
+            && request.resource.data.createdAt == request.time
+            && (ticket().status != 'resolved' || ticket().kind == 'rating' || 'helpful' in request.resource.data));
+        allow update, delete: if false;
+      }
     }
 
     // Block everything else by default for security

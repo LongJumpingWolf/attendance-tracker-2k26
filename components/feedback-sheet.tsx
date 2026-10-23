@@ -1,9 +1,9 @@
 "use client"
 
-import { useRef, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import { Bug, Camera, Star, Lightbulb, X, SpinnerGap } from "@phosphor-icons/react"
 import Sheet, { primaryButton, tintButton } from "./sheet"
-import { compressFeedbackImage, submitFeedback, type BugDiagnostics, type FeedbackKind } from "@/lib/feedback"
+import { compressFeedbackImage, saveRating, submitFeedback, type BugDiagnostics, type FeedbackKind, type FeedbackRecord } from "@/lib/feedback"
 
 function detectPlatform() {
   if (typeof navigator === "undefined") return "Not sure"
@@ -26,7 +26,7 @@ function detectBrowser() {
   return "Other / not sure"
 }
 
-export default function FeedbackSheet({ open, onClose, onSubmitted, initialKind }: { open: boolean; onClose: () => void; onSubmitted: () => void; initialKind?: FeedbackKind }) {
+export default function FeedbackSheet({ open, onClose, onSubmitted, initialKind, existingRating = null }: { open: boolean; onClose: () => void; onSubmitted: (kind: FeedbackKind, changedRating: boolean) => void; initialKind?: FeedbackKind; /** The person's current rating, if they have one: rating again changes it instead of adding another */ existingRating?: FeedbackRecord | null }) {
   const [kind, setKind] = useState<FeedbackKind>(initialKind ?? "bug")
   const [rating, setRating] = useState<number | null>(null)
   const [message, setMessage] = useState("")
@@ -40,6 +40,8 @@ export default function FeedbackSheet({ open, onClose, onSubmitted, initialKind 
     browser: detectBrowser(), area: "Not sure", frequency: "First time", network: "Not sure",
   })
   const fileRef = useRef<HTMLInputElement>(null)
+  // Rating again starts from the current rating
+  useEffect(() => { if (open && kind === "rating") setRating(existingRating?.rating ?? null) }, [open, kind, existingRating?.id, existingRating?.rating])
 
   const reset = () => { setKind(initialKind ?? "bug"); setRating(null); setMessage(""); setImageData(undefined); setImageName(""); setError(""); setCompressing(false) }
   const close = () => { if (!busy && !compressing) { reset(); onClose() } }
@@ -55,9 +57,9 @@ export default function FeedbackSheet({ open, onClose, onSubmitted, initialKind 
   }
   const setDiagnostic = (key: keyof BugDiagnostics, value: string) => setDiagnostics(prev => ({ ...prev, [key]: value }))
   const selectClass = "w-full min-w-0 rounded-xl bg-card border border-border px-3 py-2.5 text-[14px] text-ink outline-none focus:ring-1 focus:ring-ink/40"
-  return <Sheet open={open} onClose={close} title={kind === "rating" ? "Rate College Tracker" : kind === "bug" ? "Report a bug" : "Request a feature"} priority="high">
+  return <Sheet open={open} onClose={close} title={kind === "rating" ? (existingRating ? "Change your rating" : "Rate College Tracker") : kind === "bug" ? "Report a bug" : "Request a feature"} priority="high">
     <div className="space-y-4">
-      <p className="text-[13px] text-mute leading-snug">{kind === "rating" ? "How is the app working for you? Your rating helps guide improvements." : kind === "bug" ? "Describe what you were trying to do and what went wrong. Please avoid passwords or sensitive personal information." : "Tell the developer what would make College Tracker more useful to you."}</p>
+      <p className="text-[13px] text-mute leading-snug">{kind === "rating" ? (existingRating ? "You rated the app before. Pick a new rating to change it, and add a note if you like. Notes can be added any time." : "How is the app working for you? You can change your rating later, and add notes as often as you like.") : kind === "bug" ? "Describe what you were trying to do and what went wrong. Please avoid passwords or sensitive personal information." : "Tell the developer what would make College Tracker more useful to you."}</p>
       {!initialKind && <div className="grid grid-cols-3 gap-2">
         {([ ["bug", Bug, "Report a bug"], ["rating", Star, "Rate app"], ["suggestion", Lightbulb, "Suggestion"] ] as const).map(([id, Icon, label]) => <button key={id} type="button" onClick={() => setKind(id)} className={`min-h-[72px] rounded-2xl p-2 flex flex-col items-center justify-center gap-1 text-[12px] font-semibold ${kind === id ? "bg-ink text-paper" : "bg-secondary text-ink"}`}><Icon size={22} weight="duotone" />{label}</button>)}
       </div>}
@@ -90,7 +92,12 @@ export default function FeedbackSheet({ open, onClose, onSubmitted, initialKind 
       {error && <p role="alert" className="text-[13px] text-bad">{error}</p>}
       <button disabled={busy || compressing || (kind === "rating" ? rating === null : !message.trim())} className={`${primaryButton} inline-flex items-center justify-center gap-2 disabled:opacity-50`} onClick={async () => {
         setBusy(true); setError("")
-        try { await submitFeedback({ kind, rating, message, imageData, ...(kind === "bug" ? { diagnostics } : {}) }); reset(); onSubmitted(); onClose() }
+        try {
+          if (kind === "rating") await saveRating(existingRating, rating as number, message)
+          else await submitFeedback({ kind, rating, message, imageData, ...(kind === "bug" ? { diagnostics } : {}) })
+          const changed = kind === "rating" && !!existingRating
+          reset(); onSubmitted(kind, changed); onClose()
+        }
         catch (e) {
           const message = e instanceof Error ? e.message : "Could not send feedback. Try again."
           setError(/permission-denied|missing or insufficient permissions/i.test(message)
@@ -98,7 +105,7 @@ export default function FeedbackSheet({ open, onClose, onSubmitted, initialKind 
             : message)
         }
         finally { setBusy(false) }
-      }}>{busy ? <><SpinnerGap size={18} className="animate-spin"/> Sending…</> : kind === "rating" ? "Send rating" : kind === "bug" ? "Send bug report" : "Send suggestion"}</button>
+      }}>{busy ? <><SpinnerGap size={18} className="animate-spin"/> Sending…</> : kind === "rating" ? (existingRating ? "Update rating" : "Send rating") : kind === "bug" ? "Send bug report" : "Send suggestion"}</button>
       <button type="button" disabled={busy || compressing} onClick={close} className={`${tintButton} w-full`}>Cancel</button>
     </div>
   </Sheet>
