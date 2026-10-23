@@ -74,9 +74,11 @@ self.addEventListener('fetch', (event) => {
   const url = new URL(req.url);
   if (url.origin !== self.location.origin) return;
   if (url.pathname.startsWith('/api/') || url.pathname === '/sw.js' || url.pathname === '/demo.html') return;
+  // A direct navigation to an image/manifest (for example, opening the app icon URL)
+  // must return that asset, not the cached app document.
+  if (/\.(png|svg|ico|json|webmanifest)$/.test(url.pathname)) return event.respondWith(staleWhileRevalidate(req));
   if (req.mode === 'navigate') return event.respondWith(page(req));
   if (url.pathname.startsWith('/_next/static/')) return event.respondWith(builtFile(req));
-  if (/\.(png|svg|ico|json|webmanifest)$/.test(url.pathname)) return event.respondWith(staleWhileRevalidate(req));
 });
 
 // ---- Notifications ----
