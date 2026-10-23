@@ -38,16 +38,15 @@ export const metadata: Metadata = {
   manifest: "/manifest.json?v=8",
   icons: {
     icon: [
-      { url: "/favicon.ico", sizes: "any" },
-      { url: "/favicon-32x32-v7.png", type: "image/png", sizes: "32x32" },
-      { url: "/icons/college-tracker-light-192-v7.png", type: "image/png", sizes: "192x192" },
-      { url: "/icons/college-tracker-light-512-v6.png?v=7", type: "image/png", sizes: "512x512" },
+      { url: "/favicon-32x32-v8.png", type: "image/png", sizes: "32x32" },
+      { url: "/icons/college-tracker-light-192-v8.png", type: "image/png", sizes: "192x192" },
+      { url: "/icons/college-tracker-light-512-v8.png", type: "image/png", sizes: "512x512" },
     ],
     apple: [
-      { url: "/apple-touch-icon-v7.png", type: "image/png", sizes: "180x180" },
-      { url: "/apple-touch-icon-167x167-v7.png", type: "image/png", sizes: "167x167" },
-      { url: "/apple-touch-icon-152x152-v7.png", type: "image/png", sizes: "152x152" },
-      { url: "/apple-touch-icon-120x120-v7.png", type: "image/png", sizes: "120x120" },
+      { url: "/apple-touch-icon-v8.png", type: "image/png", sizes: "180x180" },
+      { url: "/apple-touch-icon-167x167-v8.png", type: "image/png", sizes: "167x167" },
+      { url: "/apple-touch-icon-152x152-v8.png", type: "image/png", sizes: "152x152" },
+      { url: "/apple-touch-icon-120x120-v8.png", type: "image/png", sizes: "120x120" },
     ],
   },
   appleWebApp: {
