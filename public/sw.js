@@ -8,7 +8,7 @@
 // ---- Offline app shell ----
 // The app keeps its data on the device (IndexedDB), so opening it must never need the internet. Pages and the files
 // they use are kept here after the first visit and served when the network is down. Data and API calls are never cached.
-const SHELL = 'shell-v3';
+const SHELL = 'shell-v4';
 const PAGE_KEY = '/__shell';
 
 const fromNetworkWithTimeout = (req, ms) =>
@@ -66,23 +66,23 @@ function isExpectedAsset(req, res) {
   return true;
 }
 
-/** Icons and the manifest: serve a valid saved copy, refresh in the background, reject cached HTML. */
+/** Icons and the manifest: network first (validated), saved copy only when offline. Never returns HTML for an image URL. */
 async function staleWhileRevalidate(req) {
   const cache = await caches.open(SHELL);
-  const saved = await cache.match(req);
-  const fresh = fetch(req)
-    .then(async (res) => {
-      if (res.ok && isExpectedAsset(req, res)) await cache.put(req, res.clone());
+  try {
+    const res = await fetch(new Request(req, { cache: 'no-cache' }));
+    if (res.ok && isExpectedAsset(req, res)) {
+      await cache.put(req, res.clone());
       return res;
-    })
-    .catch(() => null);
-
+    }
+  } catch (e) {
+    /* offline: fall through to the saved copy */
+  }
+  const saved = await cache.match(req);
   if (saved && isExpectedAsset(req, saved)) return saved;
   if (saved) await cache.delete(req);
-  const network = await fresh;
-  return network && network.ok && isExpectedAsset(req, network) ? network : Response.error();
+  return Response.error();
 }
-
 self.addEventListener('fetch', (event) => {
   const req = event.request;
   if (req.method !== 'GET') return;

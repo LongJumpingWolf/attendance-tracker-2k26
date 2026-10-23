@@ -21,7 +21,7 @@ export const metadata: Metadata = {
     description: "College Tracker - attendance and deadline tracker",
     images: [
       {
-        url: "/opengraph-image-v7.png",
+        url: "/opengraph-image-v8.png",
         width: 1200,
         height: 630,
         alt: "College Tracker — attendance and deadlines, in one place",
@@ -32,16 +32,16 @@ export const metadata: Metadata = {
     card: "summary_large_image",
     title: "College Tracker",
     description: "College Tracker - attendance and deadline tracker",
-    images: ["/opengraph-image-v7.png"],
+    images: ["/opengraph-image-v8.png"],
   },
   generator: "v0.app",
-  manifest: "/manifest.json?v=7",
+  manifest: "/manifest.json?v=8",
   icons: {
     icon: [
+      { url: "/favicon.ico", sizes: "any" },
       { url: "/favicon-32x32-v7.png", type: "image/png", sizes: "32x32" },
       { url: "/icons/college-tracker-light-192-v7.png", type: "image/png", sizes: "192x192" },
       { url: "/icons/college-tracker-light-512-v6.png?v=7", type: "image/png", sizes: "512x512" },
-      { url: "/icons/college-tracker-dark-192-v6.png?v=7", type: "image/png", sizes: "192x192", media: "(prefers-color-scheme: dark)" },
     ],
     apple: [
       { url: "/apple-touch-icon-v7.png", type: "image/png", sizes: "180x180" },
