@@ -13,11 +13,11 @@ export default function OfflineShell() {
     let cancelled = false
     ;(async () => {
       try {
-        await navigator.serviceWorker.register("/sw.js", { scope: "/", updateViaCache: "none" })
+        await navigator.serviceWorker.register("/sw.js?v=7", { scope: "/", updateViaCache: "none" })
         await navigator.serviceWorker.ready
         if (cancelled || !("caches" in window)) return
         // The first page load happened before the worker was in charge, so it never saw those requests. Save them now.
-        const cache = await caches.open("shell-v2")
+        const cache = await caches.open("shell-v3")
         const used = performance
           .getEntriesByType("resource")
           .map((e) => new URL(e.name))

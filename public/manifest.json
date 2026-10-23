@@ -18,12 +18,12 @@
       "url": "/?mark=next",
       "icons": [
         {
-          "src": "/icons/college-tracker-light-192-v6.png",
+          "src": "/icons/college-tracker-light-192-v7.png",
           "sizes": "192x192",
           "type": "image/png"
         },
         {
-          "src": "/icons/college-tracker-light-512-v6.png",
+          "src": "/icons/college-tracker-light-512-v6.png?v=7",
           "sizes": "512x512",
           "type": "image/png"
         }
@@ -36,12 +36,12 @@
       "url": "/?go=mates",
       "icons": [
         {
-          "src": "/icons/college-tracker-light-192-v6.png",
+          "src": "/icons/college-tracker-light-192-v7.png",
           "sizes": "192x192",
           "type": "image/png"
         },
         {
-          "src": "/icons/college-tracker-light-512-v6.png",
+          "src": "/icons/college-tracker-light-512-v6.png?v=7",
           "sizes": "512x512",
           "type": "image/png"
         }
@@ -53,12 +53,12 @@
       "url": "/?go=subjects",
       "icons": [
         {
-          "src": "/icons/college-tracker-light-192-v6.png",
+          "src": "/icons/college-tracker-light-192-v7.png",
           "sizes": "192x192",
           "type": "image/png"
         },
         {
-          "src": "/icons/college-tracker-light-512-v6.png",
+          "src": "/icons/college-tracker-light-512-v6.png?v=7",
           "sizes": "512x512",
           "type": "image/png"
         }
@@ -67,39 +67,39 @@
   ],
   "icons": [
     {
-      "src": "/icons/college-tracker-light-192-v6.png",
+      "src": "/icons/college-tracker-light-192-v7.png",
       "sizes": "192x192",
       "type": "image/png",
       "purpose": "any"
     },
     {
-      "src": "/icons/college-tracker-light-512-v6.png",
+      "src": "/icons/college-tracker-light-512-v6.png?v=7",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "any"
     },
     {
-      "src": "/icons/college-tracker-dark-192-v6.png",
+      "src": "/icons/college-tracker-dark-192-v6.png?v=7",
       "sizes": "192x192",
       "type": "image/png",
       "purpose": "any",
       "media": "(prefers-color-scheme: dark)"
     },
     {
-      "src": "/icons/college-tracker-dark-512-v6.png",
+      "src": "/icons/college-tracker-dark-512-v6.png?v=7",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "any",
       "media": "(prefers-color-scheme: dark)"
     },
     {
-      "src": "/icons/college-tracker-maskable-192-v6.png",
+      "src": "/icons/college-tracker-maskable-192-v6.png?v=7",
       "sizes": "192x192",
       "type": "image/png",
       "purpose": "maskable"
     },
     {
-      "src": "/icons/college-tracker-maskable-512-v6.png",
+      "src": "/icons/college-tracker-maskable-512-v6.png?v=7",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "maskable"

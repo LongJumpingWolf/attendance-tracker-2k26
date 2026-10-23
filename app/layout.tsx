@@ -21,7 +21,7 @@ export const metadata: Metadata = {
     description: "College Tracker - attendance and deadline tracker",
     images: [
       {
-        url: "https://i.ibb.co/4nHZ5w1r/college-tracker-apple-touch-icon.png",
+        url: "/apple-touch-icon-v7.png",
         width: 180,
         height: 180,
         alt: "College Tracker app icon",
@@ -32,16 +32,23 @@ export const metadata: Metadata = {
     card: "summary",
     title: "College Tracker",
     description: "College Tracker - attendance and deadline tracker",
-    images: ["https://i.ibb.co/4nHZ5w1r/college-tracker-apple-touch-icon.png"],
+    images: ["/apple-touch-icon-v7.png"],
   },
   generator: "v0.app",
-  manifest: "/manifest.json?v=6",
+  manifest: "/manifest.json?v=7",
   icons: {
     icon: [
-      { url: "/icons/college-tracker-light-192-v6.png", type: "image/png", sizes: "192x192" },
-      { url: "/icons/college-tracker-dark-192-v6.png", type: "image/png", sizes: "192x192", media: "(prefers-color-scheme: dark)" },
+      { url: "/favicon-32x32-v7.png", type: "image/png", sizes: "32x32" },
+      { url: "/icons/college-tracker-light-192-v7.png", type: "image/png", sizes: "192x192" },
+      { url: "/icons/college-tracker-light-512-v6.png?v=7", type: "image/png", sizes: "512x512" },
+      { url: "/icons/college-tracker-dark-192-v6.png?v=7", type: "image/png", sizes: "192x192", media: "(prefers-color-scheme: dark)" },
     ],
-    apple: [{ url: "https://i.ibb.co/4nHZ5w1r/college-tracker-apple-touch-icon.png", type: "image/png", sizes: "180x180" }],
+    apple: [
+      { url: "/apple-touch-icon-v7.png", type: "image/png", sizes: "180x180" },
+      { url: "/apple-touch-icon-167x167-v7.png", type: "image/png", sizes: "167x167" },
+      { url: "/apple-touch-icon-152x152-v7.png", type: "image/png", sizes: "152x152" },
+      { url: "/apple-touch-icon-120x120-v7.png", type: "image/png", sizes: "120x120" },
+    ],
   },
   appleWebApp: {
     capable: true,

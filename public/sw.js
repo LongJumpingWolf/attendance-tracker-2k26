@@ -8,7 +8,7 @@
 // ---- Offline app shell ----
 // The app keeps its data on the device (IndexedDB), so opening it must never need the internet. Pages and the files
 // they use are kept here after the first visit and served when the network is down. Data and API calls are never cached.
-const SHELL = 'shell-v2';
+const SHELL = 'shell-v3';
 const PAGE_KEY = '/__shell';
 
 const fromNetworkWithTimeout = (req, ms) =>
@@ -55,17 +55,32 @@ async function builtFile(req) {
   }
 }
 
-/** Icons and the manifest: show the saved copy now, refresh it in the background */
+/** Validate cached assets before returning them: an icon URL must never return an HTML page. */
+function isExpectedAsset(req, res) {
+  const path = new URL(req.url).pathname.toLowerCase();
+  const type = (res.headers.get('content-type') || '').toLowerCase();
+  if (path.endsWith('.png')) return type.includes('image/png');
+  if (path.endsWith('.svg')) return type.includes('image/svg+xml');
+  if (path.endsWith('.ico')) return type.startsWith('image/');
+  if (path.endsWith('.json') || path.endsWith('.webmanifest')) return type.includes('json') || type.includes('manifest');
+  return true;
+}
+
+/** Icons and the manifest: serve a valid saved copy, refresh in the background, reject cached HTML. */
 async function staleWhileRevalidate(req) {
   const cache = await caches.open(SHELL);
   const saved = await cache.match(req);
   const fresh = fetch(req)
-    .then((res) => {
-      if (res.ok) cache.put(req, res.clone());
+    .then(async (res) => {
+      if (res.ok && isExpectedAsset(req, res)) await cache.put(req, res.clone());
       return res;
     })
     .catch(() => null);
-  return saved || (await fresh) || Response.error();
+
+  if (saved && isExpectedAsset(req, saved)) return saved;
+  if (saved) await cache.delete(req);
+  const network = await fresh;
+  return network && network.ok && isExpectedAsset(req, network) ? network : Response.error();
 }
 
 self.addEventListener('fetch', (event) => {
@@ -105,8 +120,8 @@ function describePush(payload) {
     title,
     options: {
       body,
-      icon: '/favicon-192.png',
-      badge: '/favicon-192.png',
+      icon: '/icons/college-tracker-light-192-v7.png',
+      badge: '/icons/college-tracker-light-192-v7.png',
       // The Ping's own id is the tag, so a repeat for the same Ping replaces the first instead of stacking
       tag: d.tag || n.tag || 'notification',
       data: { url: safeUrl(d.url), pingId: d.pingId || null, type: d.type || null },
