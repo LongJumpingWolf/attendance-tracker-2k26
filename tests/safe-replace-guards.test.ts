@@ -165,7 +165,9 @@ describe("demo protection", () => {
 
   it("the page sets its demo flag in the same step that starts or ends the demo, and asks for the lock", () => {
     const page = fs.readFileSync(path.join(ROOT, "app/page.tsx"), "utf8")
-    expect(page).toMatch(/demoActiveRef\.current = true[\s\S]{0,200}setDemoLive\(true\)[\s\S]{0,200}setDemoActive\(true\)/)
+    // The app guide is illustrative: nothing ever turns the demo on, so real data is never swapped out
+    expect(page).not.toMatch(/setDemoActive\(true\)/)
+    expect(page).not.toMatch(/demoActiveRef\.current = true/)
     expect(page).toMatch(/demoActiveRef\.current = false\s*\n\s*setDemoLive\(false\)\s*\n\s*setDemoActive\(false\)/)
     expect(page).toMatch(/tryAcquire\("demo"\)/)
     expect(page).toMatch(/demoActive: demoIsActive/)

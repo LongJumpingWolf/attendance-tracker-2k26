@@ -34,6 +34,8 @@ import { newId } from "@/lib/ids"
 import { saveRestorePoint } from "@/lib/restore-points"
 import { adoptConnections } from "@/lib/identity"
 import { liveNames } from "@/lib/profile-name"
+import { getProfileName } from "@/lib/social"
+import { mustWaitToApply } from "@/lib/ping-unapplied"
 import { usePingEvents } from "@/lib/use-ping-events"
 import { usePingProcessing } from "@/lib/use-ping-processing"
 import { applyPingResult, resultIsSaved } from "@/lib/ping-apply"
@@ -81,6 +83,7 @@ import FixCheckIn from "@/components/fix-check-in"
 import { useMyTickets } from "@/lib/use-my-tickets"
 import { markTicketSeen, type FeedbackRecord } from "@/lib/feedback"
 import { ticketTitle } from "@/lib/feedback-threads"
+import { SW_OPTIONS, SW_URL } from "@/lib/sw-config"
 
 type Page = "today" | "subjects" | "calendar" | "mates"
 
@@ -182,7 +185,9 @@ export default function Home() {
       if (Array.isArray(savedOverrides)) setScheduleOverrides(savedOverrides)
 
       // Habit tracker, to-do list and tutorial were removed; drop their leftovers
-      for (const key of ["todos", "binTodos", "binClearDate", "habits", "tutorialSeen"]) localStorage.removeItem(key)
+      try {
+        for (const key of ["todos", "binTodos", "binClearDate", "habits", "tutorialSeen"]) localStorage.removeItem(key)
+      } catch { /* site data blocked: the app still has to finish loading */ }
 
       setDateLabel(new Date().toLocaleDateString("en-US", { weekday: "long", day: "numeric", month: "long" }))
       setLoaded(true)
@@ -377,6 +382,8 @@ export default function Home() {
   const applyDurably = async (p: Ping): Promise<boolean> => {
     if (demoActiveRef.current) return false // demo data is never saved, so there is nothing safe to confirm
     const r = applyPingResult(latestSubjects.current, latestMates.current, p)
+    // A "yes" for a class this device doesn't have (a new browser, not yet synced) must not be marked processed: that is permanent
+    if (mustWaitToApply(p, r)) return false
     if (r.helped.length > 0) {
       latestSubjects.current = r.subjects
       latestMates.current = r.mates
@@ -543,10 +550,24 @@ export default function Home() {
     const link = pendingLink
     setPendingLink(null)
     try { sessionStorage.removeItem("attendance-pending-mate-link") } catch {}
-    const run = link.kind === "add" ? social.connectViaUid(link.value) : social.connectViaInvite(link.value)
-    run
-      .then((r) => setToast({ id: Date.now(), message: r.message }))
-      .catch(() => setToast({ id: Date.now(), message: "Couldn't send the request. Try again." }))
+    // A link must never connect anyone on its own: a stranger's link opened from a chat would otherwise accept a request
+    // they had already sent, and from then on they can send Pings and notifications. Ask first, showing who it is.
+    void (async () => {
+      let who = ""
+      if (link.kind === "add") {
+        try { who = ((await getProfileName(link.value)) ?? "").trim() } catch { /* the name is only for the question */ }
+      }
+      const question = who
+        ? `Connect with ${who}?\n\nThey will be able to send you attendance Pings. Only continue if you know them.`
+        : "Accept this connection link?\n\nThe person who made it will be able to send you attendance Pings. Only continue if you know them."
+      if (!window.confirm(question)) return setToast({ id: Date.now(), message: "Connection cancelled." })
+      try {
+        const r = await (link.kind === "add" ? social.connectViaUid(link.value) : social.connectViaInvite(link.value))
+        setToast({ id: Date.now(), message: r.message })
+      } catch {
+        setToast({ id: Date.now(), message: "Couldn't send the request. Try again." })
+      }
+    })()
   }, [pendingLink, sync.account, social.configured, social.status, social.name, social.anonymous, social.uid, isOnline])
 
   // Remind established users once they've had the app for two days. Existing installations without a timestamp
@@ -852,7 +873,7 @@ export default function Home() {
         alert("Background alert registration is not configured for this deployment. You can still use local reminders while the app is open. The app administrator needs to finish the notification service setup.")
         return
       }
-      await navigator.serviceWorker.register("/sw.js", { scope: "/", updateViaCache: "none" })
+      await navigator.serviceWorker.register(SW_URL, SW_OPTIONS)
       const registration = await navigator.serviceWorker.ready
       if (!registration.active) return alert("The background alert service is not ready yet. Refresh the page and try again.")
 
@@ -1256,6 +1277,7 @@ export default function Home() {
         }}
       />
       <FixCheckIn
+        key={myTickets.fixDue?.id ?? "none"}
         ticket={!replyToShow && !showTickets && !isSettingsOpen && !showFeedback ? myTickets.fixDue : null}
         onDone={() => { if (myTickets.fixDue) myTickets.snooze(myTickets.fixDue.id) }}
         onLater={() => { if (myTickets.fixDue) myTickets.snooze(myTickets.fixDue.id) }}
@@ -1423,6 +1445,7 @@ export default function Home() {
           setEditingSubjectId(null)
         }}
         subject={editingSubject}
+        subjectKey={editingSubjectId}
         existingTags={allTags}
         onSubmit={editingSubject ? handleEditSubject : handleAddSubject}
       />

@@ -112,7 +112,7 @@ export function NotificationsPanel({ supported, permission, isSubscribed, onEnab
             </section>
             <section className="rounded-2xl bg-secondary p-4">
               <h3 className="font-bold text-[15px]">Alerts after you close the app</h3>
-              <p className="text-mute mt-1.5">Your browser and device must support background notifications, this device must be registered, and the app's server delivery must be configured. Turning on permission alone does not guarantee background alerts.</p>
+              <p className="text-mute mt-1.5">Your browser and device must support background notifications, this device must be registered, and the app&apos;s server delivery must be configured. Turning on permission alone does not guarantee background alerts.</p>
             </section>
             <p className="text-mute">Send me a test checks whether this device can display a local alert. A successful test does not prove that background delivery is ready.</p>
           </div>

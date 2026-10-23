@@ -65,6 +65,7 @@ export async function dbSet(key: string, value: unknown): Promise<void> {
   if (db) {
     try {
       await run(db, "readwrite", (s) => s.put(value, key))
+      ls.del(key) // IndexedDB now holds the newest value: a copy left in localStorage must never outrank it
       return
     } catch {
       /* fall through to localStorage */
@@ -86,8 +87,10 @@ export async function dbGet<T>(key: string): Promise<T | undefined> {
   if (db) {
     try {
       const found = await run<T | undefined>(db, "readonly", (s) => s.get(key))
-      if (found !== undefined) return found
       const legacy = ls.get(key)
+      // A copy in localStorage is either from before IndexedDB or was written while IndexedDB was failing (a successful
+      // IndexedDB write removes it), so it is the newer one: using the older IndexedDB value would discard those edits.
+      if (found !== undefined && legacy === undefined) return found
       if (legacy === undefined) return undefined
       await run(db, "readwrite", (s) => s.put(legacy, key))
       const check = await run<unknown>(db, "readonly", (s) => s.get(key))

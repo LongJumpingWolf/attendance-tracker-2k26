@@ -41,7 +41,7 @@ const STEPS: DemoStep[] = [
   {
     eyebrow: "YOUR DAY · 2 OF 10",
     title: "Know what needs your attention now.",
-    body: "Today's classes appear in time order. Mark a class Present or Absent, then check the attendance result without digging through menus.",
+    body: "Today&apos;s classes appear in time order. Mark a class Present or Absent, then check the attendance result without digging through menus.",
     note: "Always verify your actual attendance against your college records.",
     visual: "today",
   },
@@ -120,7 +120,7 @@ function Preview({ visual }: { visual: Visual }) {
   if (visual === "today") {
     return (
       <div className="space-y-3">
-        <div className="flex items-center justify-between"><span className="text-[12px] uppercase tracking-widest text-mute font-bold">Today's classes</span><span className="text-[12px] text-mute">2 to mark</span></div>
+        <div className="flex items-center justify-between"><span className="text-[12px] uppercase tracking-widest text-mute font-bold">Today&apos;s classes</span><span className="text-[12px] text-mute">2 to mark</span></div>
         <MiniCard className="p-4"><div className="flex items-center justify-between text-[12px] text-mute"><span>09:00–10:00</span><span className="rounded-full bg-info/10 text-info px-2 py-1 font-bold">UP NEXT</span></div><h3 className="text-[22px] font-bold mt-3">Pathology</h3><p className="text-[13px] text-mute mt-1">74% attendance · 75% required</p><div className="grid grid-cols-2 gap-2 mt-4"><span className="rounded-xl bg-good text-white text-center py-2.5 font-semibold text-[13px]">✓ Present</span><span className="rounded-xl bg-secondary text-bad text-center py-2.5 font-semibold text-[13px]">Absent</span></div></MiniCard>
         <MiniCard className="flex items-center justify-between gap-3 p-3.5"><span><b className="block text-[14px]">Next up: Pharmacology</b><small className="text-mute">10:00–11:00</small></span><Clock size={20} className="text-mute"/></MiniCard>
       </div>

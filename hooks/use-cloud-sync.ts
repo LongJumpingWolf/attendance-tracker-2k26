@@ -410,13 +410,18 @@ export function useCloudSync(opts: {
     setStatus("syncing")
     const sent = current()
     // The marker is written down before the request and removed only by a definite answer (see putTracked)
-    const r = await putTracked(ledger, boundedPut, owner, buildBackup(sent, false), revRef.current, async (rev) => {
-      if (ownerRef.current !== owner) return // signed out meanwhile: this account's revision must not be recorded for another
-      await setBase(sent, rev) // the base first, then the revision it is at
-      revRef.current = rev
-      write(REV_KEY, String(rev))
-      lastJson.current = now
-    })
+    let r: Awaited<ReturnType<typeof putTracked>>
+    try {
+      r = await putTracked(ledger, boundedPut, owner, buildBackup(sent, false), revRef.current, async (rev) => {
+        if (ownerRef.current !== owner) return // signed out meanwhile: this account's revision must not be recorded for another
+        await setBase(sent, rev) // the base first, then the revision it is at
+        revRef.current = rev
+        write(REV_KEY, String(rev))
+        lastJson.current = now
+      })
+    } catch {
+      r = { ok: false, reason: "unavailable" } // never leave the sync marked busy, or nothing is sent until the page is reloaded
+    }
     busy.current = false
     if (r.ok && ownerRef.current === owner) {
       // Only now, after the store confirmed the write, is anything called synced

@@ -24,9 +24,10 @@ export function useNotifications(subjects: Subject[] = [], scheduleOverrides: Sc
 
       const inFlight = new Set<string>()
       const firedInMemory = new Set<string>()
-      const show = async (title: string, body: string): Promise<boolean> => {
+      const show = async (title: string, body: string, tag?: string): Promise<boolean> => {
         if (!('Notification' in window) || Notification.permission !== 'granted') return false
-        const options = { body, icon: '/favicon-192.png', badge: '/favicon-192.png', data: { url: `${window.location.origin}/` } }
+        // A tag makes the system replace a repeat (the app open in two tabs or windows) instead of showing it twice
+        const options = { body, icon: '/favicon-192.png', badge: '/favicon-192.png', data: { url: `${window.location.origin}/` }, ...(tag ? { tag } : {}) }
         try {
           // Phones only allow notifications made through the service worker.
           const registration = await navigator.serviceWorker?.ready
@@ -105,7 +106,7 @@ export function useNotifications(subjects: Subject[] = [], scheduleOverrides: Sc
 
           const timeStr = `${formatTime(entry.startTime)} - ${formatTime(entry.endTime)}`
           inFlight.add(firedKey)
-          void show('Class Reminder', `${reminderName}\n${timeStr}\nTap to open the app.`)
+          void show('Class Reminder', `${reminderName}\n${timeStr}\nTap to open the app.`, `reminder-${firedKey}`)
             .then((shown) => {
               if (!shown) return
               // Persist only after the browser accepted the notification request. Failed attempts may retry in the grace window.

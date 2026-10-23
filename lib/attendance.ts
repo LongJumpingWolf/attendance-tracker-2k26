@@ -328,8 +328,11 @@ export function markWithUndo(s: Subject, date: string, status: "P" | "A" | null,
 
 /* ---------- planning future lectures ---------- */
 
-/** Dates (YYYY-MM-DD) of this subject's classes over the next `days` days, starting tomorrow */
-export function futureClassDates(s: Subject, days = 35): string[] {
+/**
+ * Dates (YYYY-MM-DD) of this subject's classes over the next `days` days, starting tomorrow. A day on which every one
+ * of its classes has been cancelled is left out, since there is nothing to attend or skip.
+ */
+export function futureClassDates(s: Subject, days = 35, overrides: ScheduleOverride[] = []): string[] {
   const set = new Set((s.slots || []).map((x) => x.day))
   const out: string[] = []
   const now = new Date()
@@ -337,7 +340,10 @@ export function futureClassDates(s: Subject, days = 35): string[] {
     const d = new Date(now.getFullYear(), now.getMonth(), now.getDate() + i)
     const date = localDate(d)
     // A finite sleep hides only dates through sleepUntil. Future dates after the wake date must reappear in forecasts.
-    if (set.has(d.getDay()) && !isSubjectSleeping(s, date)) out.push(date)
+    if (!set.has(d.getDay()) || isSubjectSleeping(s, date)) continue
+    const todays = (s.slots || []).filter((x) => x.day === d.getDay())
+    const allCancelled = todays.length > 0 && todays.every((slot) => overrides.some((o) => o.kind === "cancelled" && o.date === date && o.originalSubjectId === s.id && o.start === slot.start))
+    if (!allCancelled) out.push(date)
   }
   return out
 }

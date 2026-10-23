@@ -241,7 +241,12 @@ function alignRemote(local: FullBackupData, remote: FullBackupData): FullBackupD
     return mine ? { ...m, id: mine.id } : m
   })
   const tasks = remote.tasks.map((k) => (k.subjectId && subjectIds.has(k.subjectId) ? { ...k, subjectId: subjectIds.get(k.subjectId) } : k))
-  return { ...remote, subjects, mates, tasks }
+  // Cancelled classes, substitutions and reminders also name a subject by id: left alone they would point at one that no
+  // longer exists, stop applying, and sit beside this device's own copy of the same exception as a duplicate.
+  const rename = (id: string) => subjectIds.get(id) ?? id
+  const scheduleOverrides = remote.scheduleOverrides?.map((o) => ({ ...o, originalSubjectId: rename(o.originalSubjectId), ...(o.substituteSubjectId ? { substituteSubjectId: rename(o.substituteSubjectId) } : {}) }))
+  const reminders = remote.reminders.map((r) => (r.subjectId && subjectIds.has(r.subjectId) ? { ...r, subjectId: rename(r.subjectId) } : r))
+  return { ...remote, subjects, mates, tasks, reminders, ...(scheduleOverrides ? { scheduleOverrides } : {}) }
 }
 
 function mergeHolidays(base: Holiday[] | undefined, local: Holiday[], remote: Holiday[], t: Tally): Holiday[] {

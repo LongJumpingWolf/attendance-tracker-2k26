@@ -16,14 +16,16 @@ describe("Firebase Web Push configuration", () => {
   it("classifies the push-service AbortError as a recoverable optional failure", () => {
     const error = Object.assign(new Error("Registration failed - push service error"), { name: "AbortError" })
     expect(isPushServiceUnavailable(error)).toBe(true)
-    expect(pushSetupMessage(error)).toMatch(/could not register for remote push notifications/i)
-    expect(pushSetupMessage(error)).toMatch(/brave:\/\/settings\/privacy/i)
-    expect(pushSetupMessage(error)).toMatch(/fully restart brave/i)
-    expect(pushSetupMessage(error)).toMatch(/Attendance and friend connections can still work/i)
+    expect(pushSetupMessage(error)).toMatch(/could not register for alerts after the app closes/i)
+    expect(pushSetupMessage(error)).toMatch(/local reminders while College Tracker is open/i)
+    expect(pushSetupMessage(error)).toMatch(/enable Google services for push messaging/i)
+    expect(pushSetupMessage(error)).toMatch(/fully restart the browser/i)
   })
 
   it("does not classify unrelated permission/API errors as a push-service outage", () => {
     expect(isPushServiceUnavailable(Object.assign(new Error("Permission denied"), { name: "NotAllowedError" }))).toBe(false)
-    expect(pushSetupMessage(Object.assign(new Error("bad VAPID"), { code: "messaging/invalid-vapid-key" }))).toBe("bad VAPID")
+    const other = pushSetupMessage(Object.assign(new Error("bad VAPID"), { code: "messaging/invalid-vapid-key" }))
+    expect(other).toMatch(/Background alert setup could not be completed on this device/i)
+    expect(other).not.toMatch(/brave|Google services/i)
   })
 })

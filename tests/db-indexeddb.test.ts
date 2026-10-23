@@ -161,6 +161,27 @@ describe("lib/db.ts against an in-memory IndexedDB", () => {
     expect(await db.dbGet("k")).toEqual({ v: 1 }) // still readable: the value lives in the fallback
   })
 
+  it("an edit saved to the fallback while IndexedDB was failing is not hidden by the older IndexedDB value on the next read", async () => {
+    const { db, idb } = await fresh()
+    await db.dbSet("k", { v: 1 }) // saved normally
+    idb.faults.quota = true
+    await db.dbSet("k", { v: 2 }) // IndexedDB refuses: the newer value goes to localStorage
+    idb.faults.quota = false
+    expect(await db.dbGet("k")).toEqual({ v: 2 }) // before: the stale { v: 1 } came back and the edit was lost
+    expect(await db.dbGet("k")).toEqual({ v: 2 }) // and it has moved into IndexedDB now
+    expect(idb.stores.get("college-tracker")?.get("k")).toEqual({ v: 2 })
+  })
+
+  it("a later normal save is never outranked by an old fallback copy", async () => {
+    const { db, idb, local } = await fresh()
+    idb.faults.quota = true
+    await db.dbSet("k", { v: 1 })
+    idb.faults.quota = false
+    await db.dbSet("k", { v: 2 })
+    expect(local.m.has("k")).toBe(false)
+    expect(await db.dbGet("k")).toEqual({ v: 2 })
+  })
+
   it("when quota fails on BOTH, the write is lost silently by dbSet, which is why callers that need certainty read back", async () => {
     const { db, idb, local } = await fresh()
     idb.faults.quota = true

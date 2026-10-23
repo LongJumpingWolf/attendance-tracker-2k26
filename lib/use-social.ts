@@ -11,7 +11,7 @@ import { requestNotificationPermission } from "./notifications"
 import { requestFCMToken } from "./firebase"
 import { attempt } from "./ping-send"
 import { app, db } from "./firebase"
-import { collection, deleteDoc, doc, onSnapshot, query, runTransaction, serverTimestamp, setDoc, Timestamp, updateDoc, where } from "firebase/firestore"
+import { collection, deleteDoc, doc, onSnapshot, query, runTransaction, serverTimestamp, setDoc, Timestamp, where } from "firebase/firestore"
 import { getAuth } from "firebase/auth"
 import { followIdentity } from "./social-session"
 import { announceProfile, completeCarry } from "./identity"
@@ -414,7 +414,7 @@ export function useSocial(onNotice?: (message: string) => void): SocialApi {
       },
     )
     void signIn()
-  }, [configured, mockMode])
+  }, [configured, mockMode, adoptName])
 
   useEffect(
     () => () => {

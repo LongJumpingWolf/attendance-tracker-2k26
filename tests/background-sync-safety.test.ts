@@ -333,9 +333,10 @@ describe("the hook is wired to all of this", () => {
     expect(hook).toMatch(/onRelease\(\(\) => \{\s*if \(!deferredRef\.current\) return\s*deferredRef\.current = false\s*void syncRef\.current\(\)/)
     expect(hook).toMatch(/if \(out\.reason === "deferred"\) deferredRef\.current = true/)
   })
-  it("the page flags the demo for sync in the same step", () => {
+  it("the page clears the demo flag whenever the demo ends or everything is reset, and never raises it (the guide never swaps in sample data)", () => {
     const page = fs.readFileSync(path.join(ROOT, "app/page.tsx"), "utf8")
-    expect((page.match(/setDemoLive\(/g) ?? []).length).toBeGreaterThanOrEqual(3)
+    expect((page.match(/setDemoLive\(false\)/g) ?? []).length).toBeGreaterThanOrEqual(2)
+    expect(page).not.toMatch(/setDemoLive\(true\)/)
   })
 })
 

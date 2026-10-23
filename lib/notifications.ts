@@ -1,4 +1,5 @@
 // Notification helpers: permission, the service worker, the FCM token (used for mate alerts) and local notifications
+import { SW_OPTIONS, SW_URL } from './sw-config';
 import { requestFCMToken, onMessageListener } from './firebase';
 
 export async function requestNotificationPermission() {
@@ -36,9 +37,7 @@ export async function registerServiceWorker() {
   }
 
   try {
-    const registration = await navigator.serviceWorker.register('/sw.js', {
-      scope: '/',
-    });
+    const registration = await navigator.serviceWorker.register(SW_URL, SW_OPTIONS);
     return registration;
   } catch (error) {
     console.error('❌ Service Worker registration failed:', error);

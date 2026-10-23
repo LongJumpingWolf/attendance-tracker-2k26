@@ -4,6 +4,7 @@ import { getAuth, connectAuthEmulator } from 'firebase/auth';
 import { getFirestore, connectFirestoreEmulator } from 'firebase/firestore';
 import { getMessaging, isSupported } from 'firebase/messaging';
 import { isPushServiceUnavailable, resolveFirebaseVapidKey } from './push-config';
+import { SW_OPTIONS, SW_URL } from './sw-config';
 
 const firebaseConfig = {
   apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY!,
@@ -81,7 +82,7 @@ export const requestFCMToken = async () => {
     if (!messaging) return null;
     const { getToken } = await import('firebase/messaging');
     // Ensure the root-scoped worker is active before asking the browser push service to subscribe.
-    await navigator.serviceWorker.register('/sw.js', { scope: '/' });
+    await navigator.serviceWorker.register(SW_URL, SW_OPTIONS);
     const registration = await navigator.serviceWorker.ready;
     if (!registration.active) {
       console.warn('FCM token not requested: the service worker is not active yet.');

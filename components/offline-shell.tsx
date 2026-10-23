@@ -1,6 +1,7 @@
 "use client"
 
 import { useEffect } from "react"
+import { SHELL_CACHE, SW_OPTIONS, SW_URL } from "@/lib/sw-config"
 
 /**
  * Registers the service worker on every launch (it used to start only when notifications were switched on) and saves the
@@ -13,11 +14,11 @@ export default function OfflineShell() {
     let cancelled = false
     ;(async () => {
       try {
-        await navigator.serviceWorker.register("/sw.js?v=8", { scope: "/", updateViaCache: "none" })
+        await navigator.serviceWorker.register(SW_URL, SW_OPTIONS)
         await navigator.serviceWorker.ready
         if (cancelled || !("caches" in window)) return
         // The first page load happened before the worker was in charge, so it never saw those requests. Save them now.
-        const cache = await caches.open("shell-v4")
+        const cache = await caches.open(SHELL_CACHE)
         const used = performance
           .getEntriesByType("resource")
           .map((e) => new URL(e.name))

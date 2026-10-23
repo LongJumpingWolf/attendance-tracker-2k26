@@ -321,7 +321,7 @@ This link expires in 24 hours. The selected classes and times are listed on the 
             </>
           )}
 
-          {!online && <p className="mt-4 rounded-xl bg-warn/10 px-3 py-2.5 text-[13px] text-warn leading-snug">You're offline. You can review the selected classes, but sending is paused until you reconnect.</p>}
+          {!online && <p className="mt-4 rounded-xl bg-warn/10 px-3 py-2.5 text-[13px] text-warn leading-snug">You&apos;re offline. You can review the selected classes, but sending is paused until you reconnect.</p>}
           {online && !directAvailable && connected && <p className="text-[12px] text-mute mt-4 leading-snug">Sign in with Google to enable direct in-app Pings. WhatsApp links remain available without a Mates connection.</p>}
           {!connected && !general && <p className="text-[12px] text-mute mt-4 leading-snug">This person is not connected in the app. You can use a WhatsApp link now; direct in-app Pings require both people to connect and accept the request.</p>}
           <button

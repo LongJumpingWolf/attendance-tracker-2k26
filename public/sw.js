@@ -8,7 +8,7 @@
 // ---- Offline app shell ----
 // The app keeps its data on the device (IndexedDB), so opening it must never need the internet. Pages and the files
 // they use are kept here after the first visit and served when the network is down. Data and API calls are never cached.
-const SHELL = 'shell-v5';
+const SHELL = 'shell-v6'; // keep equal to SHELL_CACHE in lib/sw-config.ts (tests/sw-config.test.ts checks)
 const PAGE_KEY = '/__shell';
 
 const fromNetworkWithTimeout = (req, ms) =>
@@ -26,16 +26,25 @@ const fromNetworkWithTimeout = (req, ms) =>
     );
   });
 
-/** Page loads: fresh from the network when it answers quickly, otherwise the saved copy */
+/**
+ * Page loads: fresh from the network when it answers quickly, otherwise the saved copy.
+ * Only the home page is saved and served as the offline shell: any other page (a shared Ping link, the developer
+ * dashboard) would overwrite it and then be shown in place of the tracker. A scan link (/scan) works offline by going
+ * straight to the check-in the server would have redirected it to.
+ */
 async function page(req) {
   const cache = await caches.open(SHELL);
+  const path = new URL(req.url).pathname;
   try {
     const res = await fromNetworkWithTimeout(req, 4000);
-    if (res.ok) cache.put(PAGE_KEY, res.clone());
+    if (res.ok && path === '/') cache.put(PAGE_KEY, res.clone());
     return res;
   } catch (e) {
-    const saved = await cache.match(PAGE_KEY);
-    if (saved) return saved;
+    if (path === '/scan') return Response.redirect(new URL('/?scan=1', self.location.origin).href, 302);
+    if (path === '/') {
+      const saved = await cache.match(PAGE_KEY);
+      if (saved) return saved;
+    }
     throw e;
   }
 }

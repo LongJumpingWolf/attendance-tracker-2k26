@@ -11,7 +11,7 @@ export function WeekStrip({ subjects, now }: { subjects: Subject[]; now: Date })
     const key = localDate(d)
     let p = 0
     let a = 0
-    for (const s of subjects) for (const e of s.log ?? []) if (e.d === key) e.s === "P" ? p++ : a++
+    for (const s of subjects) for (const e of s.log ?? []) if (e.d === key) { if (e.s === "P") p++; else a++ }
     // A day counts as attended or missed by whichever happened more (a tie counts as attended)
     return { letter: DAY_LETTERS[d.getDay()], state: p === 0 && a === 0 ? "none" : p >= a ? "p" : "a", today: k === 6 }
   })

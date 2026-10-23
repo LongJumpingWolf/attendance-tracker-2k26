@@ -1,9 +1,9 @@
 {
-  "lib/attendance.ts": "496fa402c78cb0ac72e63d80162d28e36fa2d319a36f033be3d9edba727a6314",
+  "lib/attendance.ts": "e43ba9ecbf7c19c02663cf3c66a3b1738444ef13eb74e755f0cd3a17b88ff9b9",
   "lib/scan.ts": "ebf947c6c796ac117271de1f54964ea0c60842df40946aacb893da5ab7ba30ac",
-  "lib/db.ts": "b9c7ab3885f7de19f82496e3280c221b58a06a1a512fdfdcb5fe141ab7d94785",
-  "lib/merge.ts": "b6059f34115513f6e240cb8acedef9aa98faf8a9c02148ceac3650d7298629ac",
-  "lib/backup.ts": "d605ef93ccc0c06d02eac24123daa4b89187728164dcf55a8a78f3c6e7a78e6f",
+  "lib/db.ts": "1432d9f0dba37accf0a8da08e86ea73af84cca9466e1b6b82b5651afb9270974",
+  "lib/merge.ts": "f2adfc2deb8aaabfcf7cae658ec2ba3e26c1a6cceac8ae7605b01683046a6592",
+  "lib/backup.ts": "5264255a9b1eba114566d7213ed6688998c546993a957694efbeccdedd560234",
   "lib/backup-import.ts": "a6fc0bfa32e426184983262de4ba56676eb81996c339c18d62665bbd3ed17724",
   "lib/restore-points.ts": "ccd003eb9fe899fa3d7c3aea11262a5ba47128a0fd9d9b01e334e1c3bb8f8526",
   "lib/ping-processing.ts": "1945665165c2024df91b4173d69bd32e39a8be324b0cbda9eef8027c5ff41b23",
@@ -15,12 +15,12 @@
   "lib/account.ts": "11cba7306af5d268c63fe5ed5cca76531807d531129b7c1dd8dc6637f3e81ff4",
   "lib/realtime.ts": "bacee3438b0eebfc21af2dba27bde71f331643ab9d38efcd72f046f8ce82e899",
   "lib/backend/firebase/index.ts": "cc4b720f871e535ef4ed17dbc28398a0ac9bd612678861b491b3d19a1b30473b",
-  "hooks/use-cloud-sync.ts": "17085192d1bd08e66b4cd5f459886d296c863329138033df869193312723509d",
-  "firestore.rules": "84858e710dcaacffad8eed1af26af4effd8e96a9d140938737f5dabb1b32fb34",
+  "hooks/use-cloud-sync.ts": "8b64bbb3ab1cc6e8e697758bc4208e7d3ebeef9718fc545e6197278cda056060",
+  "firestore.rules": "d698ea742879c5d6c0cdc155ceac358488d6e839f1c05cdff5ec7f4f7c9abe67",
   "firestore.indexes.json": "244f5cd12bc39edffc0a412dfc27af0e8cdf3f1847d65ce1cd3c39e59c49b883",
   "functions/index.js": "63fdbbd1527d56e4146fe0645a9cf0a08899d878f56b67b521a87bd0adf44605",
   "functions/pings.js": "782226d5dce35c70e1ad4a0dd5c39c4a4eb4befc6cce6f6b073fba828b457a43",
   "functions/ping-handlers.js": "9e458a7b0edfaf108109968a1c3ebc781a8cb9825e3801e8ca28869fb6534e81",
   "functions/ping-messages.js": "dd494518ca6dd8a8b680b001d88ffcf05cc71fea7caf9d6ea2e02fdfe2c56a19",
-  "public/sw.js": "33f5e691e3bf1c02c7b92696281a04b047d23bef3264cabfe1281339d785496b"
+  "public/sw.js": "c9b726ad144fd8e80d8607b8d1d977872f3811d6a825d98cd3a259916eaef65a"
 }

@@ -149,3 +149,32 @@ describe("the conversation on a ticket", () => {
     await assertFails(again.commit())
   })
 })
+
+describe("what a report may contain, and who may use the rating ids", () => {
+  const IMG = "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQ=="
+
+  it("accepts a real compressed screenshot and refuses anything else in that field", async () => {
+    await assertSucceeds(newTicket(person(ME), "with-image", { imageData: IMG }))
+    await assertFails(newTicket(person(ME), "tracker", { imageData: "https://evil.example/pixel.png" }))
+    await assertFails(newTicket(person(ME), "script", { imageData: "data:text/html;base64,PHNjcmlwdD4=" }))
+  })
+
+  it("nobody can create someone else's rating id as another kind of ticket, or as an anonymous rating", async () => {
+    await assertFails(newTicket(person(OTHER), `rating-${ME}`, { uid: OTHER, kind: "bug" }))
+    await assertFails(newTicket(env.unauthenticatedContext().firestore() as unknown as Firestore, `rating-${ME}`, { kind: "rating", uid: null, rating: 5, message: "" }))
+    await assertFails(newTicket(person(OTHER), `rating-${ME}`, { uid: OTHER, kind: "rating", rating: 5, message: "" }))
+    await assertSucceeds(newTicket(person(ME), `rating-${ME}`, { kind: "rating", rating: 4, message: "" }))
+  })
+})
+
+describe("profiles and invites", () => {
+  it("a profile holds a name and nothing else, and an invite is bounded", async () => {
+    const db = person(ME)
+    await assertSucceeds(setDoc(doc(db, "users", ME), { name: "Aditya", updatedAt: serverTimestamp() }))
+    await assertFails(setDoc(doc(db, "users", ME), { name: "Aditya", updatedAt: serverTimestamp(), blob: "x".repeat(1000) }))
+    const invite = (extra: Record<string, unknown>) => setDoc(doc(db, "invites", "tok" + Math.random().toString(36).slice(2)), { owner: ME, ownerName: "Aditya", expiresAt: new Date(Date.now() + 60_000), createdAt: serverTimestamp(), ...extra })
+    await assertSucceeds(invite({}))
+    await assertFails(invite({ ownerName: "x".repeat(500) }))
+    await assertFails(invite({ junk: "x".repeat(1000) }))
+  })
+})

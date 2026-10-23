@@ -47,7 +47,7 @@ export default function SubjectDetail({ subject, allSubjects = [subject], schedu
   const [reportNotice, setReportNotice] = useState("")
   const info = getAttendance(subject.attended, subject.missed, subject.requirement)
   const st = STATUS_STYLES[info.status]
-  const dates = futureClassDates(subject, 35)
+  const dates = futureClassDates(subject, 35, scheduleOverrides)
   const proj = projection(subject, dates)
   const plan = subject.plan || {}
   const classDates = new Set(dates)
@@ -57,7 +57,10 @@ export default function SubjectDetail({ subject, allSubjects = [subject], schedu
   const start = new Date(t0.getFullYear(), t0.getMonth(), t0.getDate() + 1)
   start.setDate(start.getDate() - start.getDay())
   const firstFuture = localDate(new Date(t0.getFullYear(), t0.getMonth(), t0.getDate() + 1))
-  const cells = Array.from({ length: 35 }, (_, i) => {
+  // Enough weeks to reach the last forecast day (tomorrow + 34): five when tomorrow is a Sunday, otherwise six
+  const tomorrowWeekday = new Date(t0.getFullYear(), t0.getMonth(), t0.getDate() + 1).getDay()
+  const weeks = Math.ceil((tomorrowWeekday + 35) / 7)
+  const cells = Array.from({ length: weeks * 7 }, (_, i) => {
     const d = new Date(start.getFullYear(), start.getMonth(), start.getDate() + i)
     return { date: localDate(d), day: d.getDate() }
   })

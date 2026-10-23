@@ -109,7 +109,7 @@ export default function DatePicker({ value, onChange, label = "Date", minDate, m
               )
             })}
           </div>
-          {allowClear && <div className="mt-2 flex justify-between border-t border-ink/[0.06] pt-2 text-[12px]"><button type="button" onClick={() => { onChange(""); setOpen(false) }} className="font-semibold text-info">Clear date</button><button type="button" onClick={() => { onChange(today); setOpen(false) }} className="font-semibold text-info">Today</button></div>}
+          {allowClear && <div className="mt-2 flex justify-between border-t border-ink/[0.06] pt-2 text-[12px]"><button type="button" onClick={() => { onChange(""); setOpen(false) }} className="font-semibold text-info">Clear date</button><button type="button" disabled={disabled(today)} onClick={() => { onChange(today); setOpen(false) }} className="font-semibold text-info disabled:cursor-not-allowed disabled:opacity-40">Today</button></div>}
         </div>
       )}
     </div>

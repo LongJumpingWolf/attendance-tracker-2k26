@@ -55,6 +55,11 @@ export default function Onboarding(p: Props) {
       setStep(savedStep)
       setName(savedName || (p.currentName === "You" ? "" : p.currentName))
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [p.open])
+  // The profile name can arrive after the screen opens: fill an empty field with it, never replace what was typed
+  useEffect(() => {
+    if (p.open && p.currentName && p.currentName !== "You") setName((typed) => typed || p.currentName)
   }, [p.open, p.currentName])
 
   useEffect(() => {

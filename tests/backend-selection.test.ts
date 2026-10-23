@@ -90,6 +90,8 @@ describe("the architecture holds: UI/domain -> repository -> adapter", () => {
       "lib/backend/firebase/index.ts",
       "lib/feedback.ts",
       "lib/firebase.ts",
+      "lib/link-analytics.ts", // Firebase-only product analytics (link events)
+      "lib/usage-analytics.ts", // Firebase-only product analytics (usage events)
       "lib/use-social.ts",
     ])
   })

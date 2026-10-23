@@ -540,7 +540,7 @@ function TodayContent({
                           pct={info.pct}
                           color={st.color}
                           size={narrow ? 72 : 92}
-                          requirement={c.subject.requirement}
+                          requirement={attendanceSubject.requirement}
                         />
                       </div>
 
@@ -624,7 +624,7 @@ function TodayContent({
             <ul className={`${cardClass} ${divide}`}>
               {done.map((c) => {
                 const state = stateOf(c)
-                const after = classVerdict(c.subject) // the result of the mark, straight from the same marks
+                const after = classVerdict(c.attendanceSubject ?? c.subject) // the result of the mark, straight from the same marks (a mark goes to the original subject, not a substitute)
                 return (
                   <li key={keyOf(c)} className="flex items-center gap-3 px-4 py-3 min-h-[64px]">
                     <span

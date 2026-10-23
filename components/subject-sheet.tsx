@@ -22,6 +22,8 @@ interface SubjectSheetProps {
   onClose: () => void
   /** Present when editing an existing subject */
   subject?: (Omit<SubjectValues, "slots"> & { slots?: Slot[] }) | null
+  /** Which subject is being edited (null when adding): changing it, not the subject object, restarts the form */
+  subjectKey?: string | null
   existingTags: string[]
   onSubmit: (values: SubjectValues) => void
 }
@@ -30,7 +32,7 @@ const COLORS = ["#30d158", "#0a84ff", "#bf5af2", "#ff375f", "#ff9f0a", "#64d2ff"
 
 const EMPTY = { name: "", attended: 0, missed: 0, requirement: 75, glowColor: COLORS[1], tags: [] as string[] }
 
-export default function SubjectSheet({ open, onClose, subject, existingTags, onSubmit }: SubjectSheetProps) {
+export default function SubjectSheet({ open, onClose, subject, subjectKey = null, existingTags, onSubmit }: SubjectSheetProps) {
   const [values, setValues] = useState(EMPTY)
   const baseline = useRef("")
   // Every class is its own row, so a subject can meet at different times on different days
@@ -39,8 +41,13 @@ export default function SubjectSheet({ open, onClose, subject, existingTags, onS
   const [error, setError] = useState("")
   const [showUnsavedPrompt, setShowUnsavedPrompt] = useState(false)
 
+  // The form starts from the subject when it opens. A sync or a mark made elsewhere replaces the subject object while
+  // it is open; that must not wipe what is being typed, so only a different subject (or reopening) resets it.
+  const latestSubject = useRef(subject)
+  useEffect(() => { latestSubject.current = subject })
   useEffect(() => {
     if (!open) return
+    const subject = latestSubject.current
     const { slots: subjectSlots, ...rest } = subject ?? { ...EMPTY, slots: [] as Slot[] }
     const nextValues = { ...rest, tags: rest.tags || [] }
     const nextSlots = (subjectSlots || []).map((x) => ({ ...x }))
@@ -50,7 +57,8 @@ export default function SubjectSheet({ open, onClose, subject, existingTags, onS
     setNewTag("")
     setError("")
     setShowUnsavedPrompt(false)
-  }, [open, subject])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, subjectKey])
 
   const set = <K extends keyof typeof EMPTY>(key: K, v: (typeof EMPTY)[K]) => setValues((p) => ({ ...p, [key]: v }))
 

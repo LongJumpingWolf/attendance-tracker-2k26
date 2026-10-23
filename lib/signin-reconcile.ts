@@ -707,11 +707,23 @@ export async function putTracked(
   }
   if (r.ok) {
     if (!isRev(r.rev) || r.rev !== expected + 1) return { ok: false, reason: "unavailable" } // keep the marker
-    await onConfirmed?.(r.rev)
-    await ledger.clearBelow(r.rev)
+    try {
+      await onConfirmed?.(r.rev)
+      await ledger.clearBelow(r.rev)
+    } catch {
+      // The write landed but this device could not record it (storage full or failing). Never throw out of here: the
+      // marker stays, and the next read of the stored copy settles whether it landed (see decideIngest).
+      return { ok: false, reason: "unavailable" }
+    }
     return r
   }
-  if (r.reason === "conflict" || r.reason === "too-large") await ledger.clear([marker.id])
+  if (r.reason === "conflict" || r.reason === "too-large") {
+    try {
+      await ledger.clear([marker.id])
+    } catch {
+      /* a leftover marker is settled by the next read; the answer itself is still definite */
+    }
+  }
   return r
 }
 

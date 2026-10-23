@@ -315,7 +315,7 @@ export default function SyncPanel({ sync, onToast }: { sync: CloudSync; onToast:
               {busy ? "Signing in…" : sync.kind === "dev" ? "Test sign-in" : "Sign in with Google"}
             </button>
             {error && <p className="text-[13px] text-bad mt-2 leading-snug" role="alert">{error}</p>}
-            {/(closed before|cancelled|popup|window closed|didn.t work)/i.test(error) && sync.kind === "firebase" && (
+            {/(closed before|cancelled|popup|window closed|didn.t work)/i.test(error) && (
               <button disabled={busy || redirectBusy} onClick={() => void signInRedirect()} className={`${tintButton} w-full mt-2 flex items-center justify-center gap-2 disabled:opacity-50`}>
                 {redirectBusy && <SpinnerGap className="h-4 w-4 animate-spin" />}
                 {redirectBusy ? "Opening Google sign-in…" : "Try full-page Google sign-in"}
