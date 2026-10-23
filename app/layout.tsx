@@ -10,8 +10,30 @@ import OfflineShell from "@/components/offline-shell"
 const inter = Inter({ subsets: ["latin"], variable: "--nf-inter", display: "swap" })
 
 export const metadata: Metadata = {
+  metadataBase: new URL("https://attendance-tracker-2k26.vercel.app"),
   title: "College Tracker",
   description: "College Tracker - attendance and deadline tracker",
+  openGraph: {
+    type: "website",
+    url: "https://attendance-tracker-2k26.vercel.app/",
+    siteName: "College Tracker",
+    title: "College Tracker",
+    description: "College Tracker - attendance and deadline tracker",
+    images: [
+      {
+        url: "https://attendance-tracker-2k26.vercel.app/favicon-512.png",
+        width: 512,
+        height: 512,
+        alt: "College Tracker app icon",
+      },
+    ],
+  },
+  twitter: {
+    card: "summary",
+    title: "College Tracker",
+    description: "College Tracker - attendance and deadline tracker",
+    images: ["https://attendance-tracker-2k26.vercel.app/favicon-512.png"],
+  },
   generator: "v0.app",
   manifest: "/manifest.json?v=6",
   icons: {
