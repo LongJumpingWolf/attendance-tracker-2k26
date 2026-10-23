@@ -35,18 +35,18 @@ export const metadata: Metadata = {
     images: ["/opengraph-image-v8.png"],
   },
   generator: "v0.app",
-  manifest: "/manifest.json?v=8",
+  manifest: "/manifest.json?v=9",
   icons: {
     icon: [
-      { url: "/favicon-32x32-v8.png", type: "image/png", sizes: "32x32" },
-      { url: "/icons/college-tracker-light-192-v8.png", type: "image/png", sizes: "192x192" },
-      { url: "/icons/college-tracker-light-512-v8.png", type: "image/png", sizes: "512x512" },
+      { url: "/favicon-32x32-v9.png", type: "image/png", sizes: "32x32" },
+      { url: "/icons/college-tracker-light-192-v9.png", type: "image/png", sizes: "192x192" },
+      { url: "/icons/college-tracker-light-512-v9.png", type: "image/png", sizes: "512x512" },
     ],
     apple: [
-      { url: "/apple-touch-icon-v8.png", type: "image/png", sizes: "180x180" },
-      { url: "/apple-touch-icon-167x167-v8.png", type: "image/png", sizes: "167x167" },
-      { url: "/apple-touch-icon-152x152-v8.png", type: "image/png", sizes: "152x152" },
-      { url: "/apple-touch-icon-120x120-v8.png", type: "image/png", sizes: "120x120" },
+      { url: "/apple-touch-icon-v9.png", type: "image/png", sizes: "180x180" },
+      { url: "/apple-touch-icon-167x167-v9.png", type: "image/png", sizes: "167x167" },
+      { url: "/apple-touch-icon-152x152-v9.png", type: "image/png", sizes: "152x152" },
+      { url: "/apple-touch-icon-120x120-v9.png", type: "image/png", sizes: "120x120" },
     ],
   },
   appleWebApp: {

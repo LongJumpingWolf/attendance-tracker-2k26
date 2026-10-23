@@ -22,5 +22,5 @@
   "functions/pings.js": "782226d5dce35c70e1ad4a0dd5c39c4a4eb4befc6cce6f6b073fba828b457a43",
   "functions/ping-handlers.js": "9e458a7b0edfaf108109968a1c3ebc781a8cb9825e3801e8ca28869fb6534e81",
   "functions/ping-messages.js": "dd494518ca6dd8a8b680b001d88ffcf05cc71fea7caf9d6ea2e02fdfe2c56a19",
-  "public/sw.js": "b545e9372619bfa520563f0d3bc725ee92582ef57fe78ad599cca1eac2f59a67"
+  "public/sw.js": "33f5e691e3bf1c02c7b92696281a04b047d23bef3264cabfe1281339d785496b"
 }

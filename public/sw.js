@@ -8,7 +8,7 @@
 // ---- Offline app shell ----
 // The app keeps its data on the device (IndexedDB), so opening it must never need the internet. Pages and the files
 // they use are kept here after the first visit and served when the network is down. Data and API calls are never cached.
-const SHELL = 'shell-v4';
+const SHELL = 'shell-v5';
 const PAGE_KEY = '/__shell';
 
 const fromNetworkWithTimeout = (req, ms) =>
