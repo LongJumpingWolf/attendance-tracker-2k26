@@ -13,14 +13,13 @@ export const metadata: Metadata = {
   title: "College Tracker",
   description: "College Tracker - attendance and deadline tracker",
   generator: "v0.app",
-  manifest: "/manifest.json?v=3",
+  manifest: "/manifest.json?v=4",
   icons: {
     icon: [
-      { url: "/icon-light.png?v=3", type: "image/png", sizes: "512x512" },
-      { url: "/icon-dark.png?v=3", type: "image/png", sizes: "512x512", media: "(prefers-color-scheme: dark)" },
+      { url: "/college-tracker-icon-192.png?v=4", type: "image/png", sizes: "192x192" },
+      { url: "/college-tracker-icon-dark-192.png?v=4", type: "image/png", sizes: "192x192", media: "(prefers-color-scheme: dark)" },
     ],
-    // One unconditional icon is important for Safari's Add to Home Screen flow.
-    apple: [{ url: "/apple-touch-icon.png?v=3", type: "image/png", sizes: "180x180" }],
+    apple: [{ url: "/apple-touch-icon.png?v=4", type: "image/png", sizes: "180x180" }],
   },
   appleWebApp: {
     capable: true,
