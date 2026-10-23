@@ -13,13 +13,14 @@ export const metadata: Metadata = {
   title: "College Tracker",
   description: "College Tracker - attendance and deadline tracker",
   generator: "v0.app",
-  manifest: "/manifest.json?v=5",
+  manifest: "/manifest.json?v=6",
   icons: {
     icon: [
-      { url: "/college-tracker-icon-192.png?v=4", type: "image/png", sizes: "192x192" },
-      { url: "/college-tracker-icon-dark-192.png?v=4", type: "image/png", sizes: "192x192", media: "(prefers-color-scheme: dark)" },
+      { url: "/favicon.ico?v=6", type: "image/x-icon" },
+      { url: "/favicon-32x32-v6.png", type: "image/png", sizes: "32x32" },
+      { url: "/favicon-dark-32x32-v6.png", type: "image/png", sizes: "32x32", media: "(prefers-color-scheme: dark)" },
     ],
-    apple: [{ url: "/college-tracker-apple-touch-icon-v5.png", type: "image/png", sizes: "180x180" }],
+    apple: [{ url: "/college-tracker-apple-touch-icon-v6.png", type: "image/png", sizes: "180x180" }],
   },
   appleWebApp: {
     capable: true,
