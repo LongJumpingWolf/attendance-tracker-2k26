@@ -38,9 +38,8 @@ export const metadata: Metadata = {
   manifest: "/manifest.json?v=6",
   icons: {
     icon: [
-      { url: "/favicon.ico?v=6", type: "image/x-icon" },
-      { url: "/favicon-32x32-v6.png", type: "image/png", sizes: "32x32" },
-      { url: "/favicon-dark-32x32-v6.png", type: "image/png", sizes: "32x32", media: "(prefers-color-scheme: dark)" },
+      { url: "/icons/college-tracker-light-192-v6.png", type: "image/png", sizes: "192x192" },
+      { url: "/icons/college-tracker-dark-192-v6.png", type: "image/png", sizes: "192x192", media: "(prefers-color-scheme: dark)" },
     ],
     apple: [{ url: "/college-tracker-apple-touch-icon-v6.png", type: "image/png", sizes: "180x180" }],
   },
