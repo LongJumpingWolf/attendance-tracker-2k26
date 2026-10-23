@@ -80,39 +80,59 @@ export async function renderWrappedImage(d: WrappedData): Promise<Blob> {
   ctx.font = `900 190px ${FONT}`
   ctx.fillText("wrapped.", left - 6, 390)
 
-  // Stats
+  // Stats. A week with several big numbers is taller than the image, so the blocks are measured first and the type
+  // and spacing are scaled down together until everything fits above the footer.
   const blocks = blocksFor(d)
-  let y = 560
+  const top = 560
+  const bottom = H - 230 // the footer sits below this line
+  const maxWidth = W - left * 2
+  const paint = (scale: number, draw: boolean) => {
+    let y = top
+    for (const b of blocks) {
+      const label = Math.round(44 * scale)
+      ctx.font = `600 ${label}px ${FONT}`
+      if (draw) {
+        ctx.globalAlpha = 0.85
+        ctx.fillText(b.label, left, y)
+        ctx.globalAlpha = 1
+      }
+      if (b.big) {
+        const size = Math.round(210 * scale)
+        ctx.font = `900 ${size}px ${FONT}`
+        if (draw) ctx.fillText(b.value, left - 8, y + size * 0.95)
+        y += size * 0.95
+      } else {
+        const size = Math.round(96 * scale)
+        const lineH = size * 1.1
+        ctx.font = `900 ${size}px ${FONT}`
+        const lines = wrap(ctx, b.value, maxWidth, 2)
+        if (draw) lines.forEach((ln, i) => ctx.fillText(ln, left, y + size * 1.05 + i * lineH))
+        y += size * 1.05 + (lines.length - 1) * lineH
+      }
+      if (b.sub) {
+        const size = Math.round(42 * scale)
+        ctx.font = `600 ${size}px ${FONT}`
+        const subLines = wrap(ctx, b.sub, maxWidth, 2)
+        if (draw) {
+          ctx.globalAlpha = 0.85
+          subLines.forEach((ln, i) => ctx.fillText(ln, left, y + size * 1.5 + i * size * 1.3))
+          ctx.globalAlpha = 1
+        }
+        y += size * 1.5 + (subLines.length - 1) * size * 1.3
+      }
+      y += 110 * scale
+    }
+    return y
+  }
   if (blocks.length === 0) {
     ctx.font = `600 56px ${FONT}`
     ctx.globalAlpha = 0.9
-    ctx.fillText("A quiet week. Nothing was marked.", left, y + 60)
+    ctx.fillText("A quiet week. Nothing was marked.", left, top + 60)
     ctx.globalAlpha = 1
-  }
-  for (const b of blocks) {
-    ctx.globalAlpha = 0.85
-    ctx.font = `600 44px ${FONT}`
-    ctx.fillText(b.label, left, y)
-    ctx.globalAlpha = 1
-    if (b.big) {
-      ctx.font = `900 210px ${FONT}`
-      ctx.fillText(b.value, left - 8, y + 200)
-      y += 200
-    } else {
-      ctx.font = `900 96px ${FONT}`
-      const lines = wrap(ctx, b.value, W - left * 2, 2)
-      lines.forEach((ln, i) => ctx.fillText(ln, left, y + 100 + i * 106))
-      y += 100 + (lines.length - 1) * 106
-    }
-    if (b.sub) {
-      ctx.globalAlpha = 0.85
-      ctx.font = `600 42px ${FONT}`
-      const subLines = wrap(ctx, b.sub, W - left * 2, 2)
-      subLines.forEach((ln, i) => ctx.fillText(ln, left, y + 62 + i * 54))
-      y += 62 + (subLines.length - 1) * 54
-      ctx.globalAlpha = 1
-    }
-    y += 130
+  } else {
+    let scale = 1
+    while (scale > 0.5 && paint(scale, false) > bottom) scale = Math.round((scale - 0.04) * 100) / 100
+    paint(scale, true)
   }
 
   // Footer

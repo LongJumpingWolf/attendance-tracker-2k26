@@ -15,7 +15,7 @@ import { collection, deleteDoc, doc, onSnapshot, query, runTransaction, serverTi
 import { getAuth } from "firebase/auth"
 import { followIdentity } from "./social-session"
 import { announceProfile, completeCarry } from "./identity"
-import { placeholderName, resolveProfileName } from "./profile-name"
+import { placeholderName, realName, resolveProfileName } from "./profile-name"
 import { forget, idFor, logicalKey } from "./ping-id"
 import { deviceId } from "./device"
 import { shareableAppOrigin } from "./share-ping-link"
@@ -277,14 +277,20 @@ export function useSocial(onNotice?: (message: string) => void): SocialApi {
    * Settles which name this account uses on this device (see resolveProfileName) and shows it. Returns the name to
    * announce to mates, or "" when the profile couldn't be read and only a placeholder is known.
    */
-  const adoptName = useCallback(async (forUid: string, authName: string | null | undefined) => {
+  const adoptName = useCallback(async (forUid: string, authName: string | null | undefined, anonymous: boolean) => {
     let local = ""
     try { local = localStorage.getItem(NAME_KEY) || "" } catch { /* private browsing */ }
-    const { name: resolved, publish } = await resolveProfileName(forUid, local, authName)
+    // A generated label saved by an earlier version would be published as the account's name at the next Google sign-in
+    if (local && !realName(local)) {
+      local = ""
+      try { localStorage.removeItem(NAME_KEY) } catch { /* private browsing */ }
+    }
+    const { name: resolved, publish } = await resolveProfileName(forUid, { local, authName, anonymous })
     if (me.current.uid !== null && me.current.uid !== forUid) return ""
-    try { localStorage.setItem(NAME_KEY, resolved) } catch { /* private browsing */ }
+    // Only a name the person chose is kept on the device; the placeholder is just shown
+    if (realName(resolved)) try { localStorage.setItem(NAME_KEY, resolved) } catch { /* private browsing */ }
     setNameState(resolved)
-    return publish ? resolved : ""
+    return publish && realName(resolved) ? resolved : ""
   }, [])
 
   // The name was edited in Settings: carry it into the live session so Pings sent from here use it straight away
@@ -326,7 +332,7 @@ export function useSocial(onNotice?: (message: string) => void): SocialApi {
           if (authWatchdog.current) clearTimeout(authWatchdog.current)
           authWatchdog.current = null
           setStatus("ready")
-          void adoptName(user.uid, user.isAnonymous ? null : user.displayName).then((saved) => {
+          void adoptName(user.uid, user.isAnonymous ? null : user.displayName, user.isAnonymous).then((saved) => {
             if (saved) return announceProfile(db, user.uid, saved).catch((e: unknown) => setError(describeSocialAuthError(e)))
           })
         })
@@ -393,7 +399,7 @@ export function useSocial(onNotice?: (message: string) => void): SocialApi {
           // This removes the name-entry blocker and avoids treating names as unique identifiers.
           setError("")
           void registerPingAlerts(newUid, false)
-          void adoptName(newUid, anon ? null : getAuth(app).currentUser?.displayName).then((saved) => {
+          void adoptName(newUid, anon ? null : getAuth(app).currentUser?.displayName, anon).then((saved) => {
             if (saved) void announceProfile(db, newUid, saved)
             // Mates carried over from an account this device left are asked to reconnect (see lib/identity.ts)
             return completeCarry(db, newUid, saved || placeholderName(newUid)).then((n) => {

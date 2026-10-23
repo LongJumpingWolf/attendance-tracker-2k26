@@ -33,6 +33,7 @@ import { dbDel, dbGet, dbSet, protectStorage } from "@/lib/db"
 import { newId } from "@/lib/ids"
 import { saveRestorePoint } from "@/lib/restore-points"
 import { adoptConnections } from "@/lib/identity"
+import { liveNames } from "@/lib/profile-name"
 import { usePingEvents } from "@/lib/use-ping-events"
 import { usePingProcessing } from "@/lib/use-ping-processing"
 import { applyPingResult, resultIsSaved } from "@/lib/ping-apply"
@@ -332,15 +333,18 @@ export default function Home() {
     const accepted = social.requests.filter((r) => r.status === "accepted")
     if (accepted.length === 0) return
     // A mate who reconnected under a new account id is the same person: their old row takes the new id and keeps its history
-    setMates((prev) =>
-      adoptConnections(
-        prev,
-        accepted.flatMap((r) => {
-          const other = r.participants.find((p) => p !== social.uid)
-          return other ? [{ uid: other, name: r.from === social.uid ? r.toName : r.fromName }] : []
-        }),
-      ),
-    )
+    const connections = accepted.flatMap((r) => {
+      const other = r.participants.find((p) => p !== social.uid)
+      return other ? [{ uid: other, name: r.from === social.uid ? r.toName : r.fromName }] : []
+    })
+    setMates((prev) => adoptConnections(prev, connections))
+    // The name in a request is a copy from when it was sent (it may be a placeholder or out of date): their profile is the source
+    let cancelled = false
+    void liveNames(connections.map((c) => c.uid)).then((live) => {
+      if (cancelled || Object.keys(live).length === 0) return
+      setMates((prev) => adoptConnections(prev, connections.map((c) => ({ ...c, name: live[c.uid] ?? c.name }))))
+    })
+    return () => { cancelled = true }
   }, [social.requests, social.uid, loaded])
 
   const incomingRequests = social.requests.filter((r) => r.status === "pending" && r.to === social.uid)
