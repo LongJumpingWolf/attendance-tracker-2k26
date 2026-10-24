@@ -177,3 +177,20 @@ describe("accounts and the analytics choice", () => {
     expect(computeOptInSplit([], [])).toEqual({ accounts: 0, optedIn: 0, notOptedIn: 0, optInRate: null })
   })
 })
+
+describe("the total entered from the Firebase Console", () => {
+  it("covers accounts with no profile: the unaccounted accounts count as not opted in", () => {
+    expect(computeOptInSplit(["a", "b", "c"], ["a"], 20)).toEqual({ accounts: 20, optedIn: 1, notOptedIn: 19, optInRate: 5 })
+  })
+
+  it("is ignored when it is lower than the accounts already known, or not a usable number", () => {
+    const known = { accounts: 3, optedIn: 1, notOptedIn: 2, optInRate: 33 }
+    expect(computeOptInSplit(["a", "b", "c"], ["a"], 2)).toEqual(known)
+    expect(computeOptInSplit(["a", "b", "c"], ["a"], null)).toEqual(known)
+    expect(computeOptInSplit(["a", "b", "c"], ["a"], Number.NaN)).toEqual(known)
+  })
+
+  it("a total equal to the known accounts changes nothing", () => {
+    expect(computeOptInSplit(["a", "b"], ["a"], 2)).toEqual({ accounts: 2, optedIn: 1, notOptedIn: 1, optInRate: 50 })
+  })
+})

@@ -217,12 +217,16 @@ export interface OptInSplit {
 /**
  * Nothing is recorded from someone who declines, so the split is inferred, not counted: an account is "opted in" if it has
  * sent a usage event (only possible after opting in), and every other known account is counted as not opted in. The known
- * accounts are the profiles the app keeps (anyone who used Mates, plus the named accounts) together with the opted-in accounts.
+ * accounts are the profiles the app keeps (anyone who used Mates, plus the named accounts) together with the opted-in accounts,
+ * or the total the developer entered from the Firebase Console when that is higher (it also covers accounts without a profile).
  */
-export function computeOptInSplit(accountIds: string[], optedInIds: string[]): OptInSplit {
+export function computeOptInSplit(accountIds: string[], optedInIds: string[], totalOverride?: number | null): OptInSplit {
   const known = new Set<string>([...accountIds, ...optedInIds])
   const optedIn = new Set(optedInIds)
-  const accounts = known.size
+  // Accounts with no profile that never opted in leave nothing this page can read. The developer can read the true total from the
+  // Firebase Console (Authentication) and enter it: it is used when it is at least the number already known.
+  const override = typeof totalOverride === "number" && Number.isFinite(totalOverride) && totalOverride >= known.size ? Math.floor(totalOverride) : null
+  const accounts = override ?? known.size
   return {
     accounts,
     optedIn: optedIn.size,

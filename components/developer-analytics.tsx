@@ -51,6 +51,9 @@ export default function DeveloperAnalytics() {
   const [linksTruncated, setLinksTruncated] = useState(false)
   const [accountIds, setAccountIds] = useState<string[] | null>(null)
   const [accountsTruncated, setAccountsTruncated] = useState(false)
+  // The true number of accounts from the Firebase Console, typed in by the developer and kept in this browser only
+  const [totalAccountsInput, setTotalAccountsInput] = useState("")
+  useEffect(() => { try { setTotalAccountsInput(localStorage.getItem("analytics-total-accounts") ?? "") } catch { /* optional */ } }, [])
   const [usageTruncated, setUsageTruncated] = useState(false)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState("")
@@ -583,7 +586,9 @@ export default function DeveloperAnalytics() {
   ].filter(Boolean) as string[]
   const retentionUnreliable = usageCoverage.truncated
   // Everyone who has ever sent a usage event (all loaded events, not just the selected range) is an account that opted in
-  const optIn = useMemo(() => (accountIds ? computeOptInSplit(accountIds, [...new Set(usageEvents.map((e) => e.actorUid))]) : null), [accountIds, usageEvents])
+  const totalOverride = totalAccountsInput.trim() === "" ? null : Number(totalAccountsInput)
+  const optIn = useMemo(() => (accountIds ? computeOptInSplit(accountIds, [...new Set(usageEvents.map((e) => e.actorUid))], totalOverride) : null), [accountIds, usageEvents, totalOverride])
+  const overrideTooLow = totalOverride !== null && accountIds !== null && Number.isFinite(totalOverride) && optIn !== null && Math.floor(totalOverride) < optIn.accounts && !(Math.floor(totalOverride) === optIn.accounts)
   const maxUsageUsers = Math.max(1, ...usageTrend.map((b) => b.users.size))
   const maxScreenCount = Math.max(1, ...usageMetrics.screenPopularity.map(([, count]) => count))
   const maxUsageActionCount = Math.max(1, ...usageMetrics.actions.map(([, count]) => count))
@@ -846,12 +851,17 @@ export default function DeveloperAnalytics() {
                 {optIn === null ? <p className="text-sm text-mute">The list of accounts could not be read, so this estimate is unavailable.</p> : <>
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                     {[
-                      ["Accounts known", optIn.accounts, "Profiles + opted-in accounts"],
+                      ["Accounts", optIn.accounts, totalOverride !== null && !overrideTooLow ? "From the total you entered" : "Profiles + opted-in accounts"],
                       ["Opted in", optIn.optedIn, "Sent usage events"],
                       ["Not opted in", optIn.notOptedIn, "No usage events (estimate)"],
                       ["Opt-in rate", optIn.optInRate === null ? "—" : `${optIn.optInRate}%`, "Of accounts known"],
                     ].map(([label, value, hint]) => <div key={String(label)} className="rounded-xl bg-secondary p-3"><p className="text-xs text-mute">{label}</p><p className="text-2xl font-bold tabular-nums mt-1">{value}</p><p className="text-[11px] text-mute mt-0.5">{hint}</p></div>)}
                   </div>
+                  <label className="block text-xs text-mute" htmlFor="total-accounts">
+                    Total accounts, from Firebase Console → Authentication <span className="text-mute">(optional)</span>
+                    <input id="total-accounts" inputMode="numeric" value={totalAccountsInput} onChange={(e) => { const v = e.target.value.replace(/[^0-9]/g, "").slice(0, 7); setTotalAccountsInput(v); try { localStorage.setItem("analytics-total-accounts", v) } catch { /* optional */ } }} placeholder="e.g. 48" className="mt-1 block w-40 rounded-xl bg-secondary px-3 py-2 text-sm text-foreground outline-none focus:ring-1 focus:ring-ink/40" />
+                  </label>
+                  <p className="text-xs text-mute leading-relaxed">Accounts made before this update are counted if they have a profile or opted in. One that never opened Mates and never opted in leaves nothing this page can read, so the total is too low until you enter the real figure above; "Not opted in" then becomes that total minus the opted-in accounts.{overrideTooLow ? " The number you entered is lower than the accounts already known, so it is ignored." : ""}</p>
                   <p className="text-xs text-mute leading-relaxed">Nothing is recorded from someone who declines, so "not opted in" is inferred: every known account that has never sent a usage event. That includes people who declined, and also accounts that opted in but have not opened the app within the last 90 days (older events are deleted). Anonymous app sessions are counted as accounts if they have a profile. The choice is preselected in the privacy notice, so an opt-in here may be a default that was never changed.{accountsTruncated || usageTruncated ? " Some accounts or events were not loaded, so the totals are too low." : ""}</p>
                 </>}
               </section>
