@@ -158,3 +158,22 @@ describe("usage numbers, worked out by hand", () => {
     expect(computeUsageCore([])).toMatchObject({ activeUsers: 0, sessions: 0, repeatUsers: 0 })
   })
 })
+
+import { computeOptInSplit } from "@/lib/analytics-metrics"
+
+describe("accounts and the analytics choice", () => {
+  it("counts the accounts that sent usage events as opted in and the rest of the known accounts as not", () => {
+    // five accounts have a profile; two of them (a, b) opted in
+    expect(computeOptInSplit(["a", "b", "c", "d", "e"], ["a", "b"])).toEqual({ accounts: 5, optedIn: 2, notOptedIn: 3, optInRate: 40 })
+  })
+
+  it("an opted-in account with no profile still counts as an account, and is not counted twice", () => {
+    expect(computeOptInSplit(["a", "b"], ["a", "z", "z"])).toEqual({ accounts: 3, optedIn: 2, notOptedIn: 1, optInRate: 67 })
+  })
+
+  it("everyone opted in, nobody opted in, and no accounts at all", () => {
+    expect(computeOptInSplit(["a", "b"], ["a", "b"])).toMatchObject({ notOptedIn: 0, optInRate: 100 })
+    expect(computeOptInSplit(["a", "b"], [])).toMatchObject({ optedIn: 0, notOptedIn: 2, optInRate: 0 })
+    expect(computeOptInSplit([], [])).toEqual({ accounts: 0, optedIn: 0, notOptedIn: 0, optInRate: null })
+  })
+})

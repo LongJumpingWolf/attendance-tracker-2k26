@@ -16,15 +16,18 @@ import {
   doc,
   getDoc,
   getDocs,
+  limit,
   onSnapshot,
   query,
   runTransaction,
   serverTimestamp,
   setDoc,
+  startAfter,
   Timestamp,
   updateDoc,
   where,
   type Firestore,
+  type QueryDocumentSnapshot,
 } from "firebase/firestore"
 import type { FriendRequest, Ping } from "../../types"
 import { resilient } from "../../realtime"
@@ -138,6 +141,20 @@ export function createFirebaseBackend({ db, ensureSignedIn }: FirebaseDeps): Bac
     getName: guard(async (uid) => {
       const snap = await getDoc(doc(db, "users", uid))
       return snap.exists() ? ((snap.data().name as string) ?? null) : null
+    }),
+    listIds: guard(async (max: number) => {
+      const PAGE = 1000
+      const ids: string[] = []
+      let last: QueryDocumentSnapshot | undefined
+      let truncated = false
+      while (ids.length < max) {
+        const page = await getDocs(last ? query(collection(db, "users"), startAfter(last), limit(PAGE)) : query(collection(db, "users"), limit(PAGE)))
+        for (const row of page.docs) ids.push(row.id)
+        if (page.size < PAGE) break
+        last = page.docs[page.size - 1]
+        if (ids.length >= max) truncated = true
+      }
+      return { ids, truncated }
     }),
   }
 

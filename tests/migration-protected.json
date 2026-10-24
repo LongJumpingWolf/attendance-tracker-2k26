@@ -14,7 +14,7 @@
   "lib/social-session.ts": "91a1a523f4054bdc8b542fd9f6a9f6d589f1c617ea9c7b35a7b11f8cb798a613",
   "lib/account.ts": "11cba7306af5d268c63fe5ed5cca76531807d531129b7c1dd8dc6637f3e81ff4",
   "lib/realtime.ts": "bacee3438b0eebfc21af2dba27bde71f331643ab9d38efcd72f046f8ce82e899",
-  "lib/backend/firebase/index.ts": "cc4b720f871e535ef4ed17dbc28398a0ac9bd612678861b491b3d19a1b30473b",
+  "lib/backend/firebase/index.ts": "2867f3cb2cf50a21dbbad5f71b80a4d81ded652238159b2374ae495ea60a99e6",
   "hooks/use-cloud-sync.ts": "8b64bbb3ab1cc6e8e697758bc4208e7d3ebeef9718fc545e6197278cda056060",
   "firestore.rules": "d698ea742879c5d6c0cdc155ceac358488d6e839f1c05cdff5ec7f4f7c9abe67",
   "firestore.indexes.json": "244f5cd12bc39edffc0a412dfc27af0e8cdf3f1847d65ce1cd3c39e59c49b883",

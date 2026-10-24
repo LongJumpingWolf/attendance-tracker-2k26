@@ -49,6 +49,11 @@ export interface ProfileStore {
   save(uid: string, name: string): Promise<void>
   /** null when there is no profile */
   getName(uid: string): Promise<string | null>
+  /**
+   * The ids of the accounts that have a profile, at most `max`, for the developer dashboard's account count. Ids only: no name is
+   * returned. Optional: a backend that cannot list returns nothing here, and the dashboard says so.
+   */
+  listIds?(max: number): Promise<{ ids: string[]; truncated: boolean }>
 }
 
 // ---- invites ------------------------------------------------------------------------------------------------------

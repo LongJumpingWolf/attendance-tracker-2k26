@@ -7,8 +7,8 @@ import { ArrowClockwise, DownloadSimple, SignIn } from "@phosphor-icons/react"
 import { app } from "@/lib/firebase"
 import { confirmSwitch, signInWithGoogle } from "@/lib/account"
 import { getDeveloperProductLinkEvents, LINK_EVENT_LIMIT, type ProductLinkEvent, type ProductLinkSource } from "@/lib/link-analytics"
-import { getDeveloperProductUsageEvents, USAGE_EVENT_LIMIT, type ProductUsageEvent, type UsageEventName, type UsageScreen } from "@/lib/usage-analytics"
-import { buildLinkRows, computeLinkMetrics, computeUsageCore, eventCoverage, localDayKey, median, startOfLocalWeek, uniqueUsersWithin, windowIsIncomplete } from "@/lib/analytics-metrics"
+import { getDeveloperAccountIds, getDeveloperProductUsageEvents, USAGE_EVENT_LIMIT, type ProductUsageEvent, type UsageEventName, type UsageScreen } from "@/lib/usage-analytics"
+import { buildLinkRows, computeLinkMetrics, computeOptInSplit, computeUsageCore, eventCoverage, localDayKey, median, startOfLocalWeek, uniqueUsersWithin, windowIsIncomplete } from "@/lib/analytics-metrics"
 
 const DEVELOPER_EMAIL = (process.env.NEXT_PUBLIC_DEVELOPER_EMAIL || "adityavw2006@gmail.com").toLowerCase()
 type RangeKey = "24h" | "7d" | "30d" | "90d"
@@ -49,6 +49,8 @@ export default function DeveloperAnalytics() {
   const [events, setEvents] = useState<ProductLinkEvent[]>([])
   const [usageEvents, setUsageEvents] = useState<ProductUsageEvent[]>([])
   const [linksTruncated, setLinksTruncated] = useState(false)
+  const [accountIds, setAccountIds] = useState<string[] | null>(null)
+  const [accountsTruncated, setAccountsTruncated] = useState(false)
   const [usageTruncated, setUsageTruncated] = useState(false)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState("")
@@ -74,7 +76,10 @@ export default function DeveloperAnalytics() {
     setError("")
     setUsageError("")
     try {
-      const [linkResult, usageResult] = await Promise.allSettled([getDeveloperProductLinkEvents(), getDeveloperProductUsageEvents()])
+      const [linkResult, usageResult, accountResult] = await Promise.allSettled([getDeveloperProductLinkEvents(), getDeveloperProductUsageEvents(), getDeveloperAccountIds()])
+      // The account list is only for the opted-in estimate: if it can't be read, that card says so and nothing else is affected
+      setAccountIds(accountResult.status === "fulfilled" ? accountResult.value.ids : null)
+      setAccountsTruncated(accountResult.status === "fulfilled" ? accountResult.value.truncated : false)
       if (linkResult.status === "rejected") throw linkResult.reason
       setEvents(linkResult.value.events)
       setLinksTruncated(linkResult.value.truncated)
@@ -577,6 +582,8 @@ export default function DeveloperAnalytics() {
     windowIsIncomplete(linkCoverage, windowStart) && `link events: only the newest ${LINK_EVENT_LIMIT.toLocaleString()} are loaded (back to ${dateShort(linkCoverage.completeSinceMs!)})`,
   ].filter(Boolean) as string[]
   const retentionUnreliable = usageCoverage.truncated
+  // Everyone who has ever sent a usage event (all loaded events, not just the selected range) is an account that opted in
+  const optIn = useMemo(() => (accountIds ? computeOptInSplit(accountIds, [...new Set(usageEvents.map((e) => e.actorUid))]) : null), [accountIds, usageEvents])
   const maxUsageUsers = Math.max(1, ...usageTrend.map((b) => b.users.size))
   const maxScreenCount = Math.max(1, ...usageMetrics.screenPopularity.map(([, count]) => count))
   const maxUsageActionCount = Math.max(1, ...usageMetrics.actions.map(([, count]) => count))
@@ -831,6 +838,23 @@ export default function DeveloperAnalytics() {
               </>}
             </>}
             {tab === "usage" && <>
+              <section className="rounded-2xl bg-card p-5 space-y-3" aria-label="Accounts and the analytics choice">
+                <div>
+                  <h2 className="text-lg font-bold">Accounts and the analytics choice</h2>
+                  <p className="text-xs text-mute mt-1">Right now, across everything loaded (not only the selected range).</p>
+                </div>
+                {optIn === null ? <p className="text-sm text-mute">The list of accounts could not be read, so this estimate is unavailable.</p> : <>
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                    {[
+                      ["Accounts known", optIn.accounts, "Profiles + opted-in accounts"],
+                      ["Opted in", optIn.optedIn, "Sent usage events"],
+                      ["Not opted in", optIn.notOptedIn, "No usage events (estimate)"],
+                      ["Opt-in rate", optIn.optInRate === null ? "—" : `${optIn.optInRate}%`, "Of accounts known"],
+                    ].map(([label, value, hint]) => <div key={String(label)} className="rounded-xl bg-secondary p-3"><p className="text-xs text-mute">{label}</p><p className="text-2xl font-bold tabular-nums mt-1">{value}</p><p className="text-[11px] text-mute mt-0.5">{hint}</p></div>)}
+                  </div>
+                  <p className="text-xs text-mute leading-relaxed">Nothing is recorded from someone who declines, so "not opted in" is inferred: every known account that has never sent a usage event. That includes people who declined, and also accounts that opted in but have not opened the app within the last 90 days (older events are deleted). Anonymous app sessions are counted as accounts if they have a profile. The choice is preselected in the privacy notice, so an opt-in here may be a default that was never changed.{accountsTruncated || usageTruncated ? " Some accounts or events were not loaded, so the totals are too low." : ""}</p>
+                </>}
+              </section>
               {usageError ? <section className="rounded-2xl bg-card p-6 space-y-2">
                 <h2 className="text-lg font-bold">App-usage analytics cannot be loaded</h2>
                 <p className="text-sm text-mute leading-relaxed">The link analytics dashboard can still work, but app-usage reads need the latest Firestore security rules. Open the <a className="underline" href="https://raw.githubusercontent.com/LongJumpingWolf/attendance-tracker-2k26/main/firestore.rules" target="_blank" rel="noreferrer">current rules file</a>, replace the full Firestore Rules editor contents, publish only after Firebase accepts the rules without errors, then refresh this dashboard.</p>

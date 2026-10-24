@@ -3,6 +3,7 @@
 import { collection, doc, getDocs, limit, orderBy, query, serverTimestamp, setDoc, startAfter, Timestamp, where, writeBatch, type QueryDocumentSnapshot } from "firebase/firestore"
 import { getAuth } from "firebase/auth"
 import { app, db } from "@/lib/firebase"
+import { getDomainBackend } from "@/lib/backend"
 
 export const USAGE_ANALYTICS_KEY = "attendance-usage-analytics-consent"
 const TERMS_KEY = "attendance-terms-consent-v3"
@@ -184,6 +185,16 @@ const dateVal = (v: unknown): ProductUsageEvent["createdAt"] => {
   if (v instanceof Date) return v
   if (v && typeof v === "object" && "toDate" in v && typeof v.toDate === "function") return v as { toDate: () => Date }
   return null
+}
+
+/**
+ * The ids of the accounts the app keeps a profile for (read-only, developer dashboard). Only the ids come back: no name is
+ * read into the page. Used to estimate how many accounts opted in versus not, since nothing is recorded from someone who declines.
+ */
+export async function getDeveloperAccountIds(): Promise<{ ids: string[]; truncated: boolean }> {
+  const list = getDomainBackend("social").profiles.listIds
+  if (!list) throw new Error("This backend cannot list accounts.")
+  return list(USAGE_EVENT_LIMIT)
 }
 
 /** The most events the dashboard loads in one go (read in pages of USAGE_PAGE). Past this the oldest are left out and the page says so. */

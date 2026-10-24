@@ -198,3 +198,35 @@ export function computeUsageCore(usageScope: ProductUsageEvent[]) {
     counts,
   }
 }
+
+// ---------------------------------------------------------------------------------------------------------------------
+// Accounts and the analytics choice
+// ---------------------------------------------------------------------------------------------------------------------
+
+export interface OptInSplit {
+  /** Every account the app knows of: those with a profile, plus any that sent usage events */
+  accounts: number
+  /** Accounts that opted in and have used the app within the loaded events */
+  optedIn: number
+  /** Known accounts that never sent a usage event: they declined, or have not opened the app since analytics began (or in the last 90 days) */
+  notOptedIn: number
+  /** Share of known accounts that opted in, 0-100, or null when there are no accounts */
+  optInRate: number | null
+}
+
+/**
+ * Nothing is recorded from someone who declines, so the split is inferred, not counted: an account is "opted in" if it has
+ * sent a usage event (only possible after opting in), and every other known account is counted as not opted in. The known
+ * accounts are the profiles the app keeps (anyone who used Mates, plus the named accounts) together with the opted-in accounts.
+ */
+export function computeOptInSplit(accountIds: string[], optedInIds: string[]): OptInSplit {
+  const known = new Set<string>([...accountIds, ...optedInIds])
+  const optedIn = new Set(optedInIds)
+  const accounts = known.size
+  return {
+    accounts,
+    optedIn: optedIn.size,
+    notOptedIn: accounts - optedIn.size,
+    optInRate: accounts > 0 ? Math.round((optedIn.size / accounts) * 100) : null,
+  }
+}
