@@ -1,6 +1,6 @@
 "use client"
 
-import { collection, doc, getDocs, limit, orderBy, query, serverTimestamp, setDoc, Timestamp, where, writeBatch } from "firebase/firestore"
+import { collection, doc, getDocs, limit, orderBy, query, serverTimestamp, setDoc, startAfter, Timestamp, where, writeBatch, type QueryDocumentSnapshot } from "firebase/firestore"
 import { db } from "@/lib/firebase"
 export type ProductLinkSource = "share-ping" | "mate-invite"
 export type ProductLinkEventKind = "created" | "opened" | "answered" | "used"
@@ -18,9 +18,20 @@ export async function recordProductLinkEvent(e:NewEvent):Promise<boolean>{
  try{await setDoc(doc(db,"productLinkEvents",id),{source:e.source,linkId:e.linkId,kind:e.kind,ownerUid:e.ownerUid,fromName:e.fromName,recipientName:e.recipientName,createdAt:serverTimestamp()});return true}catch{return false}
 }
 const dateVal=(v:unknown):ProductLinkEvent["createdAt"]=>{if(v instanceof Date)return v;if(v&&typeof v==="object"&&"toDate"in v&&typeof v.toDate==="function")return v as {toDate:()=>Date};return null}
-export async function getDeveloperProductLinkEvents():Promise<ProductLinkEvent[]>{
+/** The most events the dashboard loads in one go (read in pages of LINK_PAGE). Past this the oldest are left out and the page says so. */
+export const LINK_EVENT_LIMIT = 20000
+const LINK_PAGE = 2000
+export async function getDeveloperProductLinkEvents():Promise<{events:ProductLinkEvent[];truncated:boolean}>{
  const cutoff=Timestamp.fromMillis(Date.now()-90*24*60*60*1000)
  for(let i=0;i<20;i++){const old=await getDocs(query(collection(db,"productLinkEvents"),where("createdAt","<",cutoff),orderBy("createdAt","asc"),limit(400)));if(old.empty)break;const batch=writeBatch(db);old.docs.forEach(row=>batch.delete(row.ref));await batch.commit();if(old.size<400)break}
- const snap=await getDocs(query(collection(db,"productLinkEvents"),orderBy("createdAt","desc"),limit(2000)))
- return snap.docs.map(row=>{const d=row.data();return{id:row.id,source:d.source as ProductLinkSource,linkId:String(d.linkId??""),kind:d.kind as ProductLinkEventKind,ownerUid:String(d.ownerUid??""),fromName:String(d.fromName??"Unknown"),recipientName:String(d.recipientName??""),createdAt:dateVal(d.createdAt)}}).filter(e=>["share-ping","mate-invite"].includes(e.source)&&["created","opened","answered","used"].includes(e.kind)&&!!e.linkId)
+ const docs:QueryDocumentSnapshot[]=[];let truncated=false;let last:QueryDocumentSnapshot|undefined
+ while(docs.length<LINK_EVENT_LIMIT){
+  const page=await getDocs(last?query(collection(db,"productLinkEvents"),orderBy("createdAt","desc"),startAfter(last),limit(LINK_PAGE)):query(collection(db,"productLinkEvents"),orderBy("createdAt","desc"),limit(LINK_PAGE)))
+  docs.push(...page.docs)
+  if(page.size<LINK_PAGE)break
+  last=page.docs[page.size-1]
+  if(docs.length>=LINK_EVENT_LIMIT)truncated=true
+ }
+ const events=docs.map(row=>{const d=row.data();return{id:row.id,source:d.source as ProductLinkSource,linkId:String(d.linkId??""),kind:d.kind as ProductLinkEventKind,ownerUid:String(d.ownerUid??""),fromName:String(d.fromName??"Unknown"),recipientName:String(d.recipientName??""),createdAt:dateVal(d.createdAt)}}).filter(e=>["share-ping","mate-invite"].includes(e.source)&&["created","opened","answered","used"].includes(e.kind)&&!!e.linkId)
+ return{events,truncated}
 }

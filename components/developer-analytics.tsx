@@ -6,27 +6,13 @@ import { getAuth, onAuthStateChanged } from "firebase/auth"
 import { ArrowClockwise, DownloadSimple, SignIn } from "@phosphor-icons/react"
 import { app } from "@/lib/firebase"
 import { confirmSwitch, signInWithGoogle } from "@/lib/account"
-import { getDeveloperProductLinkEvents, type ProductLinkEvent, type ProductLinkSource } from "@/lib/link-analytics"
-import { getDeveloperProductUsageEvents, type ProductUsageEvent, type UsageEventName, type UsageScreen } from "@/lib/usage-analytics"
+import { getDeveloperProductLinkEvents, LINK_EVENT_LIMIT, type ProductLinkEvent, type ProductLinkSource } from "@/lib/link-analytics"
+import { getDeveloperProductUsageEvents, USAGE_EVENT_LIMIT, type ProductUsageEvent, type UsageEventName, type UsageScreen } from "@/lib/usage-analytics"
+import { buildLinkRows, computeLinkMetrics, computeUsageCore, eventCoverage, localDayKey, median, startOfLocalWeek, uniqueUsersWithin, windowIsIncomplete } from "@/lib/analytics-metrics"
 
 const DEVELOPER_EMAIL = (process.env.NEXT_PUBLIC_DEVELOPER_EMAIL || "adityavw2006@gmail.com").toLowerCase()
 type RangeKey = "24h" | "7d" | "30d" | "90d"
 type SourceKey = "all" | ProductLinkSource
-type AnalyticsRow = {
-  key: string
-  source: ProductLinkSource
-  linkId: string
-  ownerUid: string
-  fromName: string
-  recipientName: string
-  createdAtMs: number
-  openedAtMs: number
-  completedAtMs: number
-  opens: number
-  created: boolean
-  used: boolean
-  answered: boolean
-}
 type TrendBucket = { label: string; start: number; end: number; created: number; opened: number; completed: number; events: number }
 type UsageTrendBucket = { label: string; start: number; end: number; users: Set<string>; sessions: Set<string>; actions: number }
 const RANGE_MS: Record<RangeKey, number> = { "24h": 24 * 60 * 60 * 1000, "7d": 7 * 24 * 60 * 60 * 1000, "30d": 30 * 24 * 60 * 60 * 1000, "90d": 90 * 24 * 60 * 60 * 1000 }
@@ -62,6 +48,8 @@ export default function DeveloperAnalytics() {
   const [authReady, setAuthReady] = useState(false)
   const [events, setEvents] = useState<ProductLinkEvent[]>([])
   const [usageEvents, setUsageEvents] = useState<ProductUsageEvent[]>([])
+  const [linksTruncated, setLinksTruncated] = useState(false)
+  const [usageTruncated, setUsageTruncated] = useState(false)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState("")
   const [usageError, setUsageError] = useState("")
@@ -88,11 +76,14 @@ export default function DeveloperAnalytics() {
     try {
       const [linkResult, usageResult] = await Promise.allSettled([getDeveloperProductLinkEvents(), getDeveloperProductUsageEvents()])
       if (linkResult.status === "rejected") throw linkResult.reason
-      setEvents(linkResult.value)
+      setEvents(linkResult.value.events)
+      setLinksTruncated(linkResult.value.truncated)
       if (usageResult.status === "fulfilled") {
-        setUsageEvents(usageResult.value)
+        setUsageEvents(usageResult.value.events)
+        setUsageTruncated(usageResult.value.truncated)
       } else {
         setUsageEvents([])
+        setUsageTruncated(false)
         setUsageError(usageResult.reason instanceof Error ? usageResult.reason.message : "Usage analytics could not be read. Publish the latest Firestore rules, then refresh.")
       }
     } catch (e) {
@@ -138,39 +129,7 @@ export default function DeveloperAnalytics() {
     })
   }, [events, range, source])
 
-  const rows = useMemo(() => {
-    const map = new Map<string, AnalyticsRow>()
-    for (const e of scope) {
-      const key = `${e.source}:${e.linkId}`
-      let row = map.get(key)
-      if (!row) {
-        row = { key, source: e.source, linkId: e.linkId, ownerUid: e.ownerUid, fromName: e.fromName || "Unknown", recipientName: e.recipientName || "", createdAtMs: 0, openedAtMs: 0, completedAtMs: 0, opens: 0, created: false, used: false, answered: false }
-        map.set(key, row)
-      }
-      if (e.fromName) row.fromName = e.fromName
-      if (e.recipientName) row.recipientName = e.recipientName
-      const at = timestampMs(e.createdAt)
-      if (e.kind === "created") {
-        row.created = true
-        row.createdAtMs = at
-      } else if (!row.createdAtMs && at) {
-        row.createdAtMs = at
-      }
-      if (e.kind === "opened") {
-        row.opens += 1
-        if (!row.openedAtMs || at < row.openedAtMs) row.openedAtMs = at
-      }
-      if (e.kind === "used") {
-        row.used = true
-        if (!row.completedAtMs || at < row.completedAtMs) row.completedAtMs = at
-      }
-      if (e.kind === "answered") {
-        row.answered = true
-        if (!row.completedAtMs || at < row.completedAtMs) row.completedAtMs = at
-      }
-    }
-    return [...map.values()].sort((a, b) => b.createdAtMs - a.createdAtMs)
-  }, [scope])
+  const rows = useMemo(() => buildLinkRows(scope), [scope])
 
   const visibleRows = useMemo(() => {
     const q = filter.trim().toLowerCase()
@@ -178,52 +137,7 @@ export default function DeveloperAnalytics() {
     return rows.filter((r) => [r.fromName, r.recipientName, r.ownerUid, r.linkId, sourceName(r.source)].some((v) => v.toLowerCase().includes(q)))
   }, [rows, filter])
 
-  const metrics = useMemo(() => {
-    const createdRows = rows.filter((r) => r.created)
-    const invites = createdRows.filter((r) => r.source === "mate-invite")
-    const pings = createdRows.filter((r) => r.source === "share-ping")
-    const openedCreatedRows = createdRows.filter((r) => r.opens > 0)
-    const invitedUsed = invites.filter((r) => r.used)
-    const pingAnswered = pings.filter((r) => r.answered)
-    const completed = createdRows.filter((r) => (r.used || r.answered) && r.completedAtMs >= r.createdAtMs && r.completedAtMs > 0)
-    const durations = completed.map((r) => r.completedAtMs - r.createdAtMs).filter((n) => n >= 0 && n <= RANGE_MS["90d"]).sort((a, b) => a - b)
-    const averageCompletionMs = durations.length ? durations.reduce((a, b) => a + b, 0) / durations.length : null
-    const med = durations.length ? durations[Math.floor(durations.length / 2)] : null
-    const owners = new Map<string, { name: string; uid: string; links: number; opens: number; completed: number }>()
-    for (const r of createdRows) {
-      const existing = owners.get(r.ownerUid) || { name: r.fromName || "Unknown", uid: r.ownerUid, links: 0, opens: 0, completed: 0 }
-      existing.links += 1
-      existing.opens += r.opens
-      if (r.used || r.answered) existing.completed += 1
-      if (r.fromName) existing.name = r.fromName
-      owners.set(r.ownerUid, existing)
-    }
-    const senders = [...owners.values()].sort((a, b) => b.links - a.links || b.completed - a.completed)
-    const openedLinks = createdRows.filter((r) => r.opens > 0).length
-    const avgOpens = openedCreatedRows.length ? rows.filter((r) => r.created && r.opens > 0).reduce((n, r) => n + r.opens, 0) / openedCreatedRows.length : 0
-    return {
-      eventCount: scope.length,
-      created: createdRows.length,
-      opens: scope.filter((e) => e.kind === "opened").length,
-      openedLinks,
-      invites: invites.length,
-      used: invitedUsed.length,
-      pings: pings.length,
-      answered: pingAnswered.length,
-      sharers: owners.size,
-      repeatSharers: senders.filter((s) => s.links > 1).length,
-      avgOpens,
-      inviteOpenRate: percent(invites.filter((r) => r.opens > 0).length, invites.length),
-      inviteUseRate: percent(invitedUsed.length, invites.length),
-      pingOpenRate: percent(pings.filter((r) => r.opens > 0).length, pings.length),
-      pingAnswerRate: percent(pingAnswered.length, pings.length),
-      overallOpenRate: percent(openedLinks, createdRows.length),
-      overallCompletionRate: percent(createdRows.filter((r) => (r.used || r.answered)).length, createdRows.length),
-      averageCompletionMs,
-      medianCompletionMs: med,
-      senders,
-    }
-  }, [rows, scope])
+  const metrics = useMemo(() => computeLinkMetrics(rows, scope), [rows, scope])
 
   const trend = useMemo<TrendBucket[]>(() => {
     const duration = RANGE_MS[range]
@@ -266,21 +180,7 @@ export default function DeveloperAnalytics() {
 
   const usageMetrics = useMemo(() => {
     const now = Date.now()
-    const uniqueUsersIn = (duration: number) => new Set(
-      usageEvents.filter((e) => {
-        const at = timestampMs(e.createdAt)
-        return at > 0 && at >= now - duration && at <= now
-      }).map((e) => e.actorUid),
-    ).size
-    const actors = new Set(usageScope.map((e) => e.actorUid))
-    const sessions = new Set(usageScope.map((e) => e.sessionId))
-    const activeDays = new Map<string, Set<string>>()
-    for (const e of usageScope) {
-      const day = new Date(timestampMs(e.createdAt)).toISOString().slice(0, 10)
-      const days = activeDays.get(e.actorUid) || new Set<string>()
-      days.add(day)
-      activeDays.set(e.actorUid, days)
-    }
+    const core = computeUsageCore(usageScope)
     const eventCounts = new Map<UsageEventName, number>()
     for (const e of usageScope) eventCounts.set(e.event, (eventCounts.get(e.event) || 0) + 1)
     const screenCounts = new Map<ProductUsageEvent["screen"], number>()
@@ -318,12 +218,12 @@ export default function DeveloperAnalytics() {
       hourStats[date.getHours()].users.add(e.actorUid)
     }
     return {
-      dau: uniqueUsersIn(RANGE_MS["24h"]),
-      wau: uniqueUsersIn(RANGE_MS["7d"]),
-      mau: uniqueUsersIn(RANGE_MS["30d"]),
-      activeUsers: actors.size,
-      sessions: sessions.size,
-      repeatUsers: [...activeDays.values()].filter((days) => days.size >= 2).length,
+      dau: uniqueUsersWithin(usageEvents, RANGE_MS["24h"], now),
+      wau: uniqueUsersWithin(usageEvents, RANGE_MS["7d"], now),
+      mau: uniqueUsersWithin(usageEvents, RANGE_MS["30d"], now),
+      activeUsers: core.activeUsers,
+      sessions: core.sessions,
+      repeatUsers: core.repeatUsers,
       appOpens: eventCounts.get("app_open") || 0,
       screenViews: (eventCounts.get("screen_view") || 0) + (eventCounts.get("settings_open") || 0),
       attendanceActions: (eventCounts.get("attendance_mark") || 0) + (eventCounts.get("attendance_clear") || 0),
@@ -404,7 +304,7 @@ export default function DeveloperAnalytics() {
       }
       row.events += 1
       row.sessions.add(sessionKey)
-      row.days.add(new Date(item.at).toISOString().slice(0, 10))
+      row.days.add(localDayKey(item.at))
       if (e.event === "screen_view" || e.event === "settings_open") row.screens.add(e.screen)
       if (actionEvents.has(e.event)) row.actions += 1
       users.set(e.actorUid, row)
@@ -439,9 +339,7 @@ export default function DeveloperAnalytics() {
 
     const currentActionCount = datedScope.filter((item) => actionEvents.has(item.event.event)).length
     const actionCounts = [...users.values()].map((u) => u.actions).sort((a, b) => a - b)
-    const medianActionsPerUser = actionCounts.length
-      ? actionCounts[Math.floor(actionCounts.length / 2)]
-      : 0
+    const medianActionsPerUser = median(actionCounts) ?? 0
     const sessionRows = [...sessions.values()]
     const startedSessions = sessionRows.filter((session) => session.hasOpen).length
     const browsedSessions = sessionRows.filter((session) => session.hasOpen && session.hasScreen).length
@@ -451,7 +349,7 @@ export default function DeveloperAnalytics() {
       .map((session) => Math.max(...session.times) - Math.min(...session.times))
       .filter((duration) => duration >= 0 && duration <= 24 * 60 * 60 * 1000)
       .sort((a, b) => a - b)
-    const medianSessionMs = durations.length ? durations[Math.floor(durations.length / 2)] : null
+    const medianSessionMs = median(durations)
 
     const segments = [
       { label: "Browsing only", hint: "0 feature actions", matches: (n: number) => n === 0 },
@@ -492,14 +390,11 @@ export default function DeveloperAnalytics() {
       }).length
       return { eligible: eligible.length, returned, rate: eligible.length ? Math.round(returned / eligible.length * 100) : null }
     }
-    const startOfWeek = (at: number) => {
-      const d = new Date(at)
-      const midnight = Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate())
-      return midnight - ((d.getUTCDay() + 6) % 7) * dayMs
-    }
-    const currentWeek = startOfWeek(now)
-    const cohorts = Array.from({ length: 8 }, (_, i) => currentWeek - (7 - i) * 7 * dayMs).map((start) => {
-      const end = start + 7 * dayMs
+    const currentWeek = startOfLocalWeek(now)
+    // Weeks are stepped through the calendar, not by 7 x 24 hours, so a clock change never moves a week's edge
+    const weekStartsBack = (n: number) => { const d = new Date(currentWeek); d.setDate(d.getDate() - n * 7); return d.getTime() }
+    const cohorts = Array.from({ length: 8 }, (_, i) => weekStartsBack(7 - i)).map((start) => {
+      const end = (() => { const d = new Date(start); d.setDate(d.getDate() + 7); return d.getTime() })()
       const uids = [...firstSeen.entries()]
         .filter(([, first]) => first >= start && first < end)
         .map(([uid]) => uid)
@@ -560,7 +455,7 @@ export default function DeveloperAnalytics() {
       activationEligible: matureActivationUsers.length,
       activationCount: activatedUsers.length,
       activationRate: matureActivationUsers.length ? Math.round(activatedUsers.length / matureActivationUsers.length * 100) : null,
-      medianTimeToActivateMs: activationTimes.length ? activationTimes[Math.floor(activationTimes.length / 2)]! : null,
+      medianTimeToActivateMs: median(activationTimes),
       comparisonAvailable,
       previousUsers: priorUsers.size,
       previousSessions: priorSessions.size,
@@ -673,6 +568,15 @@ export default function DeveloperAnalytics() {
     }
   }, [usageEvents, usageScope, usageTrend, range])
 
+  const usageCoverage = useMemo(() => eventCoverage(usageEvents.map((e) => timestampMs(e.createdAt)), usageTruncated), [usageEvents, usageTruncated])
+  const linkCoverage = useMemo(() => eventCoverage(events.map((e) => timestampMs(e.createdAt)), linksTruncated), [events, linksTruncated])
+  // Nothing is shown as complete when it isn't: a window that reaches back past the oldest loaded event is too low
+  const windowStart = Date.now() - RANGE_MS[range]
+  const incompleteNotes = [
+    windowIsIncomplete(usageCoverage, windowStart) && `usage events: only the newest ${USAGE_EVENT_LIMIT.toLocaleString()} are loaded (back to ${dateShort(usageCoverage.completeSinceMs!)})`,
+    windowIsIncomplete(linkCoverage, windowStart) && `link events: only the newest ${LINK_EVENT_LIMIT.toLocaleString()} are loaded (back to ${dateShort(linkCoverage.completeSinceMs!)})`,
+  ].filter(Boolean) as string[]
+  const retentionUnreliable = usageCoverage.truncated
   const maxUsageUsers = Math.max(1, ...usageTrend.map((b) => b.users.size))
   const maxScreenCount = Math.max(1, ...usageMetrics.screenPopularity.map(([, count]) => count))
   const maxUsageActionCount = Math.max(1, ...usageMetrics.actions.map(([, count]) => count))
@@ -745,6 +649,12 @@ export default function DeveloperAnalytics() {
         </section>}
 
         {error && <p role="alert" className="rounded-xl bg-bad/10 text-bad p-3 text-sm break-words">{error}</p>}
+
+        {isAdmin && (incompleteNotes.length > 0 || retentionUnreliable) && <p role="status" className="rounded-xl bg-amber-500/15 p-3 text-sm leading-relaxed text-foreground">
+          <b>These numbers are incomplete for the selected range.</b>{" "}
+          {incompleteNotes.length > 0 ? `Counts are too low because ${incompleteNotes.join("; ")}. Choose a shorter range for exact figures.` : ""}
+          {retentionUnreliable ? " Users' \"first seen\" dates, new-versus-returning and retention figures are unreliable while events are cut off." : ""}
+        </p>}
 
         {isAdmin && <>
           <section className="rounded-2xl bg-card p-4 flex flex-wrap items-end justify-between gap-4">

@@ -1,6 +1,6 @@
 "use client"
 
-import { collection, doc, getDocs, limit, orderBy, query, serverTimestamp, setDoc, Timestamp, where, writeBatch } from "firebase/firestore"
+import { collection, doc, getDocs, limit, orderBy, query, serverTimestamp, setDoc, startAfter, Timestamp, where, writeBatch, type QueryDocumentSnapshot } from "firebase/firestore"
 import { getAuth } from "firebase/auth"
 import { app, db } from "@/lib/firebase"
 
@@ -125,11 +125,17 @@ export async function recordProductUsageEvent(event: UsageEventName, screen: Usa
         ? `attendance-usage-last-screen:${sessionId}`
         : ""
 
+    // The marker is set before the save so two calls at the same moment (React running an effect twice) count once, and put
+    // back if the save fails, so an open made while offline is counted when it next happens instead of never.
+    let previous = ""
     if (dedupKey) {
-      let previous = ""
       try { previous = sessionStorage.getItem(dedupKey) || "" } catch { previous = fallbackDedup.has(dedupKey) ? screen : "" }
       if ((event === "app_open" && previous === "1") || (event === "screen_view" && previous === screen)) return false
       try { sessionStorage.setItem(dedupKey, event === "app_open" ? "1" : screen) } catch { fallbackDedup.add(dedupKey) }
+    }
+    const undoMarker = () => {
+      if (!dedupKey) return
+      try { if (previous) sessionStorage.setItem(dedupKey, previous); else sessionStorage.removeItem(dedupKey) } catch { fallbackDedup.delete(dedupKey) }
     }
 
     try {
@@ -150,15 +156,23 @@ export async function recordProductUsageEvent(event: UsageEventName, screen: Usa
       const code = writeError && typeof writeError === "object" && "code" in writeError
         ? String((writeError as { code?: unknown }).code || "")
         : ""
-      if (code !== "permission-denied") return false
-      await setDoc(doc(db, "productUsageEvents", id), {
-        actorUid: user.uid,
-        sessionId,
-        event,
-        screen,
-        createdAt: serverTimestamp(),
-      })
-      return true
+      if (code !== "permission-denied") {
+        undoMarker()
+        return false
+      }
+      try {
+        await setDoc(doc(db, "productUsageEvents", id), {
+          actorUid: user.uid,
+          sessionId,
+          event,
+          screen,
+          createdAt: serverTimestamp(),
+        })
+        return true
+      } catch {
+        undoMarker()
+        return false
+      }
     }
   } catch {
     // Analytics must never interrupt attendance, task, or timetable operations.
@@ -172,8 +186,12 @@ const dateVal = (v: unknown): ProductUsageEvent["createdAt"] => {
   return null
 }
 
+/** The most events the dashboard loads in one go (read in pages of USAGE_PAGE). Past this the oldest are left out and the page says so. */
+export const USAGE_EVENT_LIMIT = 20000
+const USAGE_PAGE = 2000
+
 /** Developer-only query; the matching Firestore rule enforces access on the server. */
-export async function getDeveloperProductUsageEvents(): Promise<ProductUsageEvent[]> {
+export async function getDeveloperProductUsageEvents(): Promise<{ events: ProductUsageEvent[]; truncated: boolean }> {
   const cutoff = Timestamp.fromMillis(Date.now() - 90 * 24 * 60 * 60 * 1000)
   for (let i = 0; i < 20; i++) {
     const old = await getDocs(query(collection(db, "productUsageEvents"), where("createdAt", "<", cutoff), orderBy("createdAt", "asc"), limit(400)))
@@ -183,8 +201,21 @@ export async function getDeveloperProductUsageEvents(): Promise<ProductUsageEven
     await batch.commit()
     if (old.size < 400) break
   }
-  const snap = await getDocs(query(collection(db, "productUsageEvents"), orderBy("createdAt", "desc"), limit(3000)))
-  return snap.docs.map((row) => {
+  const docs: QueryDocumentSnapshot[] = []
+  let truncated = false
+  let last: QueryDocumentSnapshot | undefined
+  while (docs.length < USAGE_EVENT_LIMIT) {
+    const page = await getDocs(
+      last
+        ? query(collection(db, "productUsageEvents"), orderBy("createdAt", "desc"), startAfter(last), limit(USAGE_PAGE))
+        : query(collection(db, "productUsageEvents"), orderBy("createdAt", "desc"), limit(USAGE_PAGE)),
+    )
+    docs.push(...page.docs)
+    if (page.size < USAGE_PAGE) break
+    last = page.docs[page.size - 1]
+    if (docs.length >= USAGE_EVENT_LIMIT) truncated = true
+  }
+  const events = docs.map((row) => {
     const d = row.data()
     return {
       id: row.id,
@@ -204,4 +235,5 @@ export async function getDeveloperProductUsageEvents(): Promise<ProductUsageEven
     && ["app_open", "screen_view", "settings_open", "attendance_mark", "attendance_clear", "scan_checkin", "subject_create", "subject_update", "subject_delete", "task_create", "task_update", "task_complete", "task_reopen", "task_delete"].includes(e.event)
     && ["today", "subjects", "calendar", "mates", "settings", "scanner"].includes(e.screen)
   )
+  return { events, truncated }
 }
