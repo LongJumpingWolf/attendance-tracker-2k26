@@ -70,7 +70,7 @@ import ScanCheckIn, { type ScanState } from "@/components/scan-check-in"
 import ScanGate from "@/components/scan-gate"
 import DemoTour from "@/components/demo-tour"
 import { isInAppBrowser, safariUrl, chromeIntentUrl } from "@/lib/in-app"
-import { pickScanTarget } from "@/lib/scan"
+import { prepareScanReview, scanTargetKey } from "@/lib/scan"
 import { buildTestSubjects, isTestSubject } from "@/lib/scan-test"
 import WrappedStory from "@/components/wrapped-story"
 import UndoToast, { type ToastState } from "@/components/undo-toast"
@@ -135,7 +135,7 @@ export default function Home() {
   const [isOnline, setIsOnline] = useState<boolean | null>(null)
   const [isImportOpen, setIsImportOpen] = useState(false)
   const [scan, setScan] = useState<ScanState | null>(null)
-  const scanBefore = useRef<{ id: string; date: string; t: string; prev: LogEntry | null } | null>(null) // the class a scan marked and what it was before, for Undo
+  const scanBefore = useRef<{ id: string; date: string; t: string; prev: LogEntry | null }[]>([]) // every class marked in the last scan confirmation, for Undo
   const [demoActive, setDemoActive] = useState(false)
   const [demoTourOpen, setDemoTourOpen] = useState(false)
   const demoSnapshot = useRef<{ subjects: Subject[]; tasks: Task[]; tags: string[]; mates: Mate[] } | null>(null)
@@ -500,28 +500,58 @@ export default function Home() {
     showToast(`${verb} · ${s.name}${when}${now.total ? ` · now ${now.pct}%` : ""}`, () => patchSubject(id, undo))
   }
 
-  // A scanned QR code or tapped NFC tag opens the app at /scan (see next.config.mjs). Marking present here, and only
-  // here, plays the check-in celebration.
-  const scanMark = (target: ClassSlot, result: ScanState["result"], from: Subject[] = subjects) => {
-    const attendanceTarget = target.attendanceSubject ?? target.subject
-    const before = from.find((x) => x.id === attendanceTarget.id)
-    if (!before) return
-    // Use one local date for the undo snapshot, sync fallback and saved mark, even at midnight.
+  // A scan opens a review. Attendance changes only after the person confirms the selected classes.
+  const scanConfirm = (targets: ClassSlot[], review: ScanState) => {
     const date = localDate()
-    scanBefore.current = { id: before.id, date, t: target.slot.start, prev: entryFor(before, date, target.slot.start) }
-    scanMarks.current.push({ id: before.id, date, t: target.slot.start, k: target.slot.kind })
-    if (!demoActiveRef.current) void recordProductUsageEvent("scan_checkin", "scanner")
-    patchSubject(before.id, (x) => withSet(x, date, "P", { t: target.slot.start, k: target.slot.kind }))
-    setScan({ result, marked: target })
+    const uniqueTargets = [...new Map(targets.map((target) => [scanTargetKey(target), target])).values()]
+    const beforeRecords: { id: string; date: string; t: string; prev: LogEntry | null }[] = []
+    const acceptedTargets: ClassSlot[] = []
+
+    // Recheck live state at commit time. If another action marked a class while the review was open,
+    // skip it rather than overwrite or count it twice.
+    for (const target of uniqueTargets) {
+      const owner = target.attendanceSubject ?? target.subject
+      const before = subjects.find((s) => s.id === owner.id)
+      if (!before || markFor(before, date, target.slot.start) !== null) continue
+      beforeRecords.push({ id: before.id, date, t: target.slot.start, prev: entryFor(before, date, target.slot.start) })
+      acceptedTargets.push(target)
+    }
+
+    if (acceptedTargets.length === 0) {
+      showToast("Those classes are already marked. Nothing changed.")
+      return
+    }
+
+    scanBefore.current = beforeRecords
+    for (const target of acceptedTargets) {
+      const owner = target.attendanceSubject ?? target.subject
+      scanMarks.current.push({ id: owner.id, date, t: target.slot.start, k: target.slot.kind })
+      if (!demoActiveRef.current) void recordProductUsageEvent("scan_checkin", "scanner")
+    }
+
+    // Apply the batch in one state update, including multiple slots owned by the same subject.
+    setSubjects((prev) => prev.map((subject) => {
+      const ownTargets = acceptedTargets.filter((target) => (target.attendanceSubject ?? target.subject).id === subject.id)
+      return ownTargets.reduce(
+        (current, target) => markFor(current, date, target.slot.start) === null
+          ? withSet(current, date, "P", { t: target.slot.start, k: target.slot.kind })
+          : current,
+        subject,
+      )
+    }))
+    setScan({ ...review, phase: "complete", marked: acceptedTargets[0], completed: acceptedTargets })
   }
 
   const scanUndo = () => {
     if (scan?.preview) return setScan(null)
     const before = scanBefore.current
-    if (before) patchSubject(before.id, (x) => restoreMark(x, before.date, before.t, before.prev)) // only the scanned class goes back
-    // Remove only this class's pending sync fallback; other scanned slots of the same subject must survive Undo.
-    scanMarks.current = scanMarks.current.filter((m) => !(m.id === before?.id && m.date === before?.date && m.t === before?.t))
-    scanBefore.current = null
+    for (const record of before) {
+      patchSubject(record.id, (subject) => restoreMark(subject, record.date, record.t, record.prev))
+    }
+    const restoredKeys = new Set(before.map((record) => `${record.id}@${record.date}@${record.t}`))
+    // Keep pending sync fallbacks for every other slot, including other lectures of the same subject.
+    scanMarks.current = scanMarks.current.filter((m) => !restoredKeys.has(`${m.id}@${m.date}@${m.t}`))
+    scanBefore.current = []
     setScan(null)
   }
 
@@ -679,8 +709,8 @@ export default function Home() {
     return () => clearTimeout(t)
   }, [])
 
-  // A scan marks straight away when this browser already has a timetable, and syncs in the background. Only a browser
-  // with nothing in it waits, because the synced copy is the only place a timetable can come from.
+  // A scan opens a review as soon as local data is ready. The timing match is preselected, but no attendance is
+  // written until the person confirms; all other unchecked classes today remain available as recovery options.
   useEffect(() => {
     if (!loaded || !consentReady || !consentAccepted || scanHandled.current || scanGate) return
     if (subjects.length === 0 && !sync.ready) return
@@ -693,18 +723,23 @@ export default function Home() {
   }, [loaded, consentReady, consentAccepted, sync.ready, subjects.length, scanGate])
 
 
-  /** What a scan does: pick the class that fits this moment and mark it, or ask */
+  /** Build the scan review: suggest one timing match and offer every other unchecked class today. */
   const runScan = () => {
-    const result = pickScanTarget(subjects, new Date(), effectiveOverrides)
-    if (result.kind === "mark") return scanMark(result.target, result)
-    // A newcomer with nothing set up is shown the welcome tour, which is already open, rather than an empty scan screen
+    const review = prepareScanReview(subjects, new Date(), effectiveOverrides)
+    // A newcomer with nothing set up is shown the welcome tour, which is already open, rather than an empty scan screen.
     let newcomer = false
     try {
-      newcomer = result.kind === "idle" && result.reason === "no-subjects" && !localStorage.getItem("onboardingDone")
+      newcomer = review.result.kind === "idle" && review.result.reason === "no-subjects" && !localStorage.getItem("onboardingDone")
     } catch {
       /* private mode */
     }
-    if (!newcomer) setScan({ result, marked: null })
+    if (!newcomer) setScan({
+      result: review.result,
+      marked: null,
+      phase: "review",
+      options: review.options,
+      suggested: review.suggested,
+    })
   }
 
   // Developer tools (Settings): a timetable built around now, and manual triggers for the scan flow
@@ -1437,7 +1472,7 @@ export default function Home() {
       <ScanCheckIn
         scan={scan}
         subjects={subjects}
-        onPick={(t) => scan && scanMark(t, scan.result)}
+        onConfirm={(targets) => scan && scanConfirm(targets, scan)}
         onUndo={scanUndo}
         onClose={() => setScan(null)}
       />
