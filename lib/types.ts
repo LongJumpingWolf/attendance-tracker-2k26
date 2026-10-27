@@ -27,6 +27,10 @@ export interface Subject {
   requirement: number
   glowColor: string
   tags: string[]
+  /** Inclusive local YYYY-MM-DD start of the period this timetable is active. */
+  scheduleFrom?: string
+  /** Inclusive local YYYY-MM-DD end of the period this timetable is active. */
+  scheduleUntil?: string
   /** Optional weekly timetable */
   slots?: Slot[]
   /** History of marks made in the app (counts above stay the source of truth) */
