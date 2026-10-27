@@ -20,7 +20,6 @@ import {
   restoreMark,
   markWithUndo,
   withSet,
-  daysUntil,
   classesOn,
   markFor,
   toMin,
@@ -782,7 +781,13 @@ export default function Home() {
 
   const handleAddSubject = (values: SubjectValues) => {
     if (!demoActiveRef.current) void recordProductUsageEvent("subject_create", "subjects")
-    setSubjects([...subjects, { id: newId(), ...values }])
+    const newSubject: Subject = {
+      id: newId(),
+      ...values,
+      scheduleFrom: values.scheduleFrom || undefined,
+      scheduleUntil: values.scheduleUntil || undefined,
+    }
+    setSubjects([...subjects, newSubject])
     mergeTags(values.tags)
     setIsAddOpen(false)
   }
@@ -790,7 +795,12 @@ export default function Home() {
   const handleEditSubject = (values: SubjectValues) => {
     if (editingSubjectId) {
       if (!demoActiveRef.current) void recordProductUsageEvent("subject_update", "subjects")
-      patchSubject(editingSubjectId, (s) => ({ ...s, ...values }))
+      patchSubject(editingSubjectId, (s) => ({
+        ...s,
+        ...values,
+        scheduleFrom: values.scheduleFrom || undefined,
+        scheduleUntil: values.scheduleUntil || undefined,
+      }))
     }
     mergeTags(values.tags)
     setEditingSubjectId(null)
@@ -899,6 +909,21 @@ export default function Home() {
     )
   }
 
+  /** Snooze a Today-carousel reminder locally and through the existing task sync path. */
+  const snoozeDeadlineReminder = (taskId: string, untilDate: string) => {
+    const task = tasks.find((item) => item.id === taskId)
+    if (!task) return
+    const previous = task.remindAgainOn
+    setTasks((prev) => prev.map((item) => item.id === taskId ? { ...item, remindAgainOn: untilDate } : item))
+    showToast("Reminder moved to tomorrow", () => {
+      setTasks((prev) => prev.map((item) => {
+        if (item.id !== taskId) return item
+        const { remindAgainOn: _discard, ...rest } = item
+        return { ...rest, ...(previous ? { remindAgainOn: previous } : {}) }
+      }))
+    })
+  }
+
   // ---------- developer tools (in Settings) ----------
   const testNotificationSetup = async () => {
     try {
@@ -971,16 +996,7 @@ export default function Home() {
     if (owed > 0 && daysLeft <= 3) {
       return { text: `Month ends in ${daysLeft} day${daysLeft === 1 ? "" : "s"}. You owe your proxy-mates ${owed}.`, tone: "bad", target: "mates" }
     }
-    // A deadline shows up here once it is as close as its own reminder setting (default 1 day; -1 = never)
-    const due = tasks
-      .filter((t) => !t.done)
-      .map((t) => ({ t, d: daysUntil(t.dueDate), remind: t.remindDaysBefore ?? 1 }))
-      .filter((x) => x.d >= 0 && x.remind >= 0 && x.d <= x.remind)
-      .sort((a, b) => a.d - b.d)[0]
-    if (due) {
-      const when = due.d === 0 ? "today" : due.d === 1 ? "tomorrow" : `in ${due.d} days`
-      return { text: `${due.t.title} is due ${when}`, tone: "warn", target: "calendar" }
-    }
+    // Deadline reminders belong in the Today carousel, never in the notice bar.
     const atRisk = subjects.filter((s) => getAttendance(s.attended, s.missed, s.requirement).status === "risk").length
     if (atRisk > 0) {
       return { text: `${atRisk} subject${atRisk === 1 ? " is" : "s are"} below the attendance requirement`, tone: "bad", target: "subjects" }
@@ -1190,6 +1206,8 @@ export default function Home() {
               onGoto={goto}
               onAddSubject={() => setIsAddOpen(true)}
               onOpenTomorrow={openTomorrowCalendar}
+              onResolveReminder={toggleDeadlineDone}
+              onSnoozeReminder={snoozeDeadlineReminder}
               demoActive={demoActive}
             />
           )}
