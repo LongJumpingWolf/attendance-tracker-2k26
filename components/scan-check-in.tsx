@@ -17,6 +17,8 @@ export interface ScanState {
   /** Only showing the animation: nothing was changed, so Undo just closes. */
   preview?: boolean
   phase?: "review" | "complete"
+  /** Local date on which these slots were selected, to prevent a review crossing midnight. */
+  date?: string
   /** Today's unchecked classes available for this scan review. */
   options?: ClassSlot[]
   /** The timing algorithm's unique match; checked by default, but fully deselectable. */
