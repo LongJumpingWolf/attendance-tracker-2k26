@@ -17,7 +17,7 @@ describe("deadline reminders for the Today carousel", () => {
   })
 
   it("defaults to one day before and includes the due date", () => {
-    expect(deadlineRemindersForDate([task({ remindDaysBefore: undefined })], "2026-10-28")).toHaveLength(1)
+    expect(deadlineRemindersForDate([task({ remindDaysBefore: undefined })], "2026-10-29")).toHaveLength(1)
     expect(deadlineRemindersForDate([task({ remindDaysBefore: 0 })], "2026-10-30")).toHaveLength(1)
     expect(deadlineRemindersForDate([task({ remindDaysBefore: 0 })], "2026-10-29")).toEqual([])
   })
