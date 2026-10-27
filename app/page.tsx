@@ -914,18 +914,19 @@ export default function Home() {
     const task = tasks.find((item) => item.id === taskId)
     if (!task) return
     const previous = task.remindAgainOn
-    setTasks((prev) => prev.map((item) => item.id === taskId ? { ...item, remindAgainOn: untilDate } : item))
+    setTasks((prev) => prev.map((item) => (item.id === taskId ? { ...item, remindAgainOn: untilDate } : item)))
     showToast("Reminder moved to tomorrow", () => {
-      setTasks((prev) => prev.map((item) => {
-        if (item.id !== taskId) return item
-        const restored = { ...item }
-        if (previous) restored.remindAgainOn = previous
-        else delete restored.remindAgainOn
-        return restored }
-      }))
+      setTasks((prev) =>
+        prev.map((item) => {
+          if (item.id !== taskId) return item
+          const restored = { ...item }
+          if (previous) restored.remindAgainOn = previous
+          else delete restored.remindAgainOn
+          return restored
+        }),
+      )
     })
   }
-
   // ---------- developer tools (in Settings) ----------
   const testNotificationSetup = async () => {
     try {
