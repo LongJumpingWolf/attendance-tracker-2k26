@@ -58,10 +58,11 @@ const divide = "divide-y divide-ink/10"
 
 /** Colour carries the answer: green = fine to skip, orange = no skips left, red = below the target */
 const VERDICT_TONE = {
-  skip: "bg-good/15 text-good",
-  must: "bg-warn/15 text-warn",
-  reach: "bg-bad/15 text-bad",
-  nodata: "bg-ink/10 text-mute",
+  // Higher contrast makes the attendance decision scannable at a glance.
+  skip: "bg-good/20 text-good border border-good/35",
+  must: "bg-warn/20 text-warn border border-warn/35",
+  reach: "bg-bad/15 text-bad border border-bad/35",
+  nodata: "bg-info/15 text-info border border-info/35",
 } as const
 const GUTTER = 16
 
@@ -522,7 +523,7 @@ function TodayContent({
                           </h3>
                           <span
                             data-testid="verdict"
-                            className={`inline-block rounded-md px-2 py-0.5 mt-1.5 sm:mt-2 text-[11px] font-extrabold tracking-wide ${VERDICT_TONE[verdict.kind]}`}
+                            className={`inline-flex items-center rounded-md px-2.5 py-1 mt-1.5 sm:mt-2 text-[11px] leading-tight font-black tracking-wide shadow-sm ${VERDICT_TONE[verdict.kind]}`}
                           >
                             {verdict.label}
                           </span>
