@@ -415,12 +415,12 @@ function TodayContent({
         {!allDone && (
         <section data-tour="today-carousel">
           <SectionHeader
-            action={live.length > 0 ? <span className="text-[13px] text-mute">{live.length} to mark</span> : undefined}
+            action={carouselCount > 0 ? <span className="text-[13px] text-mute">{live.length > 0 ? `${live.length} to mark` : ""}{live.length > 0 && reminderItems.length > 0 ? " · " : ""}{reminderItems.length > 0 ? `${reminderItems.length} reminder${reminderItems.length === 1 ? "" : "s"}` : ""}</span> : undefined}
           >
-            Today&rsquo;s classes
+            Today&rsquo;s classes &amp; reminders
           </SectionHeader>
 
-          {pending.length === 0 ? (
+          {pending.length === 0 && reminderItems.length === 0 ? (
             <div className="w-full">
               <article className={`w-full ${cardClass} px-5 py-6 flex items-center gap-4`}>
                 <span className="w-12 h-12 rounded-full bg-good/15 text-good grid place-items-center flex-shrink-0">
@@ -479,6 +479,57 @@ function TodayContent({
                 style={{ touchAction: "pan-x pan-y", WebkitOverflowScrolling: "touch", overscrollBehaviorX: "contain" }}
                 className="relative -mx-4 px-4 lg:mx-0 lg:px-0 flex gap-3 overflow-x-auto snap-x snap-mandatory scroll-px-4 lg:scroll-px-0 pb-1 no-scrollbar cursor-grab active:cursor-grabbing select-none"
               >
+                {reminderItems.map(({ task, daysUntilDue }) => {
+                  const key = "deadline-" + task.id
+                  const dueLabel = daysUntilDue < 0
+                    ? `Overdue by ${Math.abs(daysUntilDue)} day${Math.abs(daysUntilDue) === 1 ? "" : "s"}`
+                    : daysUntilDue === 0
+                      ? "Due today"
+                      : daysUntilDue === 1
+                        ? "Due tomorrow"
+                        : `Due in ${daysUntilDue} days`
+                  const dueDateLabel = new Date(task.dueDate + "T00:00:00").toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" })
+                  const linkedSubject = task.subjectId ? subjects.find((subject) => subject.id === task.subjectId) : undefined
+                  return (
+                    <article
+                      key={key}
+                      data-key={key}
+                      data-carousel-active="true"
+                      data-testid="deadline-reminder-card"
+                      tabIndex={0}
+                      aria-label={`Deadline reminder: ${task.title}. ${dueLabel}.`}
+                      className="snap-start shrink-0 w-[calc(100vw-3rem)] max-w-[680px] lg:w-full lg:max-w-none rounded-[24px] sm:rounded-[28px] bg-card border border-warn/25 p-4 sm:p-5 flex flex-col"
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="inline-flex items-center gap-1.5 rounded-full bg-warn/15 text-warn px-2.5 py-1 text-[10px] font-extrabold tracking-wide">
+                          <CalendarBlank weight="bold" className="w-3.5 h-3.5" /> DEADLINE REMINDER
+                        </span>
+                        <span className="rounded-full bg-secondary text-ink px-2.5 py-1 text-[11px] font-bold">{dueLabel}</span>
+                      </div>
+                      <h3 className="font-display text-[clamp(22px,5.8vw,28px)] leading-tight font-bold tracking-tight mt-5 break-words">{task.title}</h3>
+                      <p className="text-[14px] text-mute mt-2">Due {dueDateLabel}</p>
+                      {linkedSubject && <p className="text-[13px] text-mute mt-1">Subject · {linkedSubject.name}</p>}
+                      <p className="text-[13px] text-mute leading-snug mt-4 mb-4">Resolve this when it&rsquo;s done, or bring it back to the carousel tomorrow.</p>
+                      <div className="grid grid-cols-2 gap-2.5 sm:gap-3 mt-auto">
+                        <button
+                          type="button"
+                          onClick={(e) => { e.preventDefault(); e.stopPropagation(); onResolveReminder(task) }}
+                          className="h-11 sm:h-[52px] rounded-2xl bg-good text-[#ffffff] dark:text-[#000000] text-[14px] sm:text-[16px] font-semibold flex items-center justify-center gap-2"
+                        >
+                          <Check weight="bold" className="w-5 h-5" /> Resolved
+                        </button>
+                        <button
+                          type="button"
+                          disabled={!tomorrow}
+                          onClick={(e) => { e.preventDefault(); e.stopPropagation(); if (tomorrow) onSnoozeReminder(task.id, tomorrow) }}
+                          className="h-11 sm:h-[52px] rounded-2xl bg-secondary text-ink text-[13px] sm:text-[15px] font-semibold flex items-center justify-center gap-2 disabled:opacity-50"
+                        >
+                          <ArrowClockwise weight="bold" className="w-4 h-4 shrink-0" /> Remind me tomorrow
+                        </button>
+                      </div>
+                    </article>
+                  )
+                })}
                 {pending.map((c) => {
                   const k = keyOf(c)
                   const start = toMin(c.slot.start)
@@ -508,6 +559,7 @@ function TodayContent({
                     <article
                       key={k}
                       data-key={k}
+                      data-carousel-active={!gone ? "true" : undefined}
                       tabIndex={0}
                       aria-label={c.override?.kind === "substitute" ? `Open ${attendanceSubjectName(c)} attendance details; class held as ${c.subject.name}` : `Open ${c.subject.name} subject details`}
                       onClick={(e) => cardClick(e, (c.attendanceSubject ?? c.subject).id)}
@@ -550,17 +602,9 @@ function TodayContent({
                             {verdict.pct === null ? verdict.detail : `${verdict.pct}% now · ${attendanceSubject.requirement}% needed · ${verdict.detail}`}
                           </p>
                           {c.override?.kind === "substitute" && <p className="mt-1 text-[12px] font-medium text-info">Substitutes for {c.originalSubjectName}. Attendance is recorded under {attendanceSubject.name}.</p>}
-                          {(c.slot.kind || c.subject.tags?.some((tag) => tag.trim())) && (
+                          {c.subject.tags?.some((tag) => tag.trim()) && (
                             <div data-testid="class-tags" className="flex flex-wrap items-center gap-1.5 mt-2">
-                              {c.slot.kind && (
-                                <span
-                                  data-testid="class-kind-tag"
-                                  className="inline-flex items-center rounded-full border border-ink/15 bg-secondary px-2.5 py-1.5 text-[11px] leading-none font-semibold text-ink"
-                                >
-                                  {c.slot.kind}
-                                </span>
-                              )}
-                              {c.subject.tags?.filter((tag) => tag.trim()).map((tag, index) => (
+                              {c.subject.tags.filter((tag) => tag.trim()).map((tag, index) => (
                                 <span
                                   key={`${tag}-${index}`}
                                   data-testid="subject-topic-tag"
@@ -619,12 +663,18 @@ function TodayContent({
                 <span className="shrink-0 w-1" aria-hidden />
               </div>
 
-              {live.length > 1 && (
+              {carouselCount > 1 && (
                 <div className="flex justify-center gap-1.5 mt-3" aria-hidden>
+                  {reminderItems.map(({ task }, i) => (
+                    <span
+                      key={"deadline-" + task.id}
+                      className={`h-1.5 rounded-full transition-all ${i === active ? "w-4 bg-ink" : "w-1.5 bg-ink/25"}`}
+                    />
+                  ))}
                   {live.map((c, i) => (
                     <span
                       key={keyOf(c)}
-                      className={`h-1.5 rounded-full transition-all ${i === active ? "w-4 bg-ink" : "w-1.5 bg-ink/25"}`}
+                      className={`h-1.5 rounded-full transition-all ${i + reminderItems.length === active ? "w-4 bg-ink" : "w-1.5 bg-ink/25"}`}
                     />
                   ))}
                 </div>
