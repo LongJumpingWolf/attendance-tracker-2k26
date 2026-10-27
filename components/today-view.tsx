@@ -342,7 +342,7 @@ function TodayContent({
             Add a subject
           </button>
         </div>
-        <div className="mt-6"><TodayWidgets subjects={subjects} tasks={tasks} now={now} scheduleOverrides={scheduleOverrides} onOpenTomorrow={onOpenTomorrow} demoActive={demoActive} /></div>
+        <div className="mt-6"><TodayWidgets subjects={subjects} tasks={tasks.filter((task) => !reminderItems.some((item) => item.task.id === task.id))} activeReminderCount={reminderItems.length} now={now} scheduleOverrides={scheduleOverrides} onOpenTomorrow={onOpenTomorrow} demoActive={demoActive} /></div>
         <footer className="pt-8 pb-3 text-center text-[12px] text-mute/80 tracking-wide">Made with ♥ by Aditya Waghmare</footer>
       </div>
     )
