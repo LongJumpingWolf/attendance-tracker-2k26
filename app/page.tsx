@@ -511,15 +511,18 @@ export default function Home() {
     const uniqueTargets = [...new Map(targets.map((target) => [scanTargetKey(target), target])).values()]
     const beforeRecords: { id: string; date: string; t: string; prev: LogEntry | null }[] = []
     const acceptedTargets: ClassSlot[] = []
+    // Rebuild the live schedule as well as attendance at commit time. If a lecture was cancelled,
+    // changed, or marked while the review was open, do not commit a stale selection.
+    const liveSchedule = classesOn(subjects, new Date(), effectiveOverrides).filter((entry) => !entry.cancelled)
 
-    // Recheck live state at commit time. If another action marked a class while the review was open,
-    // skip it rather than overwrite or count it twice.
     for (const target of uniqueTargets) {
-      const owner = target.attendanceSubject ?? target.subject
+      const currentTarget = liveSchedule.find((entry) => scanTargetKey(entry) === scanTargetKey(target))
+      if (!currentTarget) continue
+      const owner = currentTarget.attendanceSubject ?? currentTarget.subject
       const before = subjects.find((s) => s.id === owner.id)
-      if (!before || markFor(before, date, target.slot.start) !== null) continue
-      beforeRecords.push({ id: before.id, date, t: target.slot.start, prev: entryFor(before, date, target.slot.start) })
-      acceptedTargets.push(target)
+      if (!before || markFor(before, date, currentTarget.slot.start) !== null) continue
+      beforeRecords.push({ id: before.id, date, t: currentTarget.slot.start, prev: entryFor(before, date, currentTarget.slot.start) })
+      acceptedTargets.push(currentTarget)
     }
 
     if (acceptedTargets.length === 0) {
