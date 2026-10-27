@@ -502,7 +502,12 @@ export default function Home() {
 
   // A scan opens a review. Attendance changes only after the person confirms the selected classes.
   const scanConfirm = (targets: ClassSlot[], review: ScanState) => {
-    const date = localDate()
+    if (review.date && localDate() !== review.date) {
+      setScan(null)
+      showToast("The date changed while the scan was open. Scan again so attendance is recorded on the correct day.")
+      return
+    }
+    const date = review.date ?? localDate()
     const uniqueTargets = [...new Map(targets.map((target) => [scanTargetKey(target), target])).values()]
     const beforeRecords: { id: string; date: string; t: string; prev: LogEntry | null }[] = []
     const acceptedTargets: ClassSlot[] = []
@@ -725,7 +730,8 @@ export default function Home() {
 
   /** Build the scan review: suggest one timing match and offer every other unchecked class today. */
   const runScan = () => {
-    const review = prepareScanReview(subjects, new Date(), effectiveOverrides)
+    const now = new Date()
+    const review = prepareScanReview(subjects, now, effectiveOverrides)
     // A newcomer with nothing set up is shown the welcome tour, which is already open, rather than an empty scan screen.
     let newcomer = false
     try {
@@ -737,6 +743,7 @@ export default function Home() {
       result: review.result,
       marked: null,
       phase: "review",
+      date: localDate(now),
       options: review.options,
       suggested: review.suggested,
     })
