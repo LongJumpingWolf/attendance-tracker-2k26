@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useRef, useState } from "react"
-import { CaretRight, Check, WarningCircle, X } from "@phosphor-icons/react"
+import { ArrowClockwise, CalendarBlank, CaretRight, Check, WarningCircle, X } from "@phosphor-icons/react"
 import ClassActionMenu from "./class-action-menu"
 import type { ScheduleOverride } from "@/lib/types"
 import type { Mate, Subject, Task } from "@/lib/types"
@@ -19,6 +19,7 @@ import {
   type DayClass,
   type MarkMeta,
 } from "@/lib/attendance"
+import { dateAfterDays, deadlineRemindersForDate } from "@/lib/deadline-reminders"
 import ProgressRing from "./progress-ring"
 import { MateNote, WeekStrip } from "./done-extras"
 import TodayWidgets from "./today-widgets"
@@ -45,6 +46,8 @@ interface TodayViewProps {
   onGoto: (page: string) => void
   onAddSubject: () => void
   onOpenTomorrow?: (date: string) => void
+  onResolveReminder: (task: Task) => void
+  onSnoozeReminder: (taskId: string, untilDate: string) => void
   demoActive?: boolean
 }
 
@@ -128,6 +131,8 @@ function TodayContent({
   onGoto,
   onAddSubject,
   onOpenTomorrow,
+  onResolveReminder,
+  onSnoozeReminder,
   demoActive,
 }: TodayViewProps & { now: Date }) {
   const scroller = useRef<HTMLDivElement>(null)
@@ -151,6 +156,8 @@ function TodayContent({
 
   const today = localDate(now)
   const nowMin = now.getHours() * 60 + now.getMinutes()
+  const reminderItems = deadlineRemindersForDate(tasks, today)
+  const tomorrow = dateAfterDays(today, 1)
 
   // Only classes that are really on today's timetable. A subject with no timetable, or none today, has no card.
   const classes: Card[] = dayClasses(subjects, now, scheduleOverrides)
@@ -161,13 +168,12 @@ function TodayContent({
   // Resolved cards dissolve out of the carousel
   const pending = classes.filter((c) => stateOf(c) === null || leaving.has(keyOf(c)))
   const live = pending.filter((c) => !leaving.has(keyOf(c)))
-  const liveRef = useRef<Card[]>(live)
-  liveRef.current = live
   const activeRef = useRef(active)
   activeRef.current = active
   const done = classes.filter((c) => stateOf(c) !== null && !leaving.has(keyOf(c)))
-  // Nothing left to answer: the screen shows the evening scene instead of the carousel
-  const allDone = dayProgress(classes).allDone && pending.length === 0
+  const carouselCount = live.length + reminderItems.length
+  // Keep the carousel alive after all lectures are marked if a deadline reminder remains.
+  const allDone = dayProgress(classes).allDone && pending.length === 0 && reminderItems.length === 0
 
   const isOngoing = (c: Card) => toMin(c.slot.start) <= nowMin && nowMin < toMin(c.slot.end)
   const hasEnded = (c: Card) => toMin(c.slot.end) <= nowMin
@@ -176,7 +182,7 @@ function TodayContent({
   const ongoingCard = live.find(isOngoing)
   const firstUpcoming = live.find(startsLater)
   const focus = ongoingCard ?? firstUpcoming ?? live[0] ?? null
-  const focusKey = focus ? keyOf(focus) : null
+  const focusKey = reminderItems[0] ? "deadline-" + reminderItems[0].task.id : focus ? keyOf(focus) : null
 
   // Classes that ended without a mark: the notice reminds you
   const overdue = live.filter(hasEnded)
@@ -202,9 +208,7 @@ function TodayContent({
     const observer = new ResizeObserver(() => {
       cancelAnimationFrame(frame)
       frame = requestAnimationFrame(() => {
-        const cards = liveRef.current
-          .map((card) => box.querySelector<HTMLElement>(`[data-key="${keyOf(card)}"]`))
-          .filter((el): el is HTMLElement => !!el)
+        const cards = Array.from(box.querySelectorAll<HTMLElement>('[data-carousel-active="true"]'))
         const target = cards[Math.min(activeRef.current, cards.length - 1)]
         if (!target) return
         const left = target.getBoundingClientRect().left - box.getBoundingClientRect().left + box.scrollLeft - GUTTER
@@ -213,13 +217,11 @@ function TodayContent({
     })
     observer.observe(box)
     return () => { observer.disconnect(); cancelAnimationFrame(frame) }
-  }, [allDone, live.length])
+  }, [allDone, carouselCount])
 
-  const clampIndex = (value: number) => Math.max(0, Math.min(live.length - 1, value))
-  // `pending` keeps the just-marked card in the DOM during its exit animation; index navigation must use only `live` cards.
-  const cardElements = () => live
-    .map((card) => scroller.current?.querySelector<HTMLElement>(`[data-key="${keyOf(card)}"]`))
-    .filter((el): el is HTMLElement => !!el)
+  const clampIndex = (value: number) => Math.max(0, Math.min(carouselCount - 1, value))
+  // Query all active cards in DOM order, including any deadline reminder cards.
+  const cardElements = () => Array.from(scroller.current?.querySelectorAll<HTMLElement>('[data-carousel-active="true"]') ?? [])
   const leftForCard = (el: HTMLElement) => {
     const box = scroller.current
     if (!box) return 0
@@ -327,7 +329,7 @@ function TodayContent({
     )
   }
 
-  if (subjects.length === 0) {
+  if (subjects.length === 0 && reminderItems.length === 0) {
     return (
       <div>
         <h1 className="font-display text-[clamp(26px,7.2vw,34px)] leading-[1.1]">Let&rsquo;s set up your subjects</h1>
@@ -357,7 +359,10 @@ function TodayContent({
     subline = `At ${formatTime(firstUpcoming.slot.start)}, in ${duration(toMin(firstUpcoming.slot.start) - nowMin)}`
   } else if (live.length > 0) {
     headline = `${live.length} to mark today`
-    subline = "Tap Present or Absent on each card"
+    subline = "Tap Present or Absent on each class card"
+  } else if (reminderItems.length > 0) {
+    headline = reminderItems.length === 1 ? "You have a deadline reminder" : `${reminderItems.length} deadline reminders`
+    subline = "Review your reminders in the carousel below"
   } else if (classes.length === 0) {
     headline = "No classes today"
     subline = unscheduled > 0 ? `${unscheduled} ${unscheduled === 1 ? "subject has" : "subjects have"} no timetable yet` : "Nothing is on your timetable"
