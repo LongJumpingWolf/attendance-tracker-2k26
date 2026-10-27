@@ -69,6 +69,8 @@ export interface Task {
   type?: "exam" | "assignment"
   /** How many days ahead to start reminding: 0 = on the day itself, -1 = never. Default 1. */
   remindDaysBefore?: number
+  /** Hide the active reminder until this local calendar date after "Remind me tomorrow". */
+  remindAgainOn?: string
   /** Optional link to one of your subjects */
   subjectId?: string
   /** Ticked off. Stays in the Completed list so it can be brought back. */
