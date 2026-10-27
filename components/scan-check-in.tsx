@@ -162,7 +162,7 @@ function Plain({ result, onPick, onClose }: { result: ScanResult; onPick: (t: Cl
         ? "A class just ended and another starts soon, so this tap could mean either. Nothing is marked until you choose."
         : result.reason === "several"
           ? "Two or more classes fit right now. Pick the one you are attending."
-          : "Pick the class you are at, or close this." 
+          : "Pick the class you are at, or close this."
   }
 
   return (
