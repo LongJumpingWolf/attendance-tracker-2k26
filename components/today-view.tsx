@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useRef, useState } from "react"
-import { ArrowClockwise, CalendarBlank, CaretRight, Check, WarningCircle, X } from "@phosphor-icons/react"
+import { ArrowClockwise, CaretRight, Check, WarningCircle, X } from "@phosphor-icons/react"
 import ClassActionMenu from "./class-action-menu"
 import type { ScheduleOverride } from "@/lib/types"
 import type { Mate, Subject, Task } from "@/lib/types"
@@ -488,8 +488,8 @@ function TodayContent({
                       : daysUntilDue === 1
                         ? "Due tomorrow"
                         : `Due in ${daysUntilDue} days`
-                  const dueDateParts = /^(\\d{4})-(\\d{2})-(\\d{2})$/.exec(task.dueDate)
-                  const taskForDate = dueDateParts ? `${dueDateParts[3]}/${dueDateParts[2]}/${dueDateParts[1]}` : task.dueDate
+                  const [dueYear, dueMonth, dueDay] = task.dueDate.split("-")
+                  const taskForDate = dueYear && dueMonth && dueDay ? `${dueDay}/${dueMonth}/${dueYear}` : task.dueDate
                   const linkedSubject = task.subjectId ? subjects.find((subject) => subject.id === task.subjectId) : undefined
                   return (
                     <article
