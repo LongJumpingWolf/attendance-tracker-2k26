@@ -79,12 +79,12 @@ function WhereYouStand({ subjects }: Data) {
     .sort((a, b) => (a.info.total ? a.info.pct - a.s.requirement : 999) - (b.info.total ? b.info.pct - b.s.requirement : 999))
   const shown = items.slice(0, 4)
   return (
-    <div data-tour="where-you-stand-widget" className={`${CARD} !h-auto !min-h-[286px] bg-card text-ink !p-4 sm:!p-[18px]`}>
+    <div data-tour="where-you-stand-widget" className={`${CARD} !h-auto !min-h-[286px] !overflow-visible bg-card text-ink !p-4 sm:!p-[18px]`}>
       <p className={`${KICKER} !opacity-100 text-mute`}>Where you stand</p>
-      <h3 className="font-display text-[24px] leading-tight mt-0.5">
+      <h3 className="font-display text-[clamp(20px,6vw,24px)] leading-tight mt-0.5">
         {items.length === 1 ? "One subject" : `${items.length} subjects`}, one glance
       </h3>
-      <ul className="grid grid-cols-1 min-[360px]:grid-cols-2 gap-2 sm:gap-2.5 mt-3 content-start">
+      <ul className="grid grid-cols-1 min-[420px]:grid-cols-2 gap-2 sm:gap-2.5 mt-3 content-start">
         {shown.map(({ s, info }) => {
           const risk = info.status === "risk"
           const color = risk ? "#ff3b30" : info.status === "new" ? "#8e8e93" : info.canSkip === 0 ? "#ff9f0a" : "#34c759"
@@ -105,7 +105,7 @@ function WhereYouStand({ subjects }: Data) {
           )
         })}
       </ul>
-      {items.length > shown.length && <p className="text-[12px] font-semibold leading-snug text-mute mt-2 break-words">Showing the {shown.length} that need you most. {items.length - shown.length} more in Subjects.</p>}
+      {items.length > shown.length && <p className="text-[12px] font-semibold leading-snug text-mute mt-3 pt-1 text-pretty break-words">Showing the {shown.length} that need you most. {items.length - shown.length} more in Subjects.</p>}
     </div>
   )
 }
