@@ -80,6 +80,21 @@ function duration(mins: number) {
   return r ? `${h}h ${r}m` : `${h}h`
 }
 
+/** Stable per-label colour variables: new topic tags get a consistent identity without a hard-coded registry. */
+function topicTagStyle(tag: string): React.CSSProperties {
+  let hash = 2166136261
+  for (const character of tag.trim().toLowerCase()) {
+    hash ^= character.codePointAt(0) ?? 0
+    hash = Math.imul(hash, 16777619)
+  }
+  const value = hash >>> 0
+  return {
+    "--topic-tag-hue": value % 360,
+    "--topic-tag-saturation": `${56 + ((value >>> 8) % 24)}%`,
+    "--topic-tag-lightness": `${92 + ((value >>> 16) % 5)}%`,
+  } as React.CSSProperties
+}
+
 /** A soft wash of the subject's own colour (8%), laid over the card colour so it works in light and dark */
 const wash = (hex: string): React.CSSProperties => ({
   backgroundColor: "var(--card)",
@@ -530,7 +545,7 @@ function TodayContent({
                             {verdict.pct === null ? verdict.detail : `${verdict.pct}% now · ${attendanceSubject.requirement}% needed · ${verdict.detail}`}
                           </p>
                           {c.override?.kind === "substitute" && <p className="mt-1 text-[12px] font-medium text-info">Substitutes for {c.originalSubjectName}. Attendance is recorded under {attendanceSubject.name}.</p>}
-                          {(c.slot.kind || c.subject.tags?.[0]) && (
+                          {(c.slot.kind || c.subject.tags?.some((tag) => tag.trim())) && (
                             <div data-testid="class-tags" className="flex flex-wrap items-center gap-1.5 mt-2">
                               {c.slot.kind && (
                                 <span
@@ -540,14 +555,17 @@ function TodayContent({
                                   {c.slot.kind}
                                 </span>
                               )}
-                              {c.subject.tags?.[0] && (
+                              {c.subject.tags?.filter((tag) => tag.trim()).map((tag, index) => (
                                 <span
+                                  key={`${tag}-${index}`}
                                   data-testid="subject-topic-tag"
-                                  className="inline-flex items-center rounded-full border border-info/40 bg-info/15 px-2.5 py-1.5 text-[11px] leading-none font-bold text-info shadow-sm"
+                                  data-topic-tag={tag}
+                                  style={topicTagStyle(tag)}
+                                  className="subject-topic-tag inline-flex items-center rounded-full border px-2.5 py-1.5 text-[11px] leading-none font-bold shadow-sm"
                                 >
-                                  {c.subject.tags[0]}
+                                  {tag}
                                 </span>
-                              )}
+                              ))}
                             </div>
                           )}
                         </div>
