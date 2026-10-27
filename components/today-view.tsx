@@ -58,11 +58,10 @@ const divide = "divide-y divide-ink/10"
 
 /** Colour carries the answer: green = fine to skip, orange = no skips left, red = below the target */
 const VERDICT_TONE = {
-  // Higher contrast makes the attendance decision scannable at a glance.
-  skip: "bg-good/20 text-good border border-good/35",
-  must: "bg-warn/20 text-warn border border-warn/35",
-  reach: "bg-bad/15 text-bad border border-bad/35",
-  nodata: "bg-info/15 text-info border border-info/35",
+  skip: "bg-good/15 text-good",
+  must: "bg-warn/15 text-warn",
+  reach: "bg-bad/15 text-bad",
+  nodata: "bg-ink/10 text-mute",
 } as const
 const GUTTER = 16
 
@@ -523,7 +522,7 @@ function TodayContent({
                           </h3>
                           <span
                             data-testid="verdict"
-                            className={`inline-flex items-center rounded-md px-2.5 py-1 mt-1.5 sm:mt-2 text-[11px] leading-tight font-black tracking-wide shadow-sm ${VERDICT_TONE[verdict.kind]}`}
+                            className={`inline-block rounded-md px-2 py-0.5 mt-1.5 sm:mt-2 text-[11px] font-extrabold tracking-wide ${VERDICT_TONE[verdict.kind]}`}
                           >
                             {verdict.label}
                           </span>
@@ -532,9 +531,24 @@ function TodayContent({
                           </p>
                           {c.override?.kind === "substitute" && <p className="mt-1 text-[12px] font-medium text-info">Substitutes for {c.originalSubjectName}. Attendance is recorded under {attendanceSubject.name}.</p>}
                           {(c.slot.kind || c.subject.tags?.[0]) && (
-                            <p className="text-[13px] text-mute mt-0.5">
-                              {[c.slot.kind, c.subject.tags?.[0]].filter(Boolean).join(" · ")}
-                            </p>
+                            <div data-testid="class-tags" className="flex flex-wrap items-center gap-1.5 mt-2">
+                              {c.slot.kind && (
+                                <span
+                                  data-testid="class-kind-tag"
+                                  className="inline-flex items-center rounded-full border border-ink/15 bg-secondary px-2.5 py-1.5 text-[11px] leading-none font-semibold text-ink"
+                                >
+                                  {c.slot.kind}
+                                </span>
+                              )}
+                              {c.subject.tags?.[0] && (
+                                <span
+                                  data-testid="subject-topic-tag"
+                                  className="inline-flex items-center rounded-full border border-info/40 bg-info/15 px-2.5 py-1.5 text-[11px] leading-none font-bold text-info shadow-sm"
+                                >
+                                  {c.subject.tags[0]}
+                                </span>
+                              )}
+                            </div>
                           )}
                         </div>
                         <ProgressRing
