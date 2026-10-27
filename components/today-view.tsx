@@ -477,7 +477,7 @@ function TodayContent({
                 onPointerUp={onPointerUp}
                 onPointerCancel={onPointerCancel}
                 style={{ touchAction: "pan-x pan-y", WebkitOverflowScrolling: "touch", overscrollBehaviorX: "contain" }}
-                className="relative -mx-4 px-4 lg:mx-0 lg:px-0 flex gap-3 overflow-x-auto snap-x snap-mandatory scroll-px-4 lg:scroll-px-0 pb-1 no-scrollbar cursor-grab active:cursor-grabbing select-none"
+                className="relative -mx-4 px-4 lg:mx-0 lg:px-0 flex items-start gap-3 overflow-x-auto snap-x snap-mandatory scroll-px-4 lg:scroll-px-0 pb-1 no-scrollbar cursor-grab active:cursor-grabbing select-none"
               >
                 {reminderItems.map(({ task, daysUntilDue }) => {
                   const key = "deadline-" + task.id
@@ -499,22 +499,22 @@ function TodayContent({
                       data-testid="deadline-reminder-card"
                       tabIndex={0}
                       aria-label={`Deadline reminder: ${task.title}. ${dueLabel}.`}
-                      className="snap-start shrink-0 w-[calc(100vw-3rem)] max-w-[680px] lg:w-full lg:max-w-none rounded-[24px] sm:rounded-[28px] bg-card border border-warn/25 p-4 sm:p-5 flex flex-col"
+                      className="snap-start shrink-0 w-[calc(100vw-3rem)] max-w-[680px] lg:w-full lg:max-w-none min-w-0 rounded-[24px] sm:rounded-[28px] bg-card border border-warn/25 p-4 sm:p-5 flex flex-col self-start"
                     >
-                      <div className="flex items-center justify-between gap-2">
-                        <span data-testid="deadline-task-date" className="inline-flex items-center rounded-full bg-bad/15 text-bad border border-bad/35 px-2.5 py-1 text-[10px] sm:text-[11px] font-extrabold tracking-wide">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <span data-testid="deadline-task-date" className="inline-flex max-w-full items-center whitespace-nowrap rounded-full bg-bad/15 text-bad border border-bad/35 px-2.5 py-1 text-[10px] sm:text-[11px] font-extrabold tracking-wide">
                           Task for: {taskForDate}
                         </span>
-                        <span className="rounded-full bg-secondary text-ink px-2.5 py-1 text-[11px] font-bold">{dueLabel}</span>
+                        <span className="rounded-full bg-secondary text-ink px-2.5 py-1 text-[11px] font-bold whitespace-nowrap">{dueLabel}</span>
                       </div>
                       <h3 className="font-display text-[clamp(22px,5.8vw,28px)] leading-tight font-bold tracking-tight mt-5 break-words">{task.title}</h3>
                       {linkedSubject && <p className="text-[13px] text-mute mt-1">Subject · {linkedSubject.name}</p>}
                       <p className="text-[13px] text-mute leading-snug mt-4 mb-4">Resolve this when it&rsquo;s done, or bring it back to the carousel tomorrow.</p>
-                      <div className="grid grid-cols-2 gap-2.5 sm:gap-3 mt-auto">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 sm:gap-3 mt-0">
                         <button
                           type="button"
                           onClick={(e) => { e.preventDefault(); e.stopPropagation(); onResolveReminder(task) }}
-                          className="h-11 sm:h-[52px] rounded-2xl bg-good text-[#ffffff] dark:text-[#000000] text-[14px] sm:text-[16px] font-semibold flex items-center justify-center gap-2"
+                          className="w-full min-w-0 h-12 sm:h-[52px] px-3 rounded-2xl bg-good text-[#ffffff] dark:text-[#000000] text-[15px] sm:text-[16px] font-semibold flex items-center justify-center gap-2 whitespace-nowrap"
                         >
                           <Check weight="bold" className="w-5 h-5" /> Resolved
                         </button>
@@ -522,9 +522,9 @@ function TodayContent({
                           type="button"
                           disabled={!tomorrow}
                           onClick={(e) => { e.preventDefault(); e.stopPropagation(); if (tomorrow) onSnoozeReminder(task.id, tomorrow) }}
-                          className="h-11 sm:h-[52px] rounded-2xl bg-secondary text-ink text-[13px] sm:text-[15px] font-semibold flex items-center justify-center gap-2 disabled:opacity-50"
+                          className="w-full min-w-0 h-12 sm:h-[52px] px-3 rounded-2xl bg-secondary text-ink text-[14px] sm:text-[15px] font-semibold flex items-center justify-center gap-2 whitespace-nowrap disabled:opacity-50"
                         >
-                          <ArrowClockwise weight="bold" className="w-4 h-4 shrink-0" /> Remind me tomorrow
+                          <ArrowClockwise weight="bold" className="w-4 h-4 shrink-0" /> <span className="whitespace-nowrap">Remind me tomorrow</span>
                         </button>
                       </div>
                     </article>

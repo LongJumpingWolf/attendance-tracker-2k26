@@ -266,9 +266,9 @@ export function Segmented<T extends string>({
 
 export function SectionHeader({ children, action }: { children: React.ReactNode; action?: React.ReactNode }) {
   return (
-    <div className="flex items-center justify-between mb-2.5">
-      <h2 className={sectionLabel}>{children}</h2>
-      {action}
+    <div className="flex flex-wrap items-start justify-between gap-x-3 gap-y-1 mb-2.5">
+      <h2 className={`${sectionLabel} min-w-0`}>{children}</h2>
+      {action && <div className="shrink-0">{action}</div>}
     </div>
   )
 }
