@@ -61,6 +61,16 @@ describe("pickScanTarget — normal timing windows", () => {
     expect(r.kind === "choose" && r.options.map((x) => x.subject.id)).toEqual(["a", "c"])
   })
 
+  it("still confirms an overlapping class when the other candidate is already marked", () => {
+    const clash = mark(subj("c", "Clash", "09:30", "10:30"), "P", "09:30")
+    const r = pickScanTarget([anatomy, clash], at(9, 45))
+    expect(r.kind).toBe("choose")
+    if (r.kind === "choose") {
+      expect(r.reason).toBe("several")
+      expect(r.options.map((x) => x.subject.id)).toEqual(["a"])
+    }
+  })
+
   it("does not mark twice; a previous absence is not silently overwritten", () => {
     const present = pickScanTarget([mark(anatomy, "P")], at(9, 30))
     expect(present.kind).toBe("already")
