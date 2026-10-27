@@ -10,6 +10,8 @@ import type { ScheduleOverride, Subject, Task } from "@/lib/types"
 interface Data {
   subjects: Subject[]
   tasks: Task[]
+  /** Active deadline reminders are surfaced in the attendance carousel, not duplicated in this widget. */
+  activeReminderCount?: number
   now: Date
   scheduleOverrides?: ScheduleOverride[]
   onOpenTomorrow?: (date: string) => void
@@ -108,7 +110,7 @@ function WhereYouStand({ subjects }: Data) {
   )
 }
 
-function DeadlineWidget({ tasks, subjects }: Data) {
+function DeadlineWidget({ tasks, subjects, activeReminderCount = 0 }: Data) {
   const upcoming = tasks
     .filter((t) => !t.done)
     .map((t) => ({ t, days: daysUntil(t.dueDate) }))
@@ -122,7 +124,7 @@ function DeadlineWidget({ tasks, subjects }: Data) {
     <div data-tour="deadline-widget" className={`${CARD} text-white`} style={{ background: "linear-gradient(160deg,#3b1c6b,#6a2fa0 55%,#a44bb8)" }}>
       <p className={KICKER}>Next deadline</p>
       {!first ? (
-        <p className="my-auto text-[22px] font-semibold leading-snug">Nothing due soon. Add deadlines in Calendar and the next one shows up here.</p>
+        <p className="my-auto text-[22px] font-semibold leading-snug">{activeReminderCount > 0 ? "Active deadline reminders are shown in the carousel above." : "Nothing due soon. Add deadlines in Calendar and the next one shows up here."}</p>
       ) : (
         <>
           <p className="font-display leading-none mt-1 text-[76px] tracking-[-0.05em]">
