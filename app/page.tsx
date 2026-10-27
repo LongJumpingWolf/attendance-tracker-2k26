@@ -918,8 +918,10 @@ export default function Home() {
     showToast("Reminder moved to tomorrow", () => {
       setTasks((prev) => prev.map((item) => {
         if (item.id !== taskId) return item
-        const { remindAgainOn: _discard, ...rest } = item
-        return { ...rest, ...(previous ? { remindAgainOn: previous } : {}) }
+        const restored = { ...item }
+        if (previous) restored.remindAgainOn = previous
+        else delete restored.remindAgainOn
+        return restored }
       }))
     })
   }
