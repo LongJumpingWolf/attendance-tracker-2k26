@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { pickScanTarget } from "@/lib/scan"
+import { pickScanTarget, prepareScanReview, scanTargetKey } from "@/lib/scan"
 import type { ScheduleOverride, Subject } from "@/lib/types"
 
 // Monday 21 Sep 2026; fixed local dates keep attendance-log assertions deterministic.
@@ -150,3 +150,49 @@ describe("pickScanTarget — ambiguity and safe fallbacks", () => {
     expect(pickScanTarget([mark(anatomy, "P")], at(15, 0))).toEqual({ kind: "idle", reason: "all-marked" })
   })
 })
+
+describe("prepareScanReview — selecting missed classes without auto-writing", () => {
+  const oneToTwo = subj("a", "Anatomy", "13:00", "14:00")
+  const twoToThree = subj("p", "Physiology", "14:00", "15:00")
+  const threeToFour = subj("b", "Biochemistry", "15:00", "16:00")
+
+  it("preselects the lecture that just ended at 4 PM and lists earlier unchecked lectures too", () => {
+    const review = prepareScanReview([oneToTwo, twoToThree, threeToFour], at(16, 0))
+    expect(review.result.kind).toBe("mark")
+    expect(review.suggested && scanTargetKey(review.suggested)).toBe("b@15:00")
+    expect(review.options.map(scanTargetKey)).toEqual(["a@13:00", "p@14:00", "b@15:00"])
+    // Preparation only returns a suggested selection; it does not add any attendance marks.
+    expect([oneToTwo, twoToThree, threeToFour].every((s) => (s.log ?? []).length === 0)).toBe(true)
+  })
+
+  it("keeps earlier classes available while excluding classes already marked", () => {
+    const review = prepareScanReview([
+      mark(oneToTwo, "P", "13:00"),
+      twoToThree,
+      threeToFour,
+    ], at(16, 0))
+    expect(review.suggested && scanTargetKey(review.suggested)).toBe("b@15:00")
+    expect(review.options.map(scanTargetKey)).toEqual(["p@14:00", "b@15:00"])
+  })
+
+  it("does not preselect a lecture when the timing algorithm says the tap is ambiguous", () => {
+    const endsAtFour = subj("a", "Anatomy", "15:00", "16:00")
+    const startsAtFourTen = subj("b", "Biochemistry", "16:10", "17:10")
+    const review = prepareScanReview([endsAtFour, startsAtFourTen], at(16, 5))
+    expect(review.result.kind).toBe("choose")
+    expect(review.suggested).toBeNull()
+    expect(review.options.map(scanTargetKey)).toEqual(["a@15:00", "b@16:10"])
+  })
+
+  it("when the timing-match class is already marked, leaves it unselected but offers other missed classes", () => {
+    const review = prepareScanReview([
+      mark(threeToFour, "P", "15:00"),
+      oneToTwo,
+      twoToThree,
+    ], at(16, 5))
+    expect(review.result.kind).toBe("already")
+    expect(review.suggested).toBeNull()
+    expect(review.options.map(scanTargetKey)).toEqual(["a@13:00", "p@14:00"])
+  })
+})
+
