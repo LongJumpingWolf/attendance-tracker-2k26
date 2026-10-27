@@ -1,6 +1,6 @@
 {
   "lib/attendance.ts": "e43ba9ecbf7c19c02663cf3c66a3b1738444ef13eb74e755f0cd3a17b88ff9b9",
-  "lib/scan.ts": "ebf947c6c796ac117271de1f54964ea0c60842df40946aacb893da5ab7ba30ac",
+  "lib/scan.ts": "627453ae95af135f7e3b536bb8da93d4169e5ccbcd620d7fe354846a4b86ab53",
   "lib/db.ts": "1432d9f0dba37accf0a8da08e86ea73af84cca9466e1b6b82b5651afb9270974",
   "lib/merge.ts": "f2adfc2deb8aaabfcf7cae658ec2ba3e26c1a6cceac8ae7605b01683046a6592",
   "lib/backup.ts": "5264255a9b1eba114566d7213ed6688998c546993a957694efbeccdedd560234",

@@ -506,10 +506,12 @@ export default function Home() {
     const attendanceTarget = target.attendanceSubject ?? target.subject
     const before = from.find((x) => x.id === attendanceTarget.id)
     if (!before) return
-    scanBefore.current = { id: before.id, date: localDate(), t: target.slot.start, prev: entryFor(before, localDate(), target.slot.start) }
-    scanMarks.current.push({ id: before.id, date: localDate(), t: target.slot.start, k: target.slot.kind })
+    // Use one local date for the undo snapshot, sync fallback and saved mark, even at midnight.
+    const date = localDate()
+    scanBefore.current = { id: before.id, date, t: target.slot.start, prev: entryFor(before, date, target.slot.start) }
+    scanMarks.current.push({ id: before.id, date, t: target.slot.start, k: target.slot.kind })
     if (!demoActiveRef.current) void recordProductUsageEvent("scan_checkin", "scanner")
-    patchSubject(before.id, (x) => withSet(x, localDate(), "P", { t: target.slot.start, k: target.slot.kind }))
+    patchSubject(before.id, (x) => withSet(x, date, "P", { t: target.slot.start, k: target.slot.kind }))
     setScan({ result, marked: target })
   }
 
@@ -517,7 +519,8 @@ export default function Home() {
     if (scan?.preview) return setScan(null)
     const before = scanBefore.current
     if (before) patchSubject(before.id, (x) => restoreMark(x, before.date, before.t, before.prev)) // only the scanned class goes back
-    scanMarks.current = scanMarks.current.filter((m) => m.id !== before?.id)
+    // Remove only this class's pending sync fallback; other scanned slots of the same subject must survive Undo.
+    scanMarks.current = scanMarks.current.filter((m) => !(m.id === before?.id && m.date === before?.date && m.t === before?.t))
     scanBefore.current = null
     setScan(null)
   }
@@ -528,11 +531,17 @@ export default function Home() {
     data: { subjects, tasks, tags: allTags, mates, holidays, scheduleOverrides },
     paused: demoActive, // demo data must never overwrite, or be overwritten by, the real synced copy
     apply: (d) => {
-      // A scan does not wait for sync. If the synced copy arrives afterwards without that mark, put it back.
+      // A scan does not wait for sync. If the synced copy arrives afterwards without a scan mark, restore every
+      // scanned class for that subject (not only the first); one subject can have multiple slots on the same day.
       const kept = scanMarks.current.length
         ? d.subjects.map((s) => {
-            const m = scanMarks.current.find((x) => x.id === s.id)
-            return m && markFor(s, m.date, m.t) === null ? withSet(s, m.date, "P", { t: m.t, k: m.k }) : s
+            const pending = scanMarks.current.filter((m) => m.id === s.id)
+            return pending.reduce(
+              (current, m) => markFor(current, m.date, m.t) === null
+                ? withSet(current, m.date, "P", { t: m.t, k: m.k })
+                : current,
+              s,
+            )
           })
         : d.subjects
       setSubjects(kept)

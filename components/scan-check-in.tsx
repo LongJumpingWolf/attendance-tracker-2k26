@@ -152,11 +152,17 @@ function Plain({ result, onPick, onClose }: { result: ScanResult; onPick: (t: Cl
           ? "Your timetable has nothing on for today."
           : "Every class today already has a mark."
   } else if (result.kind === "choose") {
-    title = result.reason === "several" ? "Which class is this?" : "No class around this time"
+    title = result.reason === "ambiguous"
+      ? "Which class are you checking in for?"
+      : result.reason === "several"
+        ? "Which class is this?"
+        : "No class around this time"
     body =
-      result.reason === "several"
-        ? "Two classes fit right now. Pick yours."
-        : "Pick the class you are at, or close this."
+      result.reason === "ambiguous"
+        ? "A class just ended and another starts soon, so this tap could mean either. Nothing is marked until you choose."
+        : result.reason === "several"
+          ? "Two or more classes fit right now. Pick the one you are attending."
+          : "Pick the class you are at, or close this."
   }
 
   return (
