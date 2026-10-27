@@ -1,11 +1,11 @@
 "use client"
 
 import { useEffect, useRef, useState } from "react"
-import { Plus, Trash } from "@phosphor-icons/react"
+import { CaretDown, Plus, Trash } from "@phosphor-icons/react"
 import Sheet, { Field, Stepper, inputClass, primaryButton, fieldLabel } from "./sheet"
 import { DAY_SHORT, toMin } from "@/lib/attendance"
 import { DAY_ORDER, DAY_NAMES } from "@/lib/reminders"
-import type { Slot } from "@/lib/types"
+import type { Slot, Subject } from "@/lib/types"
 
 export interface SubjectValues {
   name: string
@@ -14,6 +14,9 @@ export interface SubjectValues {
   requirement: number
   glowColor: string
   tags: string[]
+  /** Inclusive local dates for when this timetable is active; blank means unbounded. */
+  scheduleFrom: string
+  scheduleUntil: string
   slots: Slot[]
 }
 
@@ -21,7 +24,7 @@ interface SubjectSheetProps {
   open: boolean
   onClose: () => void
   /** Present when editing an existing subject */
-  subject?: (Omit<SubjectValues, "slots"> & { slots?: Slot[] }) | null
+  subject?: Subject | null
   /** Which subject is being edited (null when adding): changing it, not the subject object, restarts the form */
   subjectKey?: string | null
   existingTags: string[]
@@ -30,7 +33,7 @@ interface SubjectSheetProps {
 
 const COLORS = ["#30d158", "#0a84ff", "#bf5af2", "#ff375f", "#ff9f0a", "#64d2ff"]
 
-const EMPTY = { name: "", attended: 0, missed: 0, requirement: 75, glowColor: COLORS[1], tags: [] as string[] }
+const EMPTY = { name: "", attended: 0, missed: 0, requirement: 75, glowColor: COLORS[1], tags: [] as string[], scheduleFrom: "", scheduleUntil: "" }
 
 export default function SubjectSheet({ open, onClose, subject, subjectKey = null, existingTags, onSubmit }: SubjectSheetProps) {
   const [values, setValues] = useState(EMPTY)
@@ -39,6 +42,8 @@ export default function SubjectSheet({ open, onClose, subject, subjectKey = null
   const [slots, setSlots] = useState<Slot[]>([])
   const [newTag, setNewTag] = useState("")
   const [error, setError] = useState("")
+  const [scheduleError, setScheduleError] = useState("")
+  const [durationOpen, setDurationOpen] = useState(false)
   const [showUnsavedPrompt, setShowUnsavedPrompt] = useState(false)
 
   // The form starts from the subject when it opens. A sync or a mark made elsewhere replaces the subject object while
@@ -49,13 +54,15 @@ export default function SubjectSheet({ open, onClose, subject, subjectKey = null
     if (!open) return
     const subject = latestSubject.current
     const { slots: subjectSlots, ...rest } = subject ?? { ...EMPTY, slots: [] as Slot[] }
-    const nextValues = { ...rest, tags: rest.tags || [] }
+    const nextValues = { ...rest, tags: rest.tags || [], scheduleFrom: rest.scheduleFrom ?? "", scheduleUntil: rest.scheduleUntil ?? "" }
     const nextSlots = (subjectSlots || []).map((x) => ({ ...x }))
     baseline.current = JSON.stringify({ values: nextValues, slots: nextSlots, newTag: "" })
     setValues(nextValues)
     setSlots(nextSlots)
     setNewTag("")
     setError("")
+    setScheduleError("")
+    setDurationOpen(Boolean(nextValues.scheduleFrom || nextValues.scheduleUntil))
     setShowUnsavedPrompt(false)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, subjectKey])
@@ -86,6 +93,13 @@ export default function SubjectSheet({ open, onClose, subject, subjectKey = null
   }
 
   const saveChanges = (): boolean => {
+    setError("")
+    setScheduleError("")
+    if (values.scheduleFrom && values.scheduleUntil && values.scheduleFrom > values.scheduleUntil) {
+      setScheduleError("End date must be on or after start date")
+      setDurationOpen(true)
+      return false
+    }
     if (!values.name.trim()) {
       setError("Give the subject a name")
       return false
@@ -203,6 +217,58 @@ export default function SubjectSheet({ open, onClose, subject, subjectKey = null
             <Plus weight="bold" className="w-4 h-4" /> Add a class
           </button>
         </Field>
+
+        <section className="rounded-2xl border border-ink/10 bg-card overflow-hidden mb-5">
+          <button
+            type="button"
+            aria-expanded={durationOpen}
+            onClick={() => setDurationOpen((open) => !open)}
+            className="w-full flex items-center gap-3 px-4 py-3.5 text-left"
+          >
+            <span className="min-w-0 flex-1">
+              <span className="block text-[15px] font-semibold">Schedule duration <span className="font-normal text-mute">(optional)</span></span>
+              <span className="block text-[12px] text-mute mt-0.5">Only show these classes within a date range</span>
+            </span>
+            <CaretDown weight="bold" className={`w-4 h-4 text-mute transition-transform ${durationOpen ? "rotate-180" : ""}`} />
+          </button>
+          {durationOpen && (
+            <div className="px-4 pb-4">
+              <div className="grid grid-cols-2 gap-3">
+                <label className="min-w-0">
+                  <span className={fieldLabel}>From (inclusive)</span>
+                  <input
+                    type="date"
+                    value={values.scheduleFrom}
+                    max={values.scheduleUntil || undefined}
+                    onChange={(e) => { set("scheduleFrom", e.target.value); setScheduleError("") }}
+                    className={`${inputClass} h-11 px-2.5 text-[13px] min-w-0`}
+                  />
+                </label>
+                <label className="min-w-0">
+                  <span className={fieldLabel}>Until (inclusive)</span>
+                  <input
+                    type="date"
+                    value={values.scheduleUntil}
+                    min={values.scheduleFrom || undefined}
+                    onChange={(e) => { set("scheduleUntil", e.target.value); setScheduleError("") }}
+                    className={`${inputClass} h-11 px-2.5 text-[13px] min-w-0`}
+                  />
+                </label>
+              </div>
+              <p className="text-[12px] text-mute leading-snug mt-2.5">Leave either date blank for an open-ended range, or leave both blank for a regular year-round timetable. Dates are inclusive.</p>
+              {scheduleError && <p role="alert" className="text-[13px] text-bad font-semibold mt-2">{scheduleError}</p>}
+              {(values.scheduleFrom || values.scheduleUntil) && (
+                <button
+                  type="button"
+                  onClick={() => { set("scheduleFrom", ""); set("scheduleUntil", ""); setScheduleError("") }}
+                  className="text-[13px] text-info font-semibold mt-3"
+                >
+                  Clear schedule duration
+                </button>
+              )}
+            </div>
+          )}
+        </section>
 
         <Field label="Colour">
           <div className="flex justify-between">
