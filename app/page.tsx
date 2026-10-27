@@ -881,7 +881,7 @@ export default function Home() {
     if (!demoActiveRef.current) void recordProductUsageEvent(editing ? "task_update" : "task_create", "calendar")
     if (editing) {
       // `subjectId` may have been cleared, so it is set explicitly rather than merged
-      setTasks((prev) => prev.map((t) => (t.id === editing.id ? { ...t, ...values, subjectId: values.subjectId } : t)))
+      setTasks((prev) => prev.map((t) => (t.id === editing.id ? { ...t, ...values, subjectId: values.subjectId, remindAgainOn: undefined } : t)))
     } else {
       setTasks((prev) => [...prev, { id: newId(), ...values }])
     }
