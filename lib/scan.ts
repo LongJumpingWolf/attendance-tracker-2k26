@@ -71,3 +71,38 @@ export function pickScanTarget(subjects: Subject[], now: Date, overrides: Schedu
   if (open.length === 0) return { kind: "idle", reason: "all-marked" }
   return { kind: "choose", options: open, reason: "none" }
 }
+/** Stable identity for a specific timetable slot, including substituted classes. */
+export const scanTargetKey = (target: ClassSlot): string =>
+  `${(target.attendanceSubject ?? target.subject).id}@${target.slot.start}`
+
+export interface ScanReview {
+  /** The same timing decision the scanner already uses */
+  result: ScanResult
+  /** Every unchecked, non-cancelled class scheduled for today, in timetable order */
+  options: ClassSlot[]
+  /** The unique algorithm-selected class, preselected but not marked until the person confirms */
+  suggested: ClassSlot | null
+}
+
+/**
+ * Prepare the scan review screen without changing attendance. The timing algorithm's unique
+ * target is suggested by default, but all other unchecked classes today are available so users
+ * can recover missed check-ins in the same scan. Ambiguous timing never preselects a class.
+ */
+export function prepareScanReview(subjects: Subject[], now: Date, overrides: ScheduleOverride[] = []): ScanReview {
+  const result = pickScanTarget(subjects, now, overrides)
+  const date = localDate(now)
+  const options = classesOn(subjects, now, overrides)
+    .filter((entry) => !entry.cancelled && markFor(entry.attendanceSubject ?? entry.subject, date, entry.slot.start) === null)
+  const suggested = result.kind === "mark" ? result.target : null
+
+  // Normally the suggested target is already in today's unchecked list. Keep it as a defensive
+  // fallback if schedule normalization ever returns a target that isn't present in that list.
+  if (suggested && !options.some((entry) => scanTargetKey(entry) === scanTargetKey(suggested))) {
+    options.push(suggested)
+    options.sort((a, b) => toMin(a.slot.start) - toMin(b.slot.start) || a.subject.name.localeCompare(b.subject.name))
+  }
+
+  return { result, options, suggested }
+}
+

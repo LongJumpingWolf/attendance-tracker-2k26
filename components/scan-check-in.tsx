@@ -3,37 +3,53 @@
 import { useEffect, useState } from "react"
 import { Check, QrCode } from "@phosphor-icons/react"
 import { formatTime, getAttendance, type ClassSlot } from "@/lib/attendance"
-import type { ScanResult } from "@/lib/scan"
+import { scanTargetKey, type ScanResult } from "@/lib/scan"
 import type { Subject } from "@/lib/types"
 import { useScrollLock } from "@/lib/use-scroll-lock"
 import { copyText } from "@/lib/clipboard"
 import { isInAppBrowser } from "@/lib/in-app"
 
-/** What the scan screen is showing: the outcome, and the class that was marked (if one was) */
+/** The scan review is not committed until the person confirms their selection. */
 export interface ScanState {
   result: ScanResult
+  /** First class marked after confirmation, also used to tint the success animation. */
   marked: ClassSlot | null
-  /** Only showing the animation: nothing was changed, so Undo just closes */
+  /** Only showing the animation: nothing was changed, so Undo just closes. */
   preview?: boolean
+  phase?: "review" | "complete"
+  /** Local date on which these slots were selected, to prevent a review crossing midnight. */
+  date?: string
+  /** Today's unchecked classes available for this scan review. */
+  options?: ClassSlot[]
+  /** The timing algorithm's unique match; checked by default, but fully deselectable. */
+  suggested?: ClassSlot | null
+  /** All classes actually marked by the confirmation. */
+  completed?: ClassSlot[]
 }
 
 interface Props {
   scan: ScanState | null
-  /** Live subjects, so the percentage shown is the one after the mark */
+  /** Live subjects, so percentages shown are the ones after the mark. */
   subjects: Subject[]
-  onPick: (target: ClassSlot) => void
-  onUndo: (target: ClassSlot) => void
+  onConfirm: (targets: ClassSlot[]) => void
+  onUndo: () => void
   onClose: () => void
 }
 
 const BURST = Array.from({ length: 14 }, (_, i) => i)
 
-/**
- * The screen a scanned QR code or tapped NFC tag opens. Marking present here is the only place this celebration
- * plays; marking by hand on the Today tab stays quiet.
- */
-export default function ScanCheckIn({ scan, subjects, onPick, onUndo, onClose }: Props) {
+const className = (c: ClassSlot) =>
+  c.override?.kind === "substitute"
+    ? `${c.attendanceSubject?.name ?? c.originalSubjectName ?? c.subject.name} (held as ${c.subject.name})`
+    : c.subject.name
+
+export default function ScanCheckIn({ scan, subjects, onConfirm, onUndo, onClose }: Props) {
   useScrollLock(!!scan)
+  const [selectedKeys, setSelectedKeys] = useState<string[]>([])
+  // Set defaults only when a new scan/review is opened. Toggling a checkbox does not reset the choice.
+  useEffect(() => {
+    if (scan?.phase === "review") setSelectedKeys(scan.suggested ? [scanTargetKey(scan.suggested)] : [])
+  }, [scan])
   // Apps that scan QR codes often open the link in their own built-in browser, which forgets everything when closed.
   const [inApp, setInApp] = useState(false)
   useEffect(() => setInApp(isInAppBrowser(navigator.userAgent)), [])
@@ -46,7 +62,12 @@ export default function ScanCheckIn({ scan, subjects, onPick, onUndo, onClose }:
 
   if (!scan) return null
   const { result, marked } = scan
-  const live = marked ? (subjects.find((s) => s.id === marked.subject.id) ?? marked.subject) : null
+  const options = scan.options ?? []
+  const selected = options.filter((c) => selectedKeys.includes(scanTargetKey(c)))
+  const suggestedKey = scan.suggested ? scanTargetKey(scan.suggested) : null
+  const completed = scan.completed ?? (marked ? [marked] : [])
+  const showSuccess = scan.phase === "complete" ? completed.length > 0 : Boolean(marked)
+  const live = marked ? (subjects.find((s) => s.id === (marked.attendanceSubject ?? marked.subject).id) ?? (marked.attendanceSubject ?? marked.subject)) : null
   const info = live ? getAttendance(live.attended, live.missed, live.requirement) : null
   const tint = marked && /^#[0-9a-f]{6}$/i.test(marked.subject.glowColor) ? marked.subject.glowColor : "#30d158"
 
@@ -58,7 +79,7 @@ export default function ScanCheckIn({ scan, subjects, onPick, onUndo, onClose }:
       className="fixed inset-0 z-[70] bg-paper overflow-y-auto overscroll-contain no-scrollbar"
       style={{ paddingTop: "env(safe-area-inset-top)", paddingBottom: "env(safe-area-inset-bottom)" }}
     >
-      {marked && (
+      {showSuccess && (
         <div
           aria-hidden
           className="scan-wash pointer-events-none absolute inset-0"
@@ -66,8 +87,89 @@ export default function ScanCheckIn({ scan, subjects, onPick, onUndo, onClose }:
         />
       )}
 
-      <div className="relative mx-auto min-h-dvh max-w-md px-6 py-10 flex flex-col items-center justify-center text-center">
-        {marked ? (
+      <div className={`relative mx-auto min-h-dvh max-w-md px-5 py-8 flex flex-col items-center justify-center text-center ${scan.phase === "review" ? "justify-start" : ""}`}>
+        {scan.phase === "review" && options.length > 0 ? (
+          <div className="w-full pt-5 text-left">
+            <div className="mx-auto w-14 h-14 rounded-2xl bg-card grid place-items-center text-mute">
+              <QrCode weight="bold" className="w-7 h-7" />
+            </div>
+            <h2 className="font-display text-[clamp(26px,7vw,32px)] leading-[1.1] mt-5 text-center">Review attendance</h2>
+            <p className="text-[14px] text-mute mt-3 leading-relaxed text-center">
+              {scan.suggested
+                ? "The timing rule suggests the class below, selected by default. You can uncheck it or add any earlier unchecked classes you attended. Nothing is marked until you confirm."
+                : result.kind === "choose" && result.reason === "ambiguous"
+                  ? "The timing windows overlap, so no lecture is preselected. Choose the class you attended, and add any other unchecked classes you attended today."
+                  : result.kind === "choose" && result.reason === "several"
+                    ? "Several classes match the current time. Nothing is preselected; choose the class you attended and any other unchecked classes you need to recover."
+                    : result.kind === "already"
+                      ? "The lecture matching this time is already marked. You can still select other unchecked classes from today."
+                      : "No class could be selected confidently from the scan time. Choose the unchecked classes you attended today."}
+            </p>
+
+            <div className="mt-6 flex items-center justify-between gap-3">
+              <p className="text-[12px] font-semibold uppercase tracking-wider text-mute">Unchecked classes today</p>
+              <span className="rounded-full bg-card px-3 py-1 text-[12px] font-semibold tabular-nums">
+                {selected.length} selected
+              </span>
+            </div>
+
+            <div className="mt-3 space-y-2.5">
+              {options.map((c) => {
+                const key = scanTargetKey(c)
+                const checked = selectedKeys.includes(key)
+                const isSuggested = key === suggestedKey
+                return (
+                  <button
+                    key={key}
+                    type="button"
+                    aria-pressed={checked}
+                    onClick={() => setSelectedKeys((current) =>
+                      current.includes(key) ? current.filter((k) => k !== key) : [...current, key]
+                    )}
+                    className={`w-full rounded-2xl border px-4 py-3.5 text-left flex items-center gap-3 transition-colors ${checked ? "border-ink bg-card" : "border-line bg-paper"}`}
+                  >
+                    <span
+                      aria-hidden
+                      className={`w-6 h-6 shrink-0 rounded-md border grid place-items-center ${checked ? "border-ink bg-ink text-paper" : "border-line bg-card text-transparent"}`}
+                    >
+                      {checked && <Check weight="bold" className="w-4 h-4" />}
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <span className="flex items-center gap-2 flex-wrap">
+                        <span className="text-[15px] font-semibold break-words">{className(c)}</span>
+                        {isSuggested && (
+                          <span className="rounded-full bg-good/15 text-good px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide">
+                            Suggested
+                          </span>
+                        )}
+                      </span>
+                      <span className="num block text-[13px] text-mute mt-1">
+                        {formatTime(c.slot.start)} – {formatTime(c.slot.end)}{c.slot.kind ? ` · ${c.slot.kind}` : ""}
+                      </span>
+                    </span>
+                  </button>
+                )
+              })}
+            </div>
+
+            <div className="mt-7 grid gap-2.5">
+              <button
+                type="button"
+                disabled={selected.length === 0}
+                onClick={() => onConfirm(selected)}
+                className="h-[52px] rounded-2xl bg-ink text-paper text-[16px] font-semibold disabled:opacity-35 disabled:cursor-not-allowed"
+              >
+                {selected.length === 0
+                  ? "Select at least one class"
+                  : `Mark ${selected.length} class${selected.length === 1 ? "" : "es"} present`}
+              </button>
+              <button type="button" onClick={onClose} className="h-11 text-[15px] font-medium text-mute">
+                Cancel
+              </button>
+            </div>
+            {inApp && <InAppNote />}
+          </div>
+        ) : showSuccess ? (
           <>
             <div className="relative w-36 h-36 grid place-items-center">
               <span className="scan-ring absolute inset-0 rounded-full" style={{ borderColor: tint }} />
@@ -89,13 +191,35 @@ export default function ScanCheckIn({ scan, subjects, onPick, onUndo, onClose }:
 
             <p className="scan-rise mt-8 text-[13px] font-semibold uppercase tracking-wider text-good">Marked present</p>
             <h2 className="scan-rise scan-rise-2 font-display text-[clamp(28px,8vw,38px)] leading-[1.1] mt-1.5 break-words max-w-full">
-              {marked.subject.name}
+              {completed.length === 1 ? className(completed[0]) : `${completed.length} classes marked`}
             </h2>
-            <p className="scan-rise scan-rise-2 num text-[15px] text-mute mt-2">
-              {formatTime(marked.slot.start)} – {formatTime(marked.slot.end)}
-              {marked.slot.kind ? ` · ${marked.slot.kind}` : ""}
-            </p>
-            {info && (
+            {completed.length === 1 ? (
+              <p className="scan-rise scan-rise-2 num text-[15px] text-mute mt-2">
+                {formatTime(completed[0].slot.start)} – {formatTime(completed[0].slot.end)}
+                {completed[0].slot.kind ? ` · ${completed[0].slot.kind}` : ""}
+              </p>
+            ) : (
+              <ul className="scan-rise scan-rise-2 mt-4 w-full max-w-sm space-y-2 text-left">
+                {completed.map((c) => {
+                  const owner = c.attendanceSubject ?? c.subject
+                  const current = subjects.find((s) => s.id === owner.id) ?? owner
+                  const currentInfo = getAttendance(current.attended, current.missed, current.requirement)
+                  return (
+                    <li key={scanTargetKey(c)} className="rounded-xl bg-card px-4 py-3 flex items-center gap-3">
+                      <span className="w-2 h-2 rounded-full shrink-0" style={{ background: tint }} />
+                      <span className="min-w-0 flex-1">
+                        <span className="block text-[14px] font-semibold break-words">{className(c)}</span>
+                        <span className="num block text-[12px] text-mute mt-0.5">
+                          {formatTime(c.slot.start)} – {formatTime(c.slot.end)}
+                        </span>
+                      </span>
+                      <span className="num text-[12px] font-semibold text-mute">{currentInfo.pct}%</span>
+                    </li>
+                  )
+                })}
+              </ul>
+            )}
+            {info && completed.length === 1 && (
               <p className="scan-rise scan-rise-3 mt-5 rounded-full bg-card px-4 py-2 text-[15px] font-semibold">
                 <span className="num">{info.pct}%</span> <span className="text-mute font-medium">attendance now</span>
               </p>
@@ -103,18 +227,18 @@ export default function ScanCheckIn({ scan, subjects, onPick, onUndo, onClose }:
 
             {inApp && <InAppNote />}
 
-            <div className="scan-rise scan-rise-3 mt-10 w-full grid gap-3">
+            <div className="scan-rise scan-rise-3 mt-10 w-full max-w-sm grid gap-3">
               <button onClick={onClose} className="h-[52px] rounded-2xl bg-ink text-paper text-[17px] font-semibold">
                 Done
               </button>
-              <button onClick={() => onUndo(marked)} className="h-11 text-[15px] font-medium text-mute">
-                Undo
+              <button onClick={onUndo} className="h-11 text-[15px] font-medium text-mute">
+                {completed.length > 1 ? "Undo all" : "Undo"}
               </button>
             </div>
           </>
         ) : (
           <>
-            <Plain result={result} onPick={onPick} onClose={onClose} />
+            <Plain result={result} onClose={onClose} />
             {inApp && <InAppNote />}
           </>
         )}
@@ -132,8 +256,8 @@ function InAppNote() {
   )
 }
 
-/** Every outcome that is not a mark: already marked, nothing today, or a choice to make */
-function Plain({ result, onPick, onClose }: { result: ScanResult; onPick: (t: ClassSlot) => void; onClose: () => void }) {
+/** Error/fallback states where there are no unchecked classes to select. */
+function Plain({ result, onClose }: { result: ScanResult; onClose: () => void }) {
   const [copied, setCopied] = useState<boolean | null>(null)
   let title = ""
   let body = ""
@@ -152,17 +276,15 @@ function Plain({ result, onPick, onClose }: { result: ScanResult; onPick: (t: Cl
           ? "Your timetable has nothing on for today."
           : "Every class today already has a mark."
   } else if (result.kind === "choose") {
-    title = result.reason === "ambiguous"
-      ? "Which class are you checking in for?"
-      : result.reason === "several"
-        ? "Which class is this?"
-        : "No class around this time"
+    title = result.reason === "ambiguous" ? "Which class are you checking in for?" : "No class around this time"
     body =
       result.reason === "ambiguous"
-        ? "A class just ended and another starts soon, so this tap could mean either. Nothing is marked until you choose."
-        : result.reason === "several"
-          ? "Two or more classes fit right now. Pick the one you are attending."
-          : "Pick the class you are at, or close this."
+        ? "A class just ended and another starts soon, so the tap could mean either."
+        : "Pick the class you are at, or close this."
+  } else {
+    // Defensive fallback: a mark result normally always supplies its selected class in the review options.
+    title = "Review attendance"
+    body = "Choose an unchecked class from today, or close this screen."
   }
 
   return (
@@ -172,27 +294,6 @@ function Plain({ result, onPick, onClose }: { result: ScanResult; onPick: (t: Cl
       </span>
       <h2 className="font-display text-[clamp(24px,7vw,30px)] leading-[1.1] mt-6">{title}</h2>
       <p className="text-[15px] text-mute mt-2 leading-snug">{body}</p>
-
-      {result.kind === "choose" && (
-        <ul className="mt-6 w-full space-y-2.5">
-          {result.options.map((c) => (
-            <li key={`${c.subject.id}-${c.slot.start}`}>
-              <button
-                onClick={() => onPick(c)}
-                className="w-full rounded-2xl bg-card px-4 py-3.5 text-left flex items-center gap-3"
-              >
-                <span className="min-w-0 flex-1">
-                  <span className="block text-[16px] font-semibold truncate">{c.override?.kind === "substitute" ? `${c.attendanceSubject?.name ?? c.originalSubjectName ?? c.subject.name} (held as ${c.subject.name})` : c.subject.name}</span>
-                  <span className="num block text-[13px] text-mute">
-                    {formatTime(c.slot.start)} – {formatTime(c.slot.end)}
-                  </span>
-                </span>
-                <span className="text-[13px] font-semibold text-good">Present</span>
-              </button>
-            </li>
-          ))}
-        </ul>
-      )}
 
       {result.kind === "idle" && result.reason === "no-subjects" && (
         <button
@@ -204,7 +305,7 @@ function Plain({ result, onPick, onClose }: { result: ScanResult; onPick: (t: Cl
       )}
 
       <button onClick={onClose} className="mt-8 h-11 px-6 text-[15px] font-medium text-mute">
-        {result.kind === "choose" ? "Cancel" : "Close"}
+        Close
       </button>
     </>
   )
