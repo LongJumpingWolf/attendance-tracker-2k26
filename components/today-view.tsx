@@ -488,7 +488,8 @@ function TodayContent({
                       : daysUntilDue === 1
                         ? "Due tomorrow"
                         : `Due in ${daysUntilDue} days`
-                  const dueDateLabel = new Date(task.dueDate + "T00:00:00").toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" })
+                  const dueDateParts = /^(\\d{4})-(\\d{2})-(\\d{2})$/.exec(task.dueDate)
+                  const taskForDate = dueDateParts ? `${dueDateParts[3]}/${dueDateParts[2]}/${dueDateParts[1]}` : task.dueDate
                   const linkedSubject = task.subjectId ? subjects.find((subject) => subject.id === task.subjectId) : undefined
                   return (
                     <article
@@ -501,13 +502,12 @@ function TodayContent({
                       className="snap-start shrink-0 w-[calc(100vw-3rem)] max-w-[680px] lg:w-full lg:max-w-none rounded-[24px] sm:rounded-[28px] bg-card border border-warn/25 p-4 sm:p-5 flex flex-col"
                     >
                       <div className="flex items-center justify-between gap-2">
-                        <span className="inline-flex items-center gap-1.5 rounded-full bg-warn/15 text-warn px-2.5 py-1 text-[10px] font-extrabold tracking-wide">
-                          <CalendarBlank weight="bold" className="w-3.5 h-3.5" /> DEADLINE REMINDER
+                        <span data-testid="deadline-task-date" className="inline-flex items-center rounded-full bg-bad/15 text-bad border border-bad/35 px-2.5 py-1 text-[10px] sm:text-[11px] font-extrabold tracking-wide">
+                          Task for: {taskForDate}
                         </span>
                         <span className="rounded-full bg-secondary text-ink px-2.5 py-1 text-[11px] font-bold">{dueLabel}</span>
                       </div>
                       <h3 className="font-display text-[clamp(22px,5.8vw,28px)] leading-tight font-bold tracking-tight mt-5 break-words">{task.title}</h3>
-                      <p className="text-[14px] text-mute mt-2">Due {dueDateLabel}</p>
                       {linkedSubject && <p className="text-[13px] text-mute mt-1">Subject · {linkedSubject.name}</p>}
                       <p className="text-[13px] text-mute leading-snug mt-4 mb-4">Resolve this when it&rsquo;s done, or bring it back to the carousel tomorrow.</p>
                       <div className="grid grid-cols-2 gap-2.5 sm:gap-3 mt-auto">
