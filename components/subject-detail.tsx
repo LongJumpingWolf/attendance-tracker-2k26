@@ -120,6 +120,7 @@ export default function SubjectDetail({ subject, allSubjects = [subject], schedu
         <ProgressRing pct={info.pct} color={st.color} size={168} requirement={subject.requirement} />
         <h2 className="text-[clamp(22px,6.4vw,28px)] font-bold tracking-tight leading-tight mt-5 break-words max-w-full">{subject.name}</h2>
         {subject.tags?.length > 0 && <p className="text-[15px] text-mute mt-0.5">{subject.tags.join(" · ")}</p>}
+        {(subject.scheduleFrom || subject.scheduleUntil) && <p className="text-[12px] text-mute mt-1.5">Timetable active {subject.scheduleFrom ? formatShortDate(subject.scheduleFrom) : "from any date"} – {subject.scheduleUntil ? formatShortDate(subject.scheduleUntil) : "ongoing"}</p>}
         {subject.sleeping && (subject.sleepUntil === "forever" || !subject.sleepUntil || subject.sleepUntil >= today) && <p className="mt-2 rounded-full bg-secondary px-3 py-1 text-[12px] font-semibold text-mute">{isSubjectSleeping(subject, today) ? "Sleeping" : "Sleep scheduled"} · {subject.sleepFrom && subject.sleepFrom > today ? `from ${subject.sleepFrom} · ` : ""}{subject.sleepUntil === "forever" || !subject.sleepUntil ? "until manually woken" : `through ${subject.sleepUntil}`}</p>}
         <p className={`text-[15px] font-medium mt-2 ${st.text}`}>{info.message}</p>
       </div>
