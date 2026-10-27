@@ -79,25 +79,25 @@ function WhereYouStand({ subjects }: Data) {
     .sort((a, b) => (a.info.total ? a.info.pct - a.s.requirement : 999) - (b.info.total ? b.info.pct - b.s.requirement : 999))
   const shown = items.slice(0, 4)
   return (
-    <div data-tour="where-you-stand-widget" className={`${CARD} bg-card text-ink !p-[18px]`}>
+    <div data-tour="where-you-stand-widget" className={`${CARD} !h-auto !min-h-[286px] bg-card text-ink !p-4 sm:!p-[18px]`}>
       <p className={`${KICKER} !opacity-100 text-mute`}>Where you stand</p>
       <h3 className="font-display text-[24px] leading-tight mt-0.5">
         {items.length === 1 ? "One subject" : `${items.length} subjects`}, one glance
       </h3>
-      <ul className="grid grid-cols-2 gap-2.5 mt-3 flex-1 min-h-0 content-start">
+      <ul className="grid grid-cols-1 min-[360px]:grid-cols-2 gap-2 sm:gap-2.5 mt-3 content-start">
         {shown.map(({ s, info }) => {
           const risk = info.status === "risk"
           const color = risk ? "#ff3b30" : info.status === "new" ? "#8e8e93" : info.canSkip === 0 ? "#ff9f0a" : "#34c759"
           return (
-            <li key={s.id} className="grid grid-cols-[50px_minmax(0,1fr)] gap-2 items-center rounded-[20px] bg-secondary p-2.5 min-w-0">
-              <svg viewBox="0 0 64 64" className="w-[50px] h-[50px] -rotate-90" aria-hidden>
+            <li key={s.id} className="grid grid-cols-[40px_minmax(0,1fr)] gap-2 items-center rounded-[18px] bg-secondary p-2 sm:p-2.5 min-w-0">
+              <svg viewBox="0 0 64 64" className="w-10 h-10 -rotate-90" aria-hidden>
                 <circle cx="32" cy="32" r="26" fill="none" strokeWidth="7" className="stroke-ink/10" />
                 <circle cx="32" cy="32" r="26" fill="none" strokeWidth="7" strokeLinecap="round" stroke={color} strokeDasharray={`${(Math.min(100, info.pct) / 100) * RING_C} ${RING_C}`} />
               </svg>
               <span className="min-w-0">
-                <small className="block text-[13px] font-bold truncate">{s.name}</small>
+                <small className="block text-[12px] sm:text-[13px] font-bold leading-tight line-clamp-2 break-words">{s.name}</small>
                 <b className="block num text-[19px] tracking-tight leading-[1.1]">{info.total ? `${info.pct}%` : "–"}</b>
-                <small className={`block text-[12px] font-bold leading-tight ${risk ? "text-bad" : "text-mute"}`}>
+                <small className={`block text-[11px] sm:text-[12px] font-bold leading-snug break-words ${risk ? "text-bad" : "text-mute"}`}>
                   {info.status === "new" ? "No marks yet" : risk ? (info.needed ? `Attend next ${info.needed}` : "Below limit") : info.canSkip === 0 ? "No skips left" : info.canSkip === null ? "No minimum" : `${info.canSkip} ${info.canSkip === 1 ? "skip" : "skips"} left`}
                 </small>
               </span>
@@ -105,7 +105,7 @@ function WhereYouStand({ subjects }: Data) {
           )
         })}
       </ul>
-      {items.length > shown.length && <p className="text-[12px] font-semibold text-mute mt-2">Showing the {shown.length} that need you most. {items.length - shown.length} more in Subjects.</p>}
+      {items.length > shown.length && <p className="text-[12px] font-semibold leading-snug text-mute mt-2 break-words">Showing the {shown.length} that need you most. {items.length - shown.length} more in Subjects.</p>}
     </div>
   )
 }
