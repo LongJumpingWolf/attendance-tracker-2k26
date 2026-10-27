@@ -568,3 +568,15 @@ button:active:not(:disabled) {
   outline-color: rgba(255, 255, 255, 0.98);
   box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.42);
 }
+
+/* Each user-defined subject/topic tag gets a stable colour from its own label. New tags need no palette entry. */
+.subject-topic-tag {
+  background-color: hsl(var(--topic-tag-hue) var(--topic-tag-saturation) var(--topic-tag-lightness));
+  border-color: hsl(var(--topic-tag-hue) calc(var(--topic-tag-saturation) - 14%) 66%);
+  color: hsl(var(--topic-tag-hue) 70% 27%);
+}
+.dark .subject-topic-tag {
+  background-color: hsl(var(--topic-tag-hue) 38% 22%);
+  border-color: hsl(var(--topic-tag-hue) 48% 43%);
+  color: hsl(var(--topic-tag-hue) 82% 84%);
+}
