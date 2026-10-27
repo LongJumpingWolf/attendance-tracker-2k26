@@ -38,7 +38,7 @@ describe("deadline reminders for the Today carousel", () => {
 
   it("orders the most urgent deadlines first", () => {
     const tasks = [
-      task({ id: "later", title: "Later", dueDate: "2026-11-01" }),
+      task({ id: "later", title: "Later", dueDate: "2026-11-01", remindDaysBefore: 7 }),
       task({ id: "today", title: "Today", dueDate: "2026-10-27" }),
     ]
     expect(deadlineRemindersForDate(tasks, "2026-10-27").map((x) => x.task.id)).toEqual(["today", "later"])
