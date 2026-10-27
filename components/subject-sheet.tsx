@@ -1,6 +1,7 @@
 "use client"
 
 import { useEffect, useRef, useState } from "react"
+import { createPortal } from "react-dom"
 import { CaretDown, Plus, Trash } from "@phosphor-icons/react"
 import Sheet, { Field, Stepper, inputClass, primaryButton, fieldLabel } from "./sheet"
 import { DAY_SHORT, toMin } from "@/lib/attendance"
@@ -143,8 +144,9 @@ export default function SubjectSheet({ open, onClose, subject, subjectKey = null
   }
 
   return (
-    <Sheet open={open} onClose={requestClose} canDismiss={canDismiss} title={subject ? "Edit subject" : "New subject"}>
-      <form onSubmit={submit}>
+    <>
+      <Sheet open={open} onClose={requestClose} canDismiss={canDismiss} title={subject ? "Edit subject" : "New subject"}>
+        <form onSubmit={submit}>
         <Field label="Name" error={error}>
           <input
             autoFocus={!subject}
@@ -328,18 +330,26 @@ export default function SubjectSheet({ open, onClose, subject, subjectKey = null
         <button type="submit" className={`${primaryButton} mt-1`}>
           {subject ? "Save changes" : "Add subject"}
         </button>
-      </form>
-      {showUnsavedPrompt && (
-        <div role="alertdialog" aria-modal="true" aria-labelledby="unsaved-subject-title" className="mt-4 rounded-2xl border border-ink/10 bg-secondary p-4">
-          <h3 id="unsaved-subject-title" className="text-[16px] font-bold">Save your changes?</h3>
-          <p className="mt-1 text-[13px] leading-snug text-mute">You have edits that have not been saved yet.</p>
-          <div className="grid grid-cols-2 gap-2 mt-4">
-            <button type="button" onClick={() => setShowUnsavedPrompt(false)} className="h-11 rounded-xl bg-card text-ink text-[14px] font-semibold">Keep editing</button>
-            <button type="button" onClick={() => { if (saveChanges()) setShowUnsavedPrompt(false) }} className="h-11 rounded-xl bg-ink text-paper text-[14px] font-semibold">Save changes</button>
+        </form>
+      </Sheet>
+      {showUnsavedPrompt && typeof document !== "undefined" && createPortal(
+        <div
+          role="alertdialog"
+          aria-modal="false"
+          aria-labelledby="unsaved-subject-title"
+          className="fixed left-3 right-3 z-[100] mx-auto max-w-md rounded-2xl border border-ink/10 bg-card/95 p-4 shadow-xl backdrop-blur-xl"
+          style={{ bottom: "calc(env(safe-area-inset-bottom) + 16px)" }}
+        >
+          <h3 id="unsaved-subject-title" className="text-[15px] font-bold">Save your changes?</h3>
+          <p className="mt-1 text-[12px] leading-snug text-mute">You have edits that have not been saved yet.</p>
+          <div className="grid grid-cols-2 gap-2 mt-3">
+            <button type="button" onClick={() => setShowUnsavedPrompt(false)} className="h-10 rounded-xl bg-secondary text-ink text-[13px] font-semibold">Keep editing</button>
+            <button type="button" onClick={() => { if (saveChanges()) setShowUnsavedPrompt(false) }} className="h-10 rounded-xl bg-ink text-paper text-[13px] font-semibold">Save changes</button>
           </div>
-          <button type="button" onClick={() => { setShowUnsavedPrompt(false); onClose() }} className="w-full h-10 mt-1 text-[13px] font-semibold text-bad">Discard changes</button>
-        </div>
+          <button type="button" onClick={() => { setShowUnsavedPrompt(false); onClose() }} className="w-full h-8 mt-1 text-[12px] font-semibold text-bad">Discard changes</button>
+        </div>,
+        document.body,
       )}
-    </Sheet>
+    </>
   )
 }
