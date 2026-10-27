@@ -5,7 +5,7 @@ import { CaretDown, Plus, Trash } from "@phosphor-icons/react"
 import Sheet, { Field, Stepper, inputClass, primaryButton, fieldLabel } from "./sheet"
 import { DAY_SHORT, toMin } from "@/lib/attendance"
 import { DAY_ORDER, DAY_NAMES } from "@/lib/reminders"
-import type { Slot, Subject } from "@/lib/types"
+import type { Slot } from "@/lib/types"
 
 export interface SubjectValues {
   name: string
@@ -24,7 +24,7 @@ interface SubjectSheetProps {
   open: boolean
   onClose: () => void
   /** Present when editing an existing subject */
-  subject?: Subject | null
+  subject?: (Omit<SubjectValues, "slots" | "scheduleFrom" | "scheduleUntil"> & { slots?: Slot[]; scheduleFrom?: string; scheduleUntil?: string }) | null
   /** Which subject is being edited (null when adding): changing it, not the subject object, restarts the form */
   subjectKey?: string | null
   existingTags: string[]
