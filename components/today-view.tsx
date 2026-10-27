@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useRef, useState } from "react"
-import { CaretRight, Check, WarningCircle, X } from "@phosphor-icons/react"
+import { ArrowClockwise, CaretRight, Check, WarningCircle, X } from "@phosphor-icons/react"
 import ClassActionMenu from "./class-action-menu"
 import type { ScheduleOverride } from "@/lib/types"
 import type { Mate, Subject, Task } from "@/lib/types"
@@ -19,6 +19,7 @@ import {
   type DayClass,
   type MarkMeta,
 } from "@/lib/attendance"
+import { dateAfterDays, deadlineRemindersForDate } from "@/lib/deadline-reminders"
 import ProgressRing from "./progress-ring"
 import { MateNote, WeekStrip } from "./done-extras"
 import TodayWidgets from "./today-widgets"
@@ -45,6 +46,8 @@ interface TodayViewProps {
   onGoto: (page: string) => void
   onAddSubject: () => void
   onOpenTomorrow?: (date: string) => void
+  onResolveReminder: (task: Task) => void
+  onSnoozeReminder: (taskId: string, untilDate: string) => void
   demoActive?: boolean
 }
 
@@ -80,6 +83,21 @@ function duration(mins: number) {
   return r ? `${h}h ${r}m` : `${h}h`
 }
 
+/** Stable per-label colour variables: new topic tags get a consistent identity without a hard-coded registry. */
+function topicTagStyle(tag: string): React.CSSProperties {
+  let hash = 2166136261
+  for (const character of tag.trim().toLowerCase()) {
+    hash ^= character.codePointAt(0) ?? 0
+    hash = Math.imul(hash, 16777619)
+  }
+  const value = hash >>> 0
+  return {
+    "--topic-tag-hue": value % 360,
+    "--topic-tag-saturation": `${56 + ((value >>> 8) % 24)}%`,
+    "--topic-tag-lightness": `${92 + ((value >>> 16) % 5)}%`,
+  } as React.CSSProperties
+}
+
 /** A soft wash of the subject's own colour (8%), laid over the card colour so it works in light and dark */
 const wash = (hex: string): React.CSSProperties => ({
   backgroundColor: "var(--card)",
@@ -113,6 +131,8 @@ function TodayContent({
   onGoto,
   onAddSubject,
   onOpenTomorrow,
+  onResolveReminder,
+  onSnoozeReminder,
   demoActive,
 }: TodayViewProps & { now: Date }) {
   const scroller = useRef<HTMLDivElement>(null)
@@ -136,6 +156,8 @@ function TodayContent({
 
   const today = localDate(now)
   const nowMin = now.getHours() * 60 + now.getMinutes()
+  const reminderItems = deadlineRemindersForDate(tasks, today)
+  const tomorrow = dateAfterDays(today, 1)
 
   // Only classes that are really on today's timetable. A subject with no timetable, or none today, has no card.
   const classes: Card[] = dayClasses(subjects, now, scheduleOverrides)
@@ -146,13 +168,12 @@ function TodayContent({
   // Resolved cards dissolve out of the carousel
   const pending = classes.filter((c) => stateOf(c) === null || leaving.has(keyOf(c)))
   const live = pending.filter((c) => !leaving.has(keyOf(c)))
-  const liveRef = useRef<Card[]>(live)
-  liveRef.current = live
   const activeRef = useRef(active)
   activeRef.current = active
   const done = classes.filter((c) => stateOf(c) !== null && !leaving.has(keyOf(c)))
-  // Nothing left to answer: the screen shows the evening scene instead of the carousel
-  const allDone = dayProgress(classes).allDone && pending.length === 0
+  const carouselCount = live.length + reminderItems.length
+  // Keep the carousel alive after all lectures are marked if a deadline reminder remains.
+  const allDone = dayProgress(classes).allDone && pending.length === 0 && reminderItems.length === 0
 
   const isOngoing = (c: Card) => toMin(c.slot.start) <= nowMin && nowMin < toMin(c.slot.end)
   const hasEnded = (c: Card) => toMin(c.slot.end) <= nowMin
@@ -161,7 +182,7 @@ function TodayContent({
   const ongoingCard = live.find(isOngoing)
   const firstUpcoming = live.find(startsLater)
   const focus = ongoingCard ?? firstUpcoming ?? live[0] ?? null
-  const focusKey = focus ? keyOf(focus) : null
+  const focusKey = reminderItems[0] ? "deadline-" + reminderItems[0].task.id : focus ? keyOf(focus) : null
 
   // Classes that ended without a mark: the notice reminds you
   const overdue = live.filter(hasEnded)
@@ -187,9 +208,7 @@ function TodayContent({
     const observer = new ResizeObserver(() => {
       cancelAnimationFrame(frame)
       frame = requestAnimationFrame(() => {
-        const cards = liveRef.current
-          .map((card) => box.querySelector<HTMLElement>(`[data-key="${keyOf(card)}"]`))
-          .filter((el): el is HTMLElement => !!el)
+        const cards = Array.from(box.querySelectorAll<HTMLElement>('[data-carousel-active="true"]'))
         const target = cards[Math.min(activeRef.current, cards.length - 1)]
         if (!target) return
         const left = target.getBoundingClientRect().left - box.getBoundingClientRect().left + box.scrollLeft - GUTTER
@@ -198,13 +217,11 @@ function TodayContent({
     })
     observer.observe(box)
     return () => { observer.disconnect(); cancelAnimationFrame(frame) }
-  }, [allDone, live.length])
+  }, [allDone, carouselCount])
 
-  const clampIndex = (value: number) => Math.max(0, Math.min(live.length - 1, value))
-  // `pending` keeps the just-marked card in the DOM during its exit animation; index navigation must use only `live` cards.
-  const cardElements = () => live
-    .map((card) => scroller.current?.querySelector<HTMLElement>(`[data-key="${keyOf(card)}"]`))
-    .filter((el): el is HTMLElement => !!el)
+  const clampIndex = (value: number) => Math.max(0, Math.min(carouselCount - 1, value))
+  // Query all active cards in DOM order, including any deadline reminder cards.
+  const cardElements = () => Array.from(scroller.current?.querySelectorAll<HTMLElement>('[data-carousel-active="true"]') ?? [])
   const leftForCard = (el: HTMLElement) => {
     const box = scroller.current
     if (!box) return 0
@@ -312,7 +329,7 @@ function TodayContent({
     )
   }
 
-  if (subjects.length === 0) {
+  if (subjects.length === 0 && reminderItems.length === 0) {
     return (
       <div>
         <h1 className="font-display text-[clamp(26px,7.2vw,34px)] leading-[1.1]">Let&rsquo;s set up your subjects</h1>
@@ -325,7 +342,7 @@ function TodayContent({
             Add a subject
           </button>
         </div>
-        <div className="mt-6"><TodayWidgets subjects={subjects} tasks={tasks} now={now} scheduleOverrides={scheduleOverrides} onOpenTomorrow={onOpenTomorrow} demoActive={demoActive} /></div>
+        <div className="mt-6"><TodayWidgets subjects={subjects} tasks={tasks.filter((task) => !reminderItems.some((item) => item.task.id === task.id))} activeReminderCount={reminderItems.length} now={now} scheduleOverrides={scheduleOverrides} onOpenTomorrow={onOpenTomorrow} demoActive={demoActive} /></div>
         <footer className="pt-8 pb-3 text-center text-[12px] text-mute/80 tracking-wide">Made with ♥ by Aditya Waghmare</footer>
       </div>
     )
@@ -342,7 +359,10 @@ function TodayContent({
     subline = `At ${formatTime(firstUpcoming.slot.start)}, in ${duration(toMin(firstUpcoming.slot.start) - nowMin)}`
   } else if (live.length > 0) {
     headline = `${live.length} to mark today`
-    subline = "Tap Present or Absent on each card"
+    subline = "Tap Present or Absent on each class card"
+  } else if (reminderItems.length > 0) {
+    headline = reminderItems.length === 1 ? "You have a deadline reminder" : `${reminderItems.length} deadline reminders`
+    subline = "Review your reminders in the carousel below"
   } else if (classes.length === 0) {
     headline = "No classes today"
     subline = unscheduled > 0 ? `${unscheduled} ${unscheduled === 1 ? "subject has" : "subjects have"} no timetable yet` : "Nothing is on your timetable"
@@ -395,12 +415,12 @@ function TodayContent({
         {!allDone && (
         <section data-tour="today-carousel">
           <SectionHeader
-            action={live.length > 0 ? <span className="text-[13px] text-mute">{live.length} to mark</span> : undefined}
+            action={carouselCount > 0 ? <span className="text-[13px] text-mute">{live.length > 0 ? `${live.length} to mark` : ""}{live.length > 0 && reminderItems.length > 0 ? " · " : ""}{reminderItems.length > 0 ? `${reminderItems.length} reminder${reminderItems.length === 1 ? "" : "s"}` : ""}</span> : undefined}
           >
-            Today&rsquo;s classes
+            Today&rsquo;s classes &amp; reminders
           </SectionHeader>
 
-          {pending.length === 0 ? (
+          {pending.length === 0 && reminderItems.length === 0 ? (
             <div className="w-full">
               <article className={`w-full ${cardClass} px-5 py-6 flex items-center gap-4`}>
                 <span className="w-12 h-12 rounded-full bg-good/15 text-good grid place-items-center flex-shrink-0">
@@ -459,6 +479,57 @@ function TodayContent({
                 style={{ touchAction: "pan-x pan-y", WebkitOverflowScrolling: "touch", overscrollBehaviorX: "contain" }}
                 className="relative -mx-4 px-4 lg:mx-0 lg:px-0 flex gap-3 overflow-x-auto snap-x snap-mandatory scroll-px-4 lg:scroll-px-0 pb-1 no-scrollbar cursor-grab active:cursor-grabbing select-none"
               >
+                {reminderItems.map(({ task, daysUntilDue }) => {
+                  const key = "deadline-" + task.id
+                  const dueLabel = daysUntilDue < 0
+                    ? `Overdue by ${Math.abs(daysUntilDue)} day${Math.abs(daysUntilDue) === 1 ? "" : "s"}`
+                    : daysUntilDue === 0
+                      ? "Due today"
+                      : daysUntilDue === 1
+                        ? "Due tomorrow"
+                        : `Due in ${daysUntilDue} days`
+                  const [dueYear, dueMonth, dueDay] = task.dueDate.split("-")
+                  const taskForDate = dueYear && dueMonth && dueDay ? `${dueDay}/${dueMonth}/${dueYear}` : task.dueDate
+                  const linkedSubject = task.subjectId ? subjects.find((subject) => subject.id === task.subjectId) : undefined
+                  return (
+                    <article
+                      key={key}
+                      data-key={key}
+                      data-carousel-active="true"
+                      data-testid="deadline-reminder-card"
+                      tabIndex={0}
+                      aria-label={`Deadline reminder: ${task.title}. ${dueLabel}.`}
+                      className="snap-start shrink-0 w-[calc(100vw-3rem)] max-w-[680px] lg:w-full lg:max-w-none rounded-[24px] sm:rounded-[28px] bg-card border border-warn/25 p-4 sm:p-5 flex flex-col"
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <span data-testid="deadline-task-date" className="inline-flex items-center rounded-full bg-bad/15 text-bad border border-bad/35 px-2.5 py-1 text-[10px] sm:text-[11px] font-extrabold tracking-wide">
+                          Task for: {taskForDate}
+                        </span>
+                        <span className="rounded-full bg-secondary text-ink px-2.5 py-1 text-[11px] font-bold">{dueLabel}</span>
+                      </div>
+                      <h3 className="font-display text-[clamp(22px,5.8vw,28px)] leading-tight font-bold tracking-tight mt-5 break-words">{task.title}</h3>
+                      {linkedSubject && <p className="text-[13px] text-mute mt-1">Subject · {linkedSubject.name}</p>}
+                      <p className="text-[13px] text-mute leading-snug mt-4 mb-4">Resolve this when it&rsquo;s done, or bring it back to the carousel tomorrow.</p>
+                      <div className="grid grid-cols-2 gap-2.5 sm:gap-3 mt-auto">
+                        <button
+                          type="button"
+                          onClick={(e) => { e.preventDefault(); e.stopPropagation(); onResolveReminder(task) }}
+                          className="h-11 sm:h-[52px] rounded-2xl bg-good text-[#ffffff] dark:text-[#000000] text-[14px] sm:text-[16px] font-semibold flex items-center justify-center gap-2"
+                        >
+                          <Check weight="bold" className="w-5 h-5" /> Resolved
+                        </button>
+                        <button
+                          type="button"
+                          disabled={!tomorrow}
+                          onClick={(e) => { e.preventDefault(); e.stopPropagation(); if (tomorrow) onSnoozeReminder(task.id, tomorrow) }}
+                          className="h-11 sm:h-[52px] rounded-2xl bg-secondary text-ink text-[13px] sm:text-[15px] font-semibold flex items-center justify-center gap-2 disabled:opacity-50"
+                        >
+                          <ArrowClockwise weight="bold" className="w-4 h-4 shrink-0" /> Remind me tomorrow
+                        </button>
+                      </div>
+                    </article>
+                  )
+                })}
                 {pending.map((c) => {
                   const k = keyOf(c)
                   const start = toMin(c.slot.start)
@@ -488,6 +559,7 @@ function TodayContent({
                     <article
                       key={k}
                       data-key={k}
+                      data-carousel-active={!gone ? "true" : undefined}
                       tabIndex={0}
                       aria-label={c.override?.kind === "substitute" ? `Open ${attendanceSubjectName(c)} attendance details; class held as ${c.subject.name}` : `Open ${c.subject.name} subject details`}
                       onClick={(e) => cardClick(e, (c.attendanceSubject ?? c.subject).id)}
@@ -530,24 +602,19 @@ function TodayContent({
                             {verdict.pct === null ? verdict.detail : `${verdict.pct}% now · ${attendanceSubject.requirement}% needed · ${verdict.detail}`}
                           </p>
                           {c.override?.kind === "substitute" && <p className="mt-1 text-[12px] font-medium text-info">Substitutes for {c.originalSubjectName}. Attendance is recorded under {attendanceSubject.name}.</p>}
-                          {(c.slot.kind || c.subject.tags?.[0]) && (
+                          {c.subject.tags?.some((tag) => tag.trim()) && (
                             <div data-testid="class-tags" className="flex flex-wrap items-center gap-1.5 mt-2">
-                              {c.slot.kind && (
+                              {c.subject.tags.filter((tag) => tag.trim()).map((tag, index) => (
                                 <span
-                                  data-testid="class-kind-tag"
-                                  className="inline-flex items-center rounded-full border border-ink/15 bg-secondary px-2.5 py-1.5 text-[11px] leading-none font-semibold text-ink"
-                                >
-                                  {c.slot.kind}
-                                </span>
-                              )}
-                              {c.subject.tags?.[0] && (
-                                <span
+                                  key={`${tag}-${index}`}
                                   data-testid="subject-topic-tag"
-                                  className="inline-flex items-center rounded-full border border-info/40 bg-info/15 px-2.5 py-1.5 text-[11px] leading-none font-bold text-info shadow-sm"
+                                  data-topic-tag={tag}
+                                  style={topicTagStyle(tag)}
+                                  className="subject-topic-tag inline-flex items-center rounded-full border px-2.5 py-1.5 text-[11px] leading-none font-bold shadow-sm"
                                 >
-                                  {c.subject.tags[0]}
+                                  {tag}
                                 </span>
-                              )}
+                              ))}
                             </div>
                           )}
                         </div>
@@ -596,12 +663,18 @@ function TodayContent({
                 <span className="shrink-0 w-1" aria-hidden />
               </div>
 
-              {live.length > 1 && (
+              {carouselCount > 1 && (
                 <div className="flex justify-center gap-1.5 mt-3" aria-hidden>
+                  {reminderItems.map(({ task }, i) => (
+                    <span
+                      key={"deadline-" + task.id}
+                      className={`h-1.5 rounded-full transition-all ${i === active ? "w-4 bg-ink" : "w-1.5 bg-ink/25"}`}
+                    />
+                  ))}
                   {live.map((c, i) => (
                     <span
                       key={keyOf(c)}
-                      className={`h-1.5 rounded-full transition-all ${i === active ? "w-4 bg-ink" : "w-1.5 bg-ink/25"}`}
+                      className={`h-1.5 rounded-full transition-all ${i + reminderItems.length === active ? "w-4 bg-ink" : "w-1.5 bg-ink/25"}`}
                     />
                   ))}
                 </div>

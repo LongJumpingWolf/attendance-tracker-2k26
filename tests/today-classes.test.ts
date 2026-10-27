@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
-import { classesOn, dayClasses, dayProgress, markFor, slotMeta, withSet } from "@/lib/attendance"
+import { classesOn, dayClasses, dayProgress, futureClassDates, localDate, markFor, slotMeta, withSet } from "@/lib/attendance"
 import { dbGet, dbSet } from "@/lib/db"
 import { mergeData } from "@/lib/merge"
 import type { Slot, Subject } from "@/lib/types"
@@ -15,6 +15,24 @@ const subject = (id: string, name: string, slots?: Slot[], over: Partial<Subject
 })
 
 describe("Today lists only real classes", () => {
+  it("limits recurring class cards to the inclusive subject duration", () => {
+    const scheduled = subject("term", "Surgery", [slot(3, "09:00", "10:00")], { scheduleFrom: "2026-10-07", scheduleUntil: "2026-10-07" })
+    const before = subject("before", "Anatomy", [slot(3, "09:00", "10:00")], { scheduleFrom: "2026-10-08" })
+    const after = subject("after", "Pathology", [slot(3, "09:00", "10:00")], { scheduleUntil: "2026-10-06" })
+
+    expect(classesOn([scheduled], WED)).toHaveLength(1)
+    expect(dayClasses([scheduled], WED)).toHaveLength(1)
+    expect(classesOn([before], WED)).toEqual([])
+    expect(classesOn([after], WED)).toEqual([])
+  })
+
+  it("does not forecast classes after a subject duration has ended", () => {
+    const now = new Date()
+    const yesterday = localDate(new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1))
+    const s = subject("term-ended", "Short course", [slot(now.getDay(), "09:00", "10:00")], { scheduleUntil: yesterday })
+    expect(futureClassDates(s, 21)).toEqual([])
+  })
+
   const scheduledToday = subject("a", "Pharmacology", [slot(3, "09:00", "10:00", "Lecture")])
   const otherDay = subject("b", "Anatomy", [slot(4, "11:00", "12:00")]) // Thursday only
   const noTimetable = subject("c", "Ethics") // no slots at all

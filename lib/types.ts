@@ -27,6 +27,10 @@ export interface Subject {
   requirement: number
   glowColor: string
   tags: string[]
+  /** Inclusive local YYYY-MM-DD start of the period this timetable is active. */
+  scheduleFrom?: string
+  /** Inclusive local YYYY-MM-DD end of the period this timetable is active. */
+  scheduleUntil?: string
   /** Optional weekly timetable */
   slots?: Slot[]
   /** History of marks made in the app (counts above stay the source of truth) */
@@ -69,6 +73,8 @@ export interface Task {
   type?: "exam" | "assignment"
   /** How many days ahead to start reminding: 0 = on the day itself, -1 = never. Default 1. */
   remindDaysBefore?: number
+  /** Hide the active reminder until this local calendar date after "Remind me tomorrow". */
+  remindAgainOn?: string
   /** Optional link to one of your subjects */
   subjectId?: string
   /** Ticked off. Stays in the Completed list so it can be brought back. */

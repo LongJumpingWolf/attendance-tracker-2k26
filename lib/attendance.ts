@@ -182,6 +182,13 @@ export function isSubjectSleeping(subject: Subject, date = localDate()): boolean
   return date <= subject.sleepUntil
 }
 
+/** Inclusive local-date boundaries for a subject's weekly timetable. Missing bounds leave it active indefinitely. */
+export function isSubjectInScheduleDuration(subject: Subject, date = localDate()): boolean {
+  if (subject.scheduleFrom && date < subject.scheduleFrom) return false
+  if (subject.scheduleUntil && date > subject.scheduleUntil) return false
+  return true
+}
+
 /** Classes happening on the given date. Cancellations stay visible to Calendar; dayClasses filters them out. */
 export function classesOn(subjects: Subject[], date: Date, overrides: ScheduleOverride[] = []): ClassSlot[] {
   const day = date.getDay()
@@ -189,7 +196,7 @@ export function classesOn(subjects: Subject[], date: Date, overrides: ScheduleOv
   const byId = new Map(subjects.map((s) => [s.id, s]))
   const found: ClassSlot[] = []
   for (const original of subjects) {
-    if (isSubjectSleeping(original, dateKey)) continue
+    if (!isSubjectInScheduleDuration(original, dateKey) || isSubjectSleeping(original, dateKey)) continue
     for (const slot of original.slots || []) {
       if (slot.day !== day) continue
       const exception = overrides.find((o) => o.date === dateKey && o.originalSubjectId === original.id && o.start === slot.start)
@@ -340,7 +347,7 @@ export function futureClassDates(s: Subject, days = 35, overrides: ScheduleOverr
     const d = new Date(now.getFullYear(), now.getMonth(), now.getDate() + i)
     const date = localDate(d)
     // A finite sleep hides only dates through sleepUntil. Future dates after the wake date must reappear in forecasts.
-    if (!set.has(d.getDay()) || isSubjectSleeping(s, date)) continue
+    if (!set.has(d.getDay()) || !isSubjectInScheduleDuration(s, date) || isSubjectSleeping(s, date)) continue
     const todays = (s.slots || []).filter((x) => x.day === d.getDay())
     const allCancelled = todays.length > 0 && todays.every((slot) => overrides.some((o) => o.kind === "cancelled" && o.date === date && o.originalSubjectId === s.id && o.start === slot.start))
     if (!allCancelled) out.push(date)
