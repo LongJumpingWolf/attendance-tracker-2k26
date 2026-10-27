@@ -25,9 +25,10 @@ export type ScanResult =
  * cannot tell whether a tap is for the class someone is leaving or the one they are entering.
  * Ask them to confirm instead of silently marking the recently-ended class.
  *
- * Within a single unambiguous window, marked classes are set aside. If exactly one unmarked
- * class is left it is marked; multiple candidates require a choice; already-marked classes
- * are never counted twice. If no time window fits, today's unmarked classes are offered.
+ * A single fitting slot can be marked automatically. If multiple slots fit the same window,
+ * require confirmation even when only one is unmarked: the tap could be a repeat for the class
+ * already marked. Already-marked classes are never counted twice. If no time window fits,
+ * today's unmarked classes are offered.
  */
 export function pickScanTarget(subjects: Subject[], now: Date, overrides: ScheduleOverride[] = []): ScanResult {
   if (subjects.length === 0) return { kind: "idle", reason: "no-subjects" }
@@ -39,9 +40,11 @@ export function pickScanTarget(subjects: Subject[], now: Date, overrides: Schedu
   const statusOf = (c: ClassSlot) => markFor(c.attendanceSubject ?? c.subject, today, c.slot.start)
   const decide = (hits: ClassSlot[]): ScanResult => {
     const open = hits.filter((c) => statusOf(c) === null)
-    if (open.length === 1) return { kind: "mark", target: open[0] }
-    if (open.length > 1) return { kind: "choose", options: open, reason: "several" }
-    return { kind: "already", target: hits[0], status: statusOf(hits[0]) as "P" | "A" }
+    if (open.length === 0) return { kind: "already", target: hits[0], status: statusOf(hits[0]) as "P" | "A" }
+    // Multiple fitting slots remain ambiguous even if only one is unmarked. A repeat tap for
+    // an already-marked overlapping class must not automatically mark a different class.
+    if (hits.length > 1) return { kind: "choose", options: open, reason: "several" }
+    return { kind: "mark", target: open[0] }
   }
 
   // An in-progress class is a strong signal and always takes priority over adjacent windows.
