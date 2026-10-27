@@ -275,12 +275,16 @@ function Plain({ result, onClose }: { result: ScanResult; onClose: () => void })
         : result.reason === "no-classes"
           ? "Your timetable has nothing on for today."
           : "Every class today already has a mark."
-  } else {
+  } else if (result.kind === "choose") {
     title = result.reason === "ambiguous" ? "Which class are you checking in for?" : "No class around this time"
     body =
       result.reason === "ambiguous"
         ? "A class just ended and another starts soon, so the tap could mean either."
         : "Pick the class you are at, or close this."
+  } else {
+    // Defensive fallback: a mark result normally always supplies its selected class in the review options.
+    title = "Review attendance"
+    body = "Choose an unchecked class from today, or close this screen."
   }
 
   return (
