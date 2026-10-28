@@ -134,6 +134,7 @@ export default function Home() {
   const [isOnline, setIsOnline] = useState<boolean | null>(null)
   const [isImportOpen, setIsImportOpen] = useState(false)
   const [scan, setScan] = useState<ScanState | null>(null)
+  const [scanWelcome, setScanWelcome] = useState(false)
   const scanBefore = useRef<{ id: string; date: string; t: string; prev: LogEntry | null }[]>([]) // every class marked in the last scan confirmation, for Undo
   const [demoActive, setDemoActive] = useState(false)
   const [demoTourOpen, setDemoTourOpen] = useState(false)
@@ -429,27 +430,36 @@ export default function Home() {
     }
   }
 
+  // Remember scan intent before the scan handler removes ?scan from the address bar.
+  useEffect(() => {
+    if (new URLSearchParams(window.location.search).has("scan")) setScanWelcome(true)
+  }, [])
+
   // ---------- first run ----------
-  // A fresh install gets the welcome tour once. Anyone who already has data is treated as set up.
+  // Fresh QR/NFC visitors without a local timetable get scan-specific setup guidance.
   useEffect(() => {
     if (!loaded) return
+    const scanArrival = scanWelcome || new URLSearchParams(window.location.search).has("scan")
     try {
-      if (localStorage.getItem("onboardingDone")) {
+      const onboardingDone = localStorage.getItem("onboardingDone")
+      if (onboardingDone && !scanArrival) {
         setOnboardingResolved(true)
         return
       }
-      if (subjects.length === 0 && mates.length === 0) setIsOnboardingOpen(true)
-      else localStorage.setItem("onboardingDone", "1")
+      if (subjects.length === 0 && (scanArrival || mates.length === 0)) setIsOnboardingOpen(true)
+      else if (!onboardingDone) localStorage.setItem("onboardingDone", "1")
     } catch {
-      /* private mode: skip the tour rather than show it every time */
+      // Private mode can skip the regular tour, but scan visitors still need a clear setup path.
+      if (scanArrival && subjects.length === 0) setIsOnboardingOpen(true)
     } finally {
       setOnboardingResolved(true)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [loaded])
+  }, [loaded, scanWelcome])
 
   const finishOnboarding = () => {
     setIsOnboardingOpen(false)
+    setScanWelcome(false)
     try {
       localStorage.setItem("onboardingDone", "1")
       localStorage.setItem("firstRunGuidesEnabled", "1")
@@ -735,20 +745,24 @@ export default function Home() {
     const now = new Date()
     const review = prepareScanReview(subjects, now, effectiveOverrides)
     // A newcomer with nothing set up is shown the welcome tour, which is already open, rather than an empty scan screen.
-    let newcomer = false
+    const hasNoSubjects = review.result.kind === "idle" && review.result.reason === "no-subjects"
+    let newcomer = hasNoSubjects && scanWelcome
     try {
-      newcomer = review.result.kind === "idle" && review.result.reason === "no-subjects" && !localStorage.getItem("onboardingDone")
+      if (!newcomer) newcomer = hasNoSubjects && !localStorage.getItem("onboardingDone")
     } catch {
-      /* private mode */
+      /* private mode; scan visitors without a timetable still receive the intro */
     }
-    if (!newcomer) setScan({
+    if (!newcomer) {
+      setScanWelcome(false)
+      setScan({
       result: review.result,
       marked: null,
       phase: "review",
       date: localDate(now),
       options: review.options,
       suggested: review.suggested,
-    })
+      })
+    }
   }
 
   // Developer tools (Settings): a timetable built around now, and manual triggers for the scan flow
@@ -1479,12 +1493,13 @@ export default function Home() {
 
       <Onboarding
         open={isOnboardingOpen}
+        scanWelcome={scanWelcome}
         onClose={finishOnboarding}
         subjects={subjects}
         currentName={social.name}
         onSetName={(n) => void social.setName(n)}
         showGoogleSyncPrompt={sync.ready && !sync.account}
-        onOpenAccount={() => { setIsOnboardingOpen(false); setSettingsStartPanel("sync"); setIsSettingsOpen(true) }}
+        onOpenAccount={() => { if (scanWelcome) finishOnboarding(); else setIsOnboardingOpen(false); setSettingsStartPanel("sync"); setIsSettingsOpen(true) }}
         onImportTimetable={() => setIsImportOpen(true)}
         onAddSubject={() => setIsAddOpen(true)}
         notificationSupported={notificationSupported}

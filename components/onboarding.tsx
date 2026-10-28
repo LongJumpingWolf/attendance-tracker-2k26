@@ -6,6 +6,8 @@ import type { Subject } from "@/lib/types"
 
 interface Props {
   open: boolean
+  /** Show scan-specific guidance when a first-time visitor arrives through the QR/NFC check-in link. */
+  scanWelcome?: boolean
   /** Called after the setup guide is completed or skipped */
   onClose: () => void
   subjects: Subject[]
@@ -52,11 +54,11 @@ export default function Onboarding(p: Props) {
         savedName = localStorage.getItem("attendance-onboarding-name-draft") || ""
         savedStep = Number(localStorage.getItem("attendance-onboarding-step-draft") || 0) === 1 ? 1 : 0
       } catch { /* fall back to the profile name */ }
-      setStep(savedStep)
+      setStep(p.scanWelcome ? 0 : savedStep)
       setName(savedName || (p.currentName === "You" ? "" : p.currentName))
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [p.open])
+  }, [p.open, p.scanWelcome])
   // The profile name can arrive after the screen opens: fill an empty field with it, never replace what was typed
   useEffect(() => {
     if (p.open && p.currentName && p.currentName !== "You") setName((typed) => typed || p.currentName)
@@ -134,13 +136,20 @@ export default function Onboarding(p: Props) {
               <div className="rounded-[28px] bg-ink text-paper p-5 sm:p-7 min-h-[180px] flex flex-col justify-between">
                 <span className="w-11 h-11 rounded-2xl bg-white/15 grid place-items-center"><Sparkle size={23} weight="duotone" /></span>
                 <div className="mt-8">
-                  <p className="text-[11px] uppercase tracking-[0.17em] font-bold text-white/60">One calm place for college</p>
-                  <h1 id="first-run-title" className="font-display text-[clamp(30px,8vw,42px)] leading-[1.02] tracking-tight mt-2">Know where you stand.</h1>
-                  <p className="text-[14px] text-white/75 leading-relaxed mt-3">Attendance, classes and deadlines—without digging through menus.</p>
+                  <p className="text-[11px] uppercase tracking-[0.17em] font-bold text-white/60">{p.scanWelcome ? "YOU OPENED AN ATTENDANCE CHECK-IN LINK" : "One calm place for college"}</p>
+                  <h1 id="first-run-title" className="font-display text-[clamp(30px,8vw,42px)] leading-[1.02] tracking-tight mt-2">{p.scanWelcome ? "Let’s get you ready to check in." : "Know where you stand."}</h1>
+                  <p className="text-[14px] text-white/75 leading-relaxed mt-3">{p.scanWelcome ? "College Tracker helps you organise classes, track attendance and keep up with deadlines." : "Attendance, classes and deadlines—without digging through menus."}</p>
                 </div>
               </div>
 
-              <div>
+              {p.scanWelcome && (
+                <div className="rounded-2xl border border-ink/10 bg-card p-4">
+                  <p className="text-[14px] font-semibold">This browser isn’t set up yet.</p>
+                  <p className="text-[13px] text-mute leading-relaxed mt-1">Add your timetable once. Future QR scans or NFC taps can then open your check-in. This first scan will not mark attendance.</p>
+                </div>
+              )}
+
+              {!p.scanWelcome && <div>
                 <label htmlFor="first-run-name" className="block text-[14px] font-semibold mb-2">What should we call you?</label>
                 <input
                   id="first-run-name"
@@ -156,19 +165,24 @@ export default function Onboarding(p: Props) {
                   className="w-full h-12 rounded-xl bg-card border border-ink/15 px-4 text-[15px] outline-none focus:ring-2 focus:ring-ink/20"
                 />
                 <p className="text-[12px] text-mute leading-relaxed mt-2">Used on your profile and when friends connect with you. You can change it later in Account.</p>
-              </div>
+              </div>}
 
               <button type="button" onClick={() => { saveName(); setStep(1) }} className="w-full h-12 rounded-xl bg-ink text-paper text-[15px] font-semibold inline-flex items-center justify-center gap-2">
-                Continue <ArrowRight size={18} />
+                {p.scanWelcome ? "Set up my timetable" : "Continue"} <ArrowRight size={18} />
               </button>
-              <p className="text-[11px] text-mute text-center">Swipe left to continue. You can skip setup at any time.</p>
+              {p.scanWelcome && p.showGoogleSyncPrompt && (
+                <button type="button" onClick={() => { saveName(); p.onOpenAccount() }} className="w-full h-11 rounded-xl bg-card border border-ink/10 text-[14px] font-semibold">
+                  I already use College Tracker
+                </button>
+              )}
+              <p className="text-[11px] text-mute text-center">{p.scanWelcome ? "You can also sign in to bring your existing timetable to this browser." : "Swipe left to continue. You can skip setup at any time."}</p>
             </section>
           ) : (
             <section className="space-y-5">
               <div>
                 <p className="text-[11px] uppercase tracking-[0.16em] font-bold text-mute">START WITH YOUR TIMETABLE</p>
                 <h2 className="font-display text-[clamp(27px,7vw,36px)] leading-[1.05] tracking-tight mt-2">How would you like to add your classes?</h2>
-                <p className="text-[14px] leading-relaxed text-mute mt-3">Choose one to get started. You can add or edit subjects later, and your first-visit guides will explain the other tabs when you open them.</p>
+                <p className="text-[14px] leading-relaxed text-mute mt-3">{p.scanWelcome ? "Add your timetable here so future QR scans or NFC taps can match your check-in to a class. You can edit it any time." : "Choose one to get started. You can add or edit subjects later, and your first-visit guides will explain the other tabs when you open them."}</p>
               </div>
 
               <div className="space-y-3">
@@ -188,9 +202,9 @@ export default function Onboarding(p: Props) {
 
               {p.showGoogleSyncPrompt && (
                 <section className="rounded-2xl border border-ink/10 bg-secondary/65 p-4">
-                  <p className="text-[14px] font-semibold">Keep your progress across devices</p>
-                  <p className="text-[12.5px] text-mute leading-relaxed mt-1">Sign in with Google to sync your subjects and attendance. Nothing will sign in automatically.</p>
-                  <button type="button" onClick={() => { saveName(); p.onOpenAccount() }} className="mt-3 h-10 px-3.5 rounded-xl bg-ink text-paper text-[13px] font-semibold">Set up Google sync</button>
+                  <p className="text-[14px] font-semibold">{p.scanWelcome ? "Already use College Tracker?" : "Keep your progress across devices"}</p>
+                  <p className="text-[12.5px] text-mute leading-relaxed mt-1">{p.scanWelcome ? "Sign in with Google to bring your existing timetable and attendance to this browser." : "Sign in with Google to sync your subjects and attendance. Nothing will sign in automatically."}</p>
+                  <button type="button" onClick={() => { saveName(); p.onOpenAccount() }} className="mt-3 h-10 px-3.5 rounded-xl bg-ink text-paper text-[13px] font-semibold">{p.scanWelcome ? "Sign in and sync existing data" : "Set up Google sync"}</button>
                 </section>
               )}
 
