@@ -266,6 +266,57 @@ export function markFor(s: Subject, date: string, t = ""): "P" | "A" | null {
   return entries.length ? entries[entries.length - 1].s : null
 }
 
+/**
+ * One-time, idempotent repair for marks previously written to the original subject after a
+ * date-specific lecture substitution. Only exact date + start-time matches are moved.
+ * If the destination already has the opposite status, leave both records untouched for review.
+ */
+export function repairSubstitutionAttendance(subjects: Subject[], overrides: ScheduleOverride[]) {
+  const byId = new Map(subjects.map((subject) => [subject.id, subject]))
+  let moved = 0
+  let deduplicated = 0
+  let conflicts = 0
+  const processed = new Set<string>()
+
+  for (const override of overrides) {
+    if (override.kind !== "substitute" || !override.substituteSubjectId) continue
+    const key = `${override.originalSubjectId}>${override.substituteSubjectId}@${override.date}@${override.start}`
+    if (processed.has(key)) continue
+    processed.add(key)
+
+    const source = byId.get(override.originalSubjectId)
+    const destination = byId.get(override.substituteSubjectId)
+    if (!source || !destination || source.id === destination.id) continue
+
+    const sourceEntries = (source.log || []).filter((entry) => entry.d === override.date && (entry.t ?? "") === override.start)
+    if (!sourceEntries.length) continue
+    const latestSource = sourceEntries[sourceEntries.length - 1]
+    const destinationEntries = (destination.log || []).filter((entry) => entry.d === override.date && (entry.t ?? "") === override.start)
+    const latestDestination = destinationEntries[destinationEntries.length - 1]
+
+    if (latestDestination && latestDestination.s !== latestSource.s) {
+      conflicts += 1
+      continue
+    }
+
+    // Transfer status and metadata while letting withSet maintain both subjects' counters.
+    byId.set(source.id, withSet(source, override.date, null, { t: override.start }))
+    if (latestDestination) {
+      byId.set(destination.id, withSet(destination, override.date, latestDestination.s, {
+        t: override.start, k: latestDestination.k, by: latestDestination.by,
+      }))
+      deduplicated += 1
+    } else {
+      byId.set(destination.id, withSet(destination, override.date, latestSource.s, {
+        t: override.start, k: latestSource.k, by: latestSource.by,
+      }))
+      moved += 1
+    }
+  }
+
+  return { subjects: subjects.map((subject) => byId.get(subject.id) ?? subject), moved, deduplicated, conflicts }
+}
+
 /** Who covered this class for you, if it was marked through a confirmed cover */
 export function coveredBy(s: Subject, date: string, t = ""): string | null {
   const entries = (s.log || []).filter((x) => x.d === date && (x.t ?? "") === t)
