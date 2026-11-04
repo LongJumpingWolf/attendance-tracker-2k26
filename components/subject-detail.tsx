@@ -67,7 +67,7 @@ export default function SubjectDetail({ subject, allSubjects = [subject], schedu
 
   // Today's real classes of this subject. A subject with no timetable at all has a single "any time" class a day.
   const today = localDate()
-  const todays = classesOn(allSubjects, new Date(), scheduleOverrides).filter((entry) => (entry.originalSubjectId ?? entry.subject.id) === subject.id && !entry.cancelled)
+  const todays = classesOn(allSubjects, new Date(), scheduleOverrides).filter((entry) => (entry.override?.kind === "substitute" ? entry.subject.id : (entry.originalSubjectId ?? entry.subject.id)) === subject.id && !entry.cancelled)
   const noTimetable = !(subject.slots && subject.slots.length > 0)
 
   const cycle = (date: string) => {
@@ -156,7 +156,7 @@ export default function SubjectDetail({ subject, allSubjects = [subject], schedu
                 <div key={slot?.start ?? "any"} data-testid="today-class">
                   <p className="text-[13px] text-mute mb-1.5 px-1">
                     {slot ? `Today · ${formatTime(slot.start)} – ${formatTime(slot.end)}${slot.kind ? ` · ${slot.kind}` : ""}` : "Today · any time"}
-                    {"override" in c && c.override?.kind === "substitute" && <span className="block text-info">Conducted as {c.subject.name}; attendance is recorded under {subject.name}</span>}
+                    {"override" in c && c.override?.kind === "substitute" && <span className="block text-info">This {c.subject.name} lecture replaces the {("originalSubjectName" in c ? c.originalSubjectName : undefined) ?? "regular"} timetable slot; attendance is credited to {subject.name}</span>}
                     {state && <span data-testid="today-state">{state === "P" ? " · Marked present" : " · Marked absent"}</span>}
                   </p>
                   <div className="grid grid-cols-2 gap-3">
