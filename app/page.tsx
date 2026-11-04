@@ -22,6 +22,7 @@ import {
   withSet,
   classesOn,
   markFor,
+  repairSubstitutionAttendance,
   toMin,
   type MarkMeta,
   type ClassSlot,
@@ -182,8 +183,17 @@ export default function Home() {
       ])
       if (!alive) return
       if (Array.isArray(savedSubjects)) {
-        setSubjects(savedSubjects)
-        setAllTags(Array.from(new Set(savedSubjects.flatMap((s) => s.tags || []))))
+        const repaired = repairSubstitutionAttendance(savedSubjects, Array.isArray(savedOverrides) ? savedOverrides : [])
+        setSubjects(repaired.subjects)
+        setAllTags(Array.from(new Set(repaired.subjects.flatMap((s) => s.tags || []))))
+        if (repaired.moved || repaired.deduplicated || repaired.conflicts) {
+          try {
+            localStorage.setItem("attendance-substitution-repair-report", JSON.stringify({
+              moved: repaired.moved, deduplicated: repaired.deduplicated, conflicts: repaired.conflicts,
+              repairedAt: new Date().toISOString(),
+            }))
+          } catch {}
+        }
       }
       if (Array.isArray(savedTasks)) setTasks(savedTasks)
       if (Array.isArray(savedTags)) setAllTags(savedTags)
@@ -646,12 +656,21 @@ export default function Home() {
             )
           })
         : d.subjects
-      setSubjects(kept)
+      const repaired = repairSubstitutionAttendance(kept, d.scheduleOverrides ?? scheduleOverrides)
+      setSubjects(repaired.subjects)
       setTasks(d.tasks)
       setAllTags(d.tags)
       setMates(d.mates)
       if (d.holidays !== undefined) setHolidays(d.holidays)
       if (d.scheduleOverrides !== undefined) setScheduleOverrides(d.scheduleOverrides)
+      if (repaired.moved || repaired.deduplicated || repaired.conflicts) {
+        try {
+          localStorage.setItem("attendance-substitution-repair-report", JSON.stringify({
+            moved: repaired.moved, deduplicated: repaired.deduplicated, conflicts: repaired.conflicts,
+            repairedAt: new Date().toISOString(),
+          }))
+        } catch {}
+      }
     },
     notify: (m) => showToast(m),
   })
