@@ -601,7 +601,7 @@ function TodayContent({
                           <p data-testid="verdict-detail" className="text-[13px] text-mute mt-1 leading-snug">
                             {verdict.pct === null ? verdict.detail : `${verdict.pct}% now · ${attendanceSubject.requirement}% needed · ${verdict.detail}`}
                           </p>
-                          {c.override?.kind === "substitute" && <p className="mt-1 text-[12px] font-medium text-info">Substitutes for {c.originalSubjectName}. Attendance is recorded under {attendanceSubject.name}.</p>}
+                          {c.override?.kind === "substitute" && <p className="mt-1 text-[12px] font-medium text-info">Replaces the {c.originalSubjectName} timetable slot. Attendance is credited to {attendanceSubject.name}.</p>}
                           {c.subject.tags?.some((tag) => tag.trim()) && (
                             <div data-testid="class-tags" className="flex flex-wrap items-center gap-1.5 mt-2">
                               {c.subject.tags.filter((tag) => tag.trim()).map((tag, index) => (
