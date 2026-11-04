@@ -491,6 +491,61 @@ export default function Home() {
   const latestMates = useRef(mates)
   latestMates.current = mates
 
+  // One-time, idempotent repair for marks saved under the original subject before
+  // substituted lectures were correctly credited to the conducting subject.
+  const substitutionMarksRepaired = useRef(false)
+  useEffect(() => {
+    if (!loaded || demoActive || substitutionMarksRepaired.current) return
+    substitutionMarksRepaired.current = true
+    if (!scheduleOverrides.length || !subjects.length) return
+
+    let repairedSubjects = subjects
+    let moved = 0
+    let deduplicated = 0
+    let conflicts = 0
+
+    for (const override of scheduleOverrides) {
+      if (override.kind !== "substitute" || !override.substituteSubjectId) continue
+      const original = repairedSubjects.find((s) => s.id === override.originalSubjectId)
+      const replacement = repairedSubjects.find((s) => s.id === override.substituteSubjectId)
+      if (!original || !replacement || original.id === replacement.id) continue
+
+      const oldMark = entryFor(original, override.date, override.start)
+      if (!oldMark) continue
+      const existingReplacementMark = entryFor(replacement, override.date, override.start)
+
+      // Conflicting statuses are deliberately left untouched for manual review.
+      if (existingReplacementMark && existingReplacementMark.s !== oldMark.s) {
+        conflicts += 1
+        continue
+      }
+
+      repairedSubjects = repairedSubjects.map((subject) => {
+        if (subject.id === original.id) return withSet(subject, override.date, null, { t: override.start })
+        if (subject.id === replacement.id && !existingReplacementMark) {
+          return withSet(subject, override.date, oldMark.s, {
+            t: oldMark.t ?? override.start,
+            k: oldMark.k,
+            by: oldMark.by,
+          })
+        }
+        return subject
+      })
+      if (existingReplacementMark) deduplicated += 1
+      else moved += 1
+    }
+
+    if (moved || deduplicated) {
+      setSubjects(repairedSubjects)
+      showToast(`Attendance recovery: ${moved} mark(s) transferred, ${deduplicated} duplicate(s) consolidated${conflicts ? `; ${conflicts} conflict(s) need review` : ""}`)
+    } else if (conflicts) {
+      showToast(`Attendance recovery found ${conflicts} conflicting mark(s); none were changed`)
+    }
+  // This repair intentionally runs once against the fully loaded local records.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loaded, demoActive])
+
+
   /**
    * Mark (or change, or clear) one class on any date. The toast shows the resulting percentage, and its Undo puts back
    * exactly this class's previous record, never the whole subject: other classes of the same subject stay as they are.
