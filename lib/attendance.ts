@@ -164,9 +164,9 @@ export function timeParts(t: string) {
 /* ---------- timetable ---------- */
 
 export interface ClassSlot {
-  /** Subject displayed as being taught during this slot (the replacement subject for a substitution). */
+  /** Subject actually conducting this occurrence (the replacement subject for a substitution). */
   subject: Subject
-  /** Subject that owns this recurring timetable slot and therefore receives its attendance mark. */
+  /** Subject whose attendance log receives this occurrence's mark. For substitutions, this is the conducting subject. */
   attendanceSubject?: Subject
   slot: Slot
   originalSubjectId?: string
@@ -207,7 +207,7 @@ export function classesOn(subjects: Subject[], date: Date, overrides: ScheduleOv
       if (exception?.kind === "substitute" && exception.substituteSubjectId) {
         const replacement = byId.get(exception.substituteSubjectId)
         if (replacement && !isSubjectSleeping(replacement, dateKey)) {
-          found.push({ subject: replacement, attendanceSubject: original, slot, originalSubjectId: original.id, originalSubjectName: original.name, override: exception })
+          found.push({ subject: replacement, attendanceSubject: replacement, slot, originalSubjectId: original.id, originalSubjectName: original.name, override: exception })
           continue
         }
       }
@@ -238,7 +238,7 @@ export function dayClasses(subjects: Subject[], date: Date, overrides: ScheduleO
   const d = localDate(date)
   const byId = new Map(subjects.map((s) => [s.id, s]))
   return classesOn(subjects, date, overrides).filter((c) => !c.cancelled).map((c) => {
-    const attendanceSubject = c.attendanceSubject ?? byId.get(c.originalSubjectId ?? c.subject.id) ?? c.subject
+    const attendanceSubject = c.attendanceSubject ?? c.subject
     return {
       ...c,
       attendanceSubject,
