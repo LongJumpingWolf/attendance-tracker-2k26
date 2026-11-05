@@ -25,6 +25,11 @@ const timestampMs = (v: ProductLinkEvent["createdAt"]): number => {
 }
 const dateText = (ms: number) => ms ? new Date(ms).toLocaleString() : "—"
 const dateShort = (ms: number) => new Date(ms).toLocaleDateString(undefined, { month: "short", day: "numeric" })
+const dateRangeShort = (start: number, end: number) => {
+  const first = dateShort(start)
+  const last = dateShort(Math.max(start, end - 1))
+  return first === last ? first : first + "–" + last
+}
 const timeShort = (ms: number) => new Date(ms).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" })
 const percent = (n: number, d: number) => d > 0 ? `${Math.round((n / d) * 100)}%` : "—"
 const compactDuration = (ms: number) => {
@@ -548,8 +553,9 @@ export default function DeveloperAnalytics() {
     const trend = usageTrend.map((bucket) => {
       const bucketVisits = visits.filter((session) => session.openedAt >= bucket.start && session.openedAt < bucket.end)
       return {
-        label: bucket.label,
+        label: range === "24h" ? bucket.label : dateRangeShort(bucket.start, bucket.end),
         start: bucket.start,
+        end: bucket.end,
         visits: bucketVisits.length,
         visitors: new Set(bucketVisits.map((session) => session.visitorId).filter(Boolean)).size,
         bounced: bucketVisits.filter((session) => !session.hasAction && session.screenSet.size <= 1).length,
@@ -800,7 +806,7 @@ export default function DeveloperAnalytics() {
                     <p className="text-xs text-mute mt-1">App-open sessions by interval in {RANGE_LABEL[range].toLowerCase()}.</p>
                     <div className="grid gap-2 mt-4" style={{ gridTemplateColumns: "repeat(" + visitorInsights.trend.length + ", minmax(0, 1fr))" }}>
                       {visitorInsights.trend.map((bucket) => <div key={bucket.start} className="min-w-0">
-                        <div className="h-32 rounded-lg bg-secondary/60 flex items-end justify-center px-0.5 pt-2" title={bucket.label + ": " + bucket.visits + " visits, " + bucket.visitors + " known browsers, " + bucket.bounced + " bounce-like"}>
+                        <div className="h-32 rounded-lg bg-secondary/60 flex items-end justify-center px-0.5 pt-2" title={bucket.label + " (" + dateText(bucket.start) + " – " + dateText(bucket.end) + "): " + bucket.visits + " visits, " + bucket.visitors + " known browsers, " + bucket.bounced + " bounce-like"}>
                           <div className="w-full max-w-5 rounded-t bg-ink" style={{ height: Math.max(2, bucket.visits / visitorInsights.maxVisits * 100) + "%" }} />
                         </div>
                         <p className="text-[9px] sm:text-[10px] text-mute truncate text-center mt-1">{bucket.label}</p>
