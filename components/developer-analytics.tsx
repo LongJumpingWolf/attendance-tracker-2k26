@@ -65,6 +65,7 @@ export default function DeveloperAnalytics() {
   const [usageError, setUsageError] = useState("")
   const [filter, setFilter] = useState("")
   const [range, setRange] = useState<RangeKey>("30d")
+  const [visitorWeekOffset, setVisitorWeekOffset] = useState(0)
   const [source, setSource] = useState<SourceKey>("all")
   const [busy, setBusy] = useState(false)
   const [tab, setTab] = useState<"overview" | "links" | "events" | "usage" | "insights" | "visitors">("overview")
@@ -483,45 +484,38 @@ export default function DeveloperAnalytics() {
   }, [usageEvents, usageScope, range])
 
 
+  const visitorWeekStart = useMemo(() => {
+    const start = new Date(startOfLocalWeek(Date.now()))
+    start.setDate(start.getDate() - visitorWeekOffset * 7)
+    return start.getTime()
+  }, [visitorWeekOffset])
+  const visitorWeekEnd = useMemo(() => {
+    const end = new Date(visitorWeekStart)
+    end.setDate(end.getDate() + 7)
+    return end.getTime()
+  }, [visitorWeekStart])
+  const visitorWeekLabel = useMemo(() => {
+    const last = new Date(visitorWeekEnd - 1)
+    return new Date(visitorWeekStart).toLocaleDateString(undefined, { month: "short", day: "numeric" }) + " – " + last.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })
+  }, [visitorWeekStart, visitorWeekEnd])
+
   const visitorInsights = useMemo(() => {
-    const now = Date.now()
-    const cutoff = now - RANGE_MS[range]
     const firstSeenByBrowser = new Map<string, number>()
     for (const event of usageEvents) {
       if (!event.visitorId) continue
       const at = timestampMs(event.createdAt)
-      if (!at || at > now) continue
+      if (!at || at >= visitorWeekEnd) continue
       const first = firstSeenByBrowser.get(event.visitorId)
       if (first === undefined || at < first) firstSeenByBrowser.set(event.visitorId, at)
     }
-    const actionEvents = new Set<UsageEventName>([
-      "attendance_mark", "attendance_clear", "scan_checkin",
-      "subject_create", "subject_update", "subject_delete",
-      "task_create", "task_update", "task_complete", "task_reopen", "task_delete",
-    ])
-    const sessionMap = new Map<string, {
-      openedAt: number
-      visitorId?: string
-      deviceType?: string
-      browserFamily?: string
-      screenSet: Set<string>
-      hasAction: boolean
-      hasOpen: boolean
-    }>()
-    for (const event of usageScope) {
+    const actionEvents = new Set<UsageEventName>(["attendance_mark", "attendance_clear", "scan_checkin", "subject_create", "subject_update", "subject_delete", "task_create", "task_update", "task_complete", "task_reopen", "task_delete"])
+    const sessionMap = new Map<string, { openedAt: number; visitorId?: string; deviceType?: string; browserFamily?: string; screenSet: Set<string>; hasAction: boolean; hasOpen: boolean }>()
+    for (const event of usageEvents) {
       const at = timestampMs(event.createdAt)
-      if (!at || at > now) continue
+      if (!at || at < visitorWeekStart || at >= visitorWeekEnd) continue
       const key = event.actorUid + "::" + event.sessionId
-      const row = sessionMap.get(key) || {
-        openedAt: 0,
-        screenSet: new Set<string>(),
-        hasAction: false,
-        hasOpen: false,
-      }
-      if (event.event === "app_open") {
-        row.hasOpen = true
-        if (!row.openedAt || at < row.openedAt) row.openedAt = at
-      }
+      const row = sessionMap.get(key) || { openedAt: 0, screenSet: new Set<string>(), hasAction: false, hasOpen: false }
+      if (event.event === "app_open") { row.hasOpen = true; if (!row.openedAt || at < row.openedAt) row.openedAt = at }
       if (event.visitorId) row.visitorId = event.visitorId
       if (event.deviceType) row.deviceType = event.deviceType
       if (event.browserFamily) row.browserFamily = event.browserFamily
@@ -529,58 +523,32 @@ export default function DeveloperAnalytics() {
       if (actionEvents.has(event.event)) row.hasAction = true
       sessionMap.set(key, row)
     }
-    const visits = [...sessionMap.values()].filter((session) => session.hasOpen && session.openedAt >= cutoff)
+    const visits = [...sessionMap.values()].filter((session) => session.hasOpen && session.openedAt >= visitorWeekStart && session.openedAt < visitorWeekEnd)
     const knownVisitors = new Set(visits.map((session) => session.visitorId).filter((id): id is string => Boolean(id)))
-    let newVisitors = 0
-    let returningVisitors = 0
-    let unknownAgeVisitors = 0
+    let newVisitors = 0, returningVisitors = 0, unknownAgeVisitors = 0
     for (const visitorId of knownVisitors) {
       const first = firstSeenByBrowser.get(visitorId)
       if (first === undefined) unknownAgeVisitors += 1
-      else if (first >= cutoff) newVisitors += 1
+      else if (first >= visitorWeekStart) newVisitors += 1
       else returningVisitors += 1
     }
     const bounced = visits.filter((session) => !session.hasAction && session.screenSet.size <= 1).length
     const interacted = visits.filter((session) => session.hasAction).length
     const dist = (key: "deviceType" | "browserFamily") => {
       const counts = new Map<string, number>()
-      for (const session of visits) {
-        const label = session[key] || "Legacy / unknown"
-        counts.set(label, (counts.get(label) || 0) + 1)
-      }
-      return [...counts.entries()].sort((a, b) => b[1] - a[1])
+      for (const session of visits) { const label = session[key] || "Legacy / unknown"; counts.set(label, (counts.get(label) || 0) + 1) }
+      return [...counts.entries()].sort((x, y) => y[1] - x[1])
     }
-    const trend = usageTrend.map((bucket) => {
-      const bucketVisits = visits.filter((session) => session.openedAt >= bucket.start && session.openedAt < bucket.end)
-      return {
-        label: range === "24h" ? bucket.label : dateRangeShort(bucket.start, bucket.end),
-        start: bucket.start,
-        end: bucket.end,
-        visits: bucketVisits.length,
-        visitors: new Set(bucketVisits.map((session) => session.visitorId).filter(Boolean)).size,
-        bounced: bucketVisits.filter((session) => !session.hasAction && session.screenSet.size <= 1).length,
-      }
+    const trend = Array.from({ length: 7 }, (_, index) => {
+      const startDate = new Date(visitorWeekStart); startDate.setDate(startDate.getDate() + index)
+      const endDate = new Date(startDate); endDate.setDate(endDate.getDate() + 1)
+      const start = startDate.getTime(), end = endDate.getTime()
+      const bucketVisits = visits.filter((session) => session.openedAt >= start && session.openedAt < end)
+      return { label: startDate.toLocaleDateString(undefined, { weekday: "short" }), start, end, visits: bucketVisits.length, visitors: new Set(bucketVisits.map((session) => session.visitorId).filter(Boolean)).size, bounced: bucketVisits.filter((session) => !session.hasAction && session.screenSet.size <= 1).length }
     })
     const visitorTotal = newVisitors + returningVisitors
-    return {
-      visits: visits.length,
-      uniqueBrowsers: knownVisitors.size,
-      newVisitors,
-      returningVisitors,
-      unknownAgeVisitors,
-      newVisitorRate: visitorTotal ? Math.round(newVisitors / visitorTotal * 100) : null,
-      bounceCount: bounced,
-      bounceRate: visits.length ? Math.round(bounced / visits.length * 100) : null,
-      interactedSessions: interacted,
-      deviceMix: dist("deviceType"),
-      browserMix: dist("browserFamily"),
-      legacyVisits: visits.filter((session) => !session.visitorId || !session.deviceType || !session.browserFamily).length,
-      trend,
-      maxVisits: Math.max(1, ...trend.map((bucket) => bucket.visits)),
-      maxDeviceVisits: Math.max(1, ...dist("deviceType").map((pair) => pair[1])),
-      maxBrowserVisits: Math.max(1, ...dist("browserFamily").map((pair) => pair[1])),
-    }
-  }, [usageEvents, usageScope, usageTrend, range])
+    return { visits: visits.length, uniqueBrowsers: knownVisitors.size, newVisitors, returningVisitors, unknownAgeVisitors, newVisitorRate: visitorTotal ? Math.round(newVisitors / visitorTotal * 100) : null, bounceCount: bounced, bounceRate: visits.length ? Math.round(bounced / visits.length * 100) : null, interactedSessions: interacted, deviceMix: dist("deviceType"), browserMix: dist("browserFamily"), legacyVisits: visits.filter((session) => !session.visitorId || !session.deviceType || !session.browserFamily).length, trend, maxVisits: Math.max(1, ...trend.map((bucket) => bucket.visits)), maxDeviceVisits: Math.max(1, ...dist("deviceType").map((pair) => pair[1])), maxBrowserVisits: Math.max(1, ...dist("browserFamily").map((pair) => pair[1])) }
+  }, [usageEvents, visitorWeekStart, visitorWeekEnd])
 
   const usageCoverage = useMemo(() => eventCoverage(usageEvents.map((e) => timestampMs(e.createdAt)), usageTruncated), [usageEvents, usageTruncated])
   const linkCoverage = useMemo(() => eventCoverage(events.map((e) => timestampMs(e.createdAt)), linksTruncated), [events, linksTruncated])
@@ -681,11 +649,11 @@ export default function DeveloperAnalytics() {
               <p className="text-xs text-mute mt-1">Metrics below follow this date window and link-type filter.</p>
             </div>
             <div className="flex flex-wrap gap-3">
-              <label className="text-xs text-mute grid gap-1">Date range
+              {tab !== "visitors" && <label className="text-xs text-mute grid gap-1">Date range
                 <select value={range} onChange={(e) => setRange(e.target.value as RangeKey)} className="rounded-xl bg-secondary text-foreground px-3 py-2.5 text-sm">
                   {Object.entries(RANGE_LABEL).map(([key, label]) => <option key={key} value={key}>{label}</option>)}
                 </select>
-              </label>
+              </label>}
               <label className="text-xs text-mute grid gap-1">Link type
                 <select value={source} onChange={(e) => setSource(e.target.value as SourceKey)} className="rounded-xl bg-secondary text-foreground px-3 py-2.5 text-sm">
                   <option value="all">All link types</option>
@@ -778,6 +746,14 @@ export default function DeveloperAnalytics() {
             </>}
 
             {tab === "visitors" && <>
+              <section className="rounded-2xl bg-card p-4 space-y-3">
+                <div className="flex items-center justify-between gap-3">
+                  <div><h2 className="font-semibold">Weekly report</h2><p className="text-xs text-mute mt-1">{visitorWeekLabel}</p></div>
+                  <span className="text-xs text-mute tabular-nums">Week {visitorWeekOffset === 0 ? "current" : "−" + visitorWeekOffset}</span>
+                </div>
+                <input aria-label="Select report week" type="range" min={0} max={12} step={1} value={visitorWeekOffset} onChange={(e) => setVisitorWeekOffset(Number(e.target.value))} className="w-full accent-current" />
+                <div className="flex justify-between text-[11px] text-mute"><span>This week</span><span>12 weeks ago</span></div>
+              </section>
               {usageError ? <section className="rounded-2xl bg-card p-6 space-y-2">
                 <h2 className="text-lg font-bold">Visit analytics cannot be loaded</h2>
                 <p className="text-sm text-mute">{usageError}</p>
@@ -790,10 +766,10 @@ export default function DeveloperAnalytics() {
                 </section>
                 <section className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3">
                   {[
-                    ["Visits", visitorInsights.visits, "Opted-in app-open sessions"],
+                    ["Visits", visitorInsights.visits, "Opted-in app-open sessions this week"],
                     ["Unique browsers", visitorInsights.uniqueBrowsers, "Random browser IDs seen"],
                     ["New browsers", visitorInsights.newVisitors, visitorInsights.newVisitorRate === null ? "Rate unavailable" : visitorInsights.newVisitorRate + "% of known browsers"],
-                    ["Returning browsers", visitorInsights.returningVisitors, "Seen before this range"],
+                    ["Returning browsers", visitorInsights.returningVisitors, "Seen before this week"],
                     ["Bounce-like rate", visitorInsights.bounceRate === null ? "—" : visitorInsights.bounceRate + "%", visitorInsights.bounceCount + " single-screen, no-action visits"],
                     ["Engaged visits", visitorInsights.interactedSessions, "At least one feature action"],
                   ].map(([label, value, hint]) => <article key={String(label)} className="rounded-2xl bg-card p-4 min-w-0">
@@ -803,13 +779,13 @@ export default function DeveloperAnalytics() {
                 <section className="grid grid-cols-1 xl:grid-cols-2 gap-4">
                   <article className="rounded-2xl bg-card p-4">
                     <h2 className="font-bold">Visits over time</h2>
-                    <p className="text-xs text-mute mt-1">App-open sessions by interval in {RANGE_LABEL[range].toLowerCase()}.</p>
+                    <p className="text-xs text-mute mt-1">App-open sessions for each day of the selected week.</p>
                     <div className="grid gap-2 mt-4" style={{ gridTemplateColumns: "repeat(" + visitorInsights.trend.length + ", minmax(0, 1fr))" }}>
                       {visitorInsights.trend.map((bucket) => <div key={bucket.start} className="min-w-0">
                         <div className="h-32 rounded-lg bg-secondary/60 flex items-end justify-center px-0.5 pt-2" title={bucket.label + " (" + dateText(bucket.start) + " – " + dateText(bucket.end) + "): " + bucket.visits + " visits, " + bucket.visitors + " known browsers, " + bucket.bounced + " bounce-like"}>
                           <div className="w-full max-w-5 rounded-t bg-ink" style={{ height: Math.max(2, bucket.visits / visitorInsights.maxVisits * 100) + "%" }} />
                         </div>
-                        <p className="text-[9px] sm:text-[10px] text-mute truncate text-center mt-1">{bucket.label}</p>
+                        <p className="text-[9px] sm:text-[10px] text-mute text-center mt-1">{bucket.label}</p>
                         <p className="text-[10px] text-center tabular-nums">{bucket.visits}</p>
                       </div>)}
                     </div>
@@ -821,8 +797,8 @@ export default function DeveloperAnalytics() {
                       <div className="bg-ink" style={{ width: (visitorInsights.uniqueBrowsers ? visitorInsights.newVisitors / visitorInsights.uniqueBrowsers * 100 : 0) + "%" }} />
                       <div className="bg-blue-500" style={{ width: (visitorInsights.uniqueBrowsers ? visitorInsights.returningVisitors / visitorInsights.uniqueBrowsers * 100 : 0) + "%" }} />
                     </div>
-                    <MetricLine label="New" value={String(visitorInsights.newVisitors)} hint="First observed in selected range" />
-                    <MetricLine label="Returning" value={String(visitorInsights.returningVisitors)} hint="Observed before selected range" />
+                    <MetricLine label="New" value={String(visitorInsights.newVisitors)} hint="First observed this week" />
+                    <MetricLine label="Returning" value={String(visitorInsights.returningVisitors)} hint="Observed before this week" />
                     {visitorInsights.unknownAgeVisitors > 0 && <MetricLine label="Age unknown" value={String(visitorInsights.unknownAgeVisitors)} hint="Insufficient first-seen history" />}
                   </article>
                 </section>
