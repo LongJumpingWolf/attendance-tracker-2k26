@@ -138,7 +138,9 @@ describe("pickScanTarget — ambiguity and safe fallbacks", () => {
     expect(r.kind).toBe("mark")
     if (r.kind === "mark") {
       expect(r.target.subject.id).toBe("cover")
-      expect(r.target.attendanceSubject?.id).toBe("a")
+      // Substituted attendance is credited to the conducting subject; the one-time repair
+      // migrates any earlier mark for this exact slot to the same destination.
+      expect(r.target.attendanceSubject?.id).toBe("cover")
     }
   })
 
