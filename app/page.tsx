@@ -1286,6 +1286,7 @@ export default function Home() {
           {currentPage === "today" && (
             <TodayView
               subjects={subjects}
+              holidays={holidays}
               scheduleOverrides={effectiveOverrides}
               onClassActions={(target) => setClassActionsTarget(target)}
               onSleep={(subject) => setSleepTarget(subject)}
