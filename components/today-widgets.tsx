@@ -41,23 +41,20 @@ function TomorrowLectures({ subjects, holidays = [], now, scheduleOverrides = []
       onClick={() => onOpenTomorrow?.(date)}
       data-tour="tomorrow-lectures-widget"
       aria-label={`Open Calendar for tomorrow, ${rows.length} scheduled ${rows.length === 1 ? "lecture" : "lectures"}`}
-      className={`${CARD} text-white text-left focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink ${isHoliday ? "ring-2 ring-amber-300 shadow-xl shadow-amber-500/30" : ""}`}
+      className={`${CARD} text-white text-left focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink`}
       style={{
-        background: isHoliday
-          ? "linear-gradient(135deg,#9a3412 0%,#ea580c 48%,#f59e0b 100%)"
-          : "linear-gradient(145deg,#1e3a5f,#276c8e 58%,#479ca4)",
+        background: "linear-gradient(145deg,#1e3a5f,#276c8e 58%,#479ca4)",
       }}
     >
       <p className={KICKER}>{isHoliday ? "Tomorrow · Holiday" : `Tomorrow · ${rows.length} ${rows.length === 1 ? "lecture" : "lectures"}`}</p>
       <div className="flex items-center justify-between gap-2 mt-0.5 mb-2">
-        <h3 className="font-display text-[23px] leading-tight">{isHoliday ? "A day off awaits" : "Lectures scheduled"}</h3>
+        <h3 className="font-display text-[23px] leading-tight">{isHoliday ? "Holiday tomorrow" : "Lectures scheduled"}</h3>
         <span className="w-8 h-8 shrink-0 rounded-full bg-white/15 grid place-items-center text-[16px]" aria-hidden>↗</span>
       </div>
       {isHoliday ? (
         <div className="my-auto flex flex-col items-center text-center gap-2 py-2">
-          <span aria-hidden className="text-[42px] leading-none animate-bounce">🎉</span>
-          <p className="text-[19px] font-extrabold leading-tight">{holidayNames.join(" · ")}</p>
-          <p className="text-[13px] font-semibold text-white/85">No lectures tomorrow. Enjoy your holiday!</p>
+          <p className="text-[20px] font-bold leading-tight">{holidayNames.join(" · ")}</p>
+          <p className="text-[14px] font-medium text-white/85">No lectures scheduled for tomorrow.</p>
         </div>
       ) : rows.length === 0 ? (
         <p className="my-auto text-[15px] font-semibold leading-snug">No lectures scheduled for tomorrow. Enjoy the breathing room.</p>
