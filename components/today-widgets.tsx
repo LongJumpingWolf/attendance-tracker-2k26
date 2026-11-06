@@ -5,10 +5,12 @@ import { PencilSimple, Plus } from "@phosphor-icons/react"
 import Sheet, { primaryButton } from "./sheet"
 import { classesOn, daysUntil, formatShortDate, formatTime, getAttendance, localDate } from "@/lib/attendance"
 import { loadWidgets, saveWidgets, WIDGETS, type WidgetId } from "@/lib/today-widgets"
-import type { ScheduleOverride, Subject, Task } from "@/lib/types"
+import type { Holiday, ScheduleOverride, Subject, Task } from "@/lib/types"
+import { holidaysForDate } from "@/lib/holidays"
 
 interface Data {
   subjects: Subject[]
+  holidays?: Holiday[]
   tasks: Task[]
   /** Active deadline reminders are surfaced in the attendance carousel, not duplicated in this widget. */
   activeReminderCount?: number
@@ -23,10 +25,12 @@ interface Data {
 const CARD = "relative h-[286px] w-full rounded-[24px] overflow-hidden p-4 flex flex-col text-left"
 const KICKER = "text-[12px] font-extrabold uppercase tracking-[0.09em] opacity-80"
 
-function TomorrowLectures({ subjects, now, scheduleOverrides = [], onOpenTomorrow }: Data) {
+function TomorrowLectures({ subjects, holidays = [], now, scheduleOverrides = [], onOpenTomorrow }: Data) {
   const tomorrow = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1)
   const date = localDate(tomorrow)
-  const rows = classesOn(subjects, tomorrow, scheduleOverrides)
+  const holidayNames = holidaysForDate(date, holidays).map((holiday) => holiday.name)
+  const isHoliday = holidayNames.length > 0
+  const rows = (isHoliday ? [] : classesOn(subjects, tomorrow, scheduleOverrides))
     .filter((entry) => !entry.cancelled)
     .sort((a, b) => a.slot.start.localeCompare(b.slot.start))
   const shown = rows.slice(0, 4)
@@ -40,12 +44,18 @@ function TomorrowLectures({ subjects, now, scheduleOverrides = [], onOpenTomorro
       className={`${CARD} text-white text-left focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink`}
       style={{ background: "linear-gradient(145deg,#1e3a5f,#276c8e 58%,#479ca4)" }}
     >
-      <p className={KICKER}>Tomorrow · {rows.length} {rows.length === 1 ? "lecture" : "lectures"}</p>
+      <p className={KICKER}>{isHoliday ? "Tomorrow · Holiday" : `Tomorrow · ${rows.length} ${rows.length === 1 ? "lecture" : "lectures"}`}</p>
       <div className="flex items-center justify-between gap-2 mt-0.5 mb-2">
-        <h3 className="font-display text-[23px] leading-tight">Lectures scheduled</h3>
+        <h3 className="font-display text-[23px] leading-tight">{isHoliday ? "A day off awaits" : "Lectures scheduled"}</h3>
         <span className="w-8 h-8 shrink-0 rounded-full bg-white/15 grid place-items-center text-[16px]" aria-hidden>↗</span>
       </div>
-      {rows.length === 0 ? (
+      {isHoliday ? (
+        <div className="my-auto flex flex-col items-center text-center gap-2 py-2">
+          <span aria-hidden className="text-[42px] leading-none animate-bounce">🎉</span>
+          <p className="text-[19px] font-extrabold leading-tight">{holidayNames.join(" · ")}</p>
+          <p className="text-[13px] font-semibold text-white/85">No lectures tomorrow. Enjoy your holiday!</p>
+        </div>
+      ) : rows.length === 0 ? (
         <p className="my-auto text-[15px] font-semibold leading-snug">No lectures scheduled for tomorrow. Enjoy the breathing room.</p>
       ) : (
         <>
