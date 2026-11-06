@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useRef, useState } from "react"
-import { ArrowClockwise, CaretRight, Check, WarningCircle, X } from "@phosphor-icons/react"
+import { ArrowClockwise, CalendarBlank, CaretRight, Check, WarningCircle, X } from "@phosphor-icons/react"
 import ClassActionMenu from "./class-action-menu"
 import type { Holiday, ScheduleOverride } from "@/lib/types"
 import { holidaysForDate } from "@/lib/holidays"
@@ -424,19 +424,17 @@ function TodayContent({
 
         {/* Carousel */}
         {holidayToday ? (
-          <section data-testid="today-holiday-card" className="relative isolate overflow-hidden rounded-[28px] border border-good/20 bg-gradient-to-br from-[#fff7df] via-[#fff0d8] to-[#e5f7ee] px-5 py-7 text-[#294b3b] shadow-sm dark:from-[#263b32] dark:via-[#344238] dark:to-[#243c3b] dark:text-[#f3f8ef]">
-            <div aria-hidden className="pointer-events-none absolute inset-0 overflow-hidden">
-              <span className="absolute left-[8%] top-3 text-2xl animate-bounce">✦</span>
-              <span className="absolute right-[12%] top-7 text-xl animate-pulse">✧</span>
-              <span className="absolute bottom-5 left-[22%] text-xl animate-pulse">✺</span>
-              <span className="absolute bottom-4 right-[18%] text-2xl animate-bounce">✦</span>
-            </div>
-            <div className="relative flex flex-col items-center text-center py-3">
-              <span className="grid h-14 w-14 place-items-center rounded-full bg-white/70 text-3xl shadow-sm dark:bg-white/10" aria-hidden>☀️</span>
-              <p className="mt-4 text-[12px] font-extrabold uppercase tracking-[0.16em] opacity-75">A little pause in the timetable</p>
-              <h2 className="mt-2 font-display text-[clamp(27px,7vw,36px)] font-bold leading-tight">Happy Holiday!</h2>
-              <p className="mt-2 max-w-[32ch] text-[17px] font-semibold leading-snug">{holidayNames.join(" · ")}</p>
-              <p className="mt-3 text-[14px] opacity-80">No lectures today. Take the day off and enjoy it.</p>
+          <section data-testid="today-holiday-card" className="rounded-[24px] border border-ink/10 bg-card px-4 py-5 sm:px-5 shadow-sm">
+            <div className="flex items-start gap-3">
+              <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-good/10 text-good" aria-hidden>
+                <CalendarBlank weight="regular" className="h-5 w-5" />
+              </span>
+              <div className="min-w-0 flex-1">
+                <p className="text-[11px] font-bold uppercase tracking-[0.1em] text-good">Holiday</p>
+                <h2 className="mt-1 font-display text-[22px] sm:text-[24px] font-bold leading-tight">No classes today</h2>
+                <p className="mt-1.5 text-[15px] font-semibold text-ink">{holidayNames.join(" · ")}</p>
+                <p className="mt-1 text-[13px] leading-snug text-mute">Your timetable is clear for today.</p>
+              </div>
             </div>
           </section>
         ) : !allDone && (
