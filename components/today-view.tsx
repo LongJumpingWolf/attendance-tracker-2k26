@@ -3,7 +3,8 @@
 import { useEffect, useRef, useState } from "react"
 import { ArrowClockwise, CaretRight, Check, WarningCircle, X } from "@phosphor-icons/react"
 import ClassActionMenu from "./class-action-menu"
-import type { ScheduleOverride } from "@/lib/types"
+import type { Holiday, ScheduleOverride } from "@/lib/types"
+import { holidaysForDate } from "@/lib/holidays"
 import type { Mate, Subject, Task } from "@/lib/types"
 import {
   getAttendance,
@@ -33,6 +34,7 @@ export interface Banner {
 
 interface TodayViewProps {
   subjects: Subject[]
+  holidays?: Holiday[]
   scheduleOverrides?: ScheduleOverride[]
   onClassActions?: (target: { subjectId: string; date: string; slot: { day: number; start: string; end: string; kind?: string }; subjectName?: string }) => void
   onSleep?: (subject: Subject) => void
@@ -120,6 +122,7 @@ export default function TodayView(props: TodayViewProps) {
 function TodayContent({
   now,
   subjects,
+  holidays = [],
   scheduleOverrides = [],
   onClassActions,
   onSleep,
@@ -158,9 +161,12 @@ function TodayContent({
   const nowMin = now.getHours() * 60 + now.getMinutes()
   const reminderItems = deadlineRemindersForDate(tasks, today)
   const tomorrow = dateAfterDays(today, 1)
+  const todayHolidays = holidaysForDate(today, holidays)
+  const holidayToday = todayHolidays.length > 0
+  const holidayNames = todayHolidays.map((holiday) => holiday.name)
 
-  // Only classes that are really on today's timetable. A subject with no timetable, or none today, has no card.
-  const classes: Card[] = dayClasses(subjects, now, scheduleOverrides)
+  // A named holiday takes priority over the recurring weekly timetable.
+  const classes: Card[] = holidayToday ? [] : dayClasses(subjects, now, scheduleOverrides)
   const unscheduled = subjects.filter((s) => !s.slots?.length).length
 
   const stateOf = (c: Card) => c.state
@@ -342,7 +348,7 @@ function TodayContent({
             Add a subject
           </button>
         </div>
-        <div className="mt-6"><TodayWidgets subjects={subjects} tasks={tasks.filter((task) => !reminderItems.some((item) => item.task.id === task.id))} activeReminderCount={reminderItems.length} now={now} scheduleOverrides={scheduleOverrides} onOpenTomorrow={onOpenTomorrow} demoActive={demoActive} /></div>
+        <div className="mt-6"><TodayWidgets subjects={subjects} holidays={holidays} tasks={tasks.filter((task) => !reminderItems.some((item) => item.task.id === task.id))} activeReminderCount={reminderItems.length} now={now} scheduleOverrides={scheduleOverrides} onOpenTomorrow={onOpenTomorrow} demoActive={demoActive} /></div>
         <footer className="pt-8 pb-3 text-center text-[12px] text-mute/80 tracking-wide">Made with ♥ by Aditya Waghmare</footer>
       </div>
     )
@@ -351,7 +357,10 @@ function TodayContent({
   // ---- the headline: one plain sentence about right now ----
   let headline: string
   let subline: string
-  if (ongoingCard) {
+  if (holidayToday) {
+    headline = "It's a holiday today"
+    subline = holidayNames.join(" · ")
+  } else if (ongoingCard) {
     headline = `${ongoingCard.subject.name} is on now`
     subline = `Ends in ${duration(toMin(ongoingCard.slot.end) - nowMin)}`
   } else if (firstUpcoming) {
@@ -373,7 +382,9 @@ function TodayContent({
 
   // One notice at a time. An unmarked class that has already ended comes first.
   let notice: { text: string; tone: Banner["tone"]; onClick: () => void } | null = null
-  if (overdue.length > 0) {
+  if (holidayToday) {
+    notice = null
+  } else if (overdue.length > 0) {
     const first = overdue[0]
     const ago = duration(nowMin - toMin(first.slot.end))
     notice = {
@@ -412,7 +423,23 @@ function TodayContent({
         )}
 
         {/* Carousel */}
-        {!allDone && (
+        {holidayToday ? (
+          <section data-testid="today-holiday-card" className="relative isolate overflow-hidden rounded-[28px] border border-good/20 bg-gradient-to-br from-[#fff7df] via-[#fff0d8] to-[#e5f7ee] px-5 py-7 text-[#294b3b] shadow-sm dark:from-[#263b32] dark:via-[#344238] dark:to-[#243c3b] dark:text-[#f3f8ef]">
+            <div aria-hidden className="pointer-events-none absolute inset-0 overflow-hidden">
+              <span className="absolute left-[8%] top-3 text-2xl animate-bounce">✦</span>
+              <span className="absolute right-[12%] top-7 text-xl animate-pulse">✧</span>
+              <span className="absolute bottom-5 left-[22%] text-xl animate-pulse">✺</span>
+              <span className="absolute bottom-4 right-[18%] text-2xl animate-bounce">✦</span>
+            </div>
+            <div className="relative flex flex-col items-center text-center py-3">
+              <span className="grid h-14 w-14 place-items-center rounded-full bg-white/70 text-3xl shadow-sm dark:bg-white/10" aria-hidden>☀️</span>
+              <p className="mt-4 text-[12px] font-extrabold uppercase tracking-[0.16em] opacity-75">A little pause in the timetable</p>
+              <h2 className="mt-2 font-display text-[clamp(27px,7vw,36px)] font-bold leading-tight">Happy Holiday!</h2>
+              <p className="mt-2 max-w-[32ch] text-[17px] font-semibold leading-snug">{holidayNames.join(" · ")}</p>
+              <p className="mt-3 text-[14px] opacity-80">No lectures today. Take the day off and enjoy it.</p>
+            </div>
+          </section>
+        ) : !allDone && (
         <section data-tour="today-carousel">
           <SectionHeader
             action={carouselCount > 0 ? <span className="text-[13px] text-mute">{live.length > 0 ? `${live.length} to mark` : ""}{live.length > 0 && reminderItems.length > 0 ? " · " : ""}{reminderItems.length > 0 ? `${reminderItems.length} reminder${reminderItems.length === 1 ? "" : "s"}` : ""}</span> : undefined}
@@ -692,7 +719,7 @@ function TodayContent({
 
         {/* Keep widgets immediately below the carousel, even before all classes are marked. */}
         <div className="mt-6">
-          <TodayWidgets subjects={subjects} tasks={tasks} now={now} scheduleOverrides={scheduleOverrides} onOpenTomorrow={onOpenTomorrow} demoActive={demoActive} />
+          <TodayWidgets subjects={subjects} holidays={holidays} tasks={tasks} now={now} scheduleOverrides={scheduleOverrides} onOpenTomorrow={onOpenTomorrow} demoActive={demoActive} />
         </div>
       </div>
 
