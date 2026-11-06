@@ -41,8 +41,12 @@ function TomorrowLectures({ subjects, holidays = [], now, scheduleOverrides = []
       onClick={() => onOpenTomorrow?.(date)}
       data-tour="tomorrow-lectures-widget"
       aria-label={`Open Calendar for tomorrow, ${rows.length} scheduled ${rows.length === 1 ? "lecture" : "lectures"}`}
-      className={`${CARD} text-white text-left focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink`}
-      style={{ background: "linear-gradient(145deg,#1e3a5f,#276c8e 58%,#479ca4)" }}
+      className={`${CARD} text-white text-left focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink ${isHoliday ? "ring-2 ring-amber-300 shadow-xl shadow-amber-500/30" : ""}`}
+      style={{
+        background: isHoliday
+          ? "linear-gradient(135deg,#9a3412 0%,#ea580c 48%,#f59e0b 100%)"
+          : "linear-gradient(145deg,#1e3a5f,#276c8e 58%,#479ca4)",
+      }}
     >
       <p className={KICKER}>{isHoliday ? "Tomorrow · Holiday" : `Tomorrow · ${rows.length} ${rows.length === 1 ? "lecture" : "lectures"}`}</p>
       <div className="flex items-center justify-between gap-2 mt-0.5 mb-2">
